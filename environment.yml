@@ -5,5 +5,10 @@ dependencies:
   - pip
   - pip:
       - streamlit
+      - numpy
       - pandas
       - pytest
+      - google-genai
+      - argparse
+      - pathlib
+      - oracledb

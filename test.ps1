@@ -1,0 +1,1 @@
+conda run -n kdt-project-1 pytest dashboard\app.py

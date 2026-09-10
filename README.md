@@ -1,2 +1,1 @@
-# defense-dashboard
-Project 1
+# Project 1 - 국방 대시보드 시각화 프로젝트

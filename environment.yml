@@ -1,9 +1,14 @@
 name: kdt-project-1
 
 dependencies:
-  - python=3.14
+  - python=3.10
   - pip
   - pip:
       - streamlit
+      - numpy
       - pandas
       - pytest
+      - google-genai
+      - argparse
+      - pathlib
+      - oracledb

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from dashboard.py.config import DIR_DICT
+from config import DIR_DICT
 globals().update(DIR_DICT)
 from dashboard.py.loader import  load_css, _load_csv,load_css_colors 
 from dashboard.py.dataloader import get_kpi_data, get_risk_distribution, get_high_risk_personnel, get_individual_scores, get_persons
@@ -222,6 +222,6 @@ with tab_person:
 st.divider()
 if _missing_files:
     with st.expander(f"⚠️ 실제 데이터 미연결 항목 {len(_missing_files)}건 (현재 예시 데이터로 표시 중)", expanded=False):
-        st.write(f"CSV_FINAL_DIR 경로: `{DATA_DIR}`")
+        st.write(f"CSV_FINAL_DIR 경로: `{CSV_FINAL_DIR}`")
         for m in sorted(set(_missing_files)):
             st.markdown(f"- `{m}`")

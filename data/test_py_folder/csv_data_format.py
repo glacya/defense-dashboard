@@ -3,7 +3,7 @@ import pandas as pd
 import json
 from pathlib import Path
 from google import genai
-from data.test_py_folder.config import CSV_DATA_DIR ,CSV_DEFINE_DIR, CSV_FINAL_DIR, SPECS_JSON_PATH, GEMINI_API_KEY
+from config import CSV_DATA_DIR ,CSV_DEFINE_DIR, CSV_FINAL_DIR, SPECS_JSON_PATH, GEMINI_API_KEY
 
 class ColumnStandardizerPipeline:
     def __init__(self, db_name):

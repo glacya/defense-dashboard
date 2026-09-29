@@ -12,8 +12,6 @@ CSV_DIR =  RooT_DIR / "data/csv_file"
 BASE64_DIR = RooT_DIR /"dashboard/img/base64.json"
 CSS_PATH =  RooT_DIR /"dashboard/style.css"
 
-ORACLE_DIR = RooT_DIR / "C:/Users/user/AI/instantclient_23_26"
-
 # DB 및 환경 변수 설정
 # DB_LOCAL = "scott/tiger@localhost:1521/orcl"
 # os.environ["PATH"] = str(ORACLE_DIR) + ";" + os.environ.get("PATH", "")

@@ -12,12 +12,10 @@ import colorsys
 import tkinter as tk
 from PIL import Image, ImageTk
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 
 
-TARGET_CSS = Path(
-    "C:/Users/user/AI/Python_ex/defense-dashboard/dashboard/style.css"
-)
+TARGET_CSS = ROOT/"style.css"
 
 
 def load_css_colors(css_path: Path) -> dict[str, str]:

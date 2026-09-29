@@ -1,0 +1,17 @@
+순서,영문속성명,컬럼한글명,데이터타입(DB),길이/정밀도,PK여부,NOT NULL여부,데이터 상품명
+1,CNTER_NM,시,VARCHAR,50,N,N,체력측정 원시 데이터
+2,MESURE_AGE_CO,나이,VARCHAR,20,N,N,체력측정 원시 데이터
+3,SEXDSTN_FLAG_CD,성별,CHAR,1,N,N,체력측정 원시 데이터
+4,MESURE_IEM_001_VALUE,신장,DECIMAL,"5,1",N,N,체력측정 원시 데이터
+5,MESURE_IEM_002_VALUE,체중,DECIMAL,"5,1",N,N,체력측정 원시 데이터
+6,MESURE_IEM_003_VALUE,체지방률,DECIMAL,"4,1",N,N,체력측정 원시 데이터
+7,MESURE_IEM_004_VALUE,허리둘레,DECIMAL,"4,1",N,N,체력측정 원시 데이터
+8,MESURE_IEM_005_VALUE,이완기 혈압,INT,,N,N,체력측정 원시 데이터
+9,MESURE_IEM_006_VALUE,수축기 혈압,INT,,N,N,체력측정 원시 데이터
+10,MESURE_IEM_007_VALUE,악력,DECIMAL,"4,1",N,N,체력측정 원시 데이터
+11,MESURE_IEM_012_VALUE,앉아윗몸앞으로굽히기,DECIMAL,"4,1",N,N,체력측정 원시 데이터
+12,MESURE_IEM_022_VALUE,제자리 멀리뛰기,DECIMAL,"5,1",N,N,체력측정 원시 데이터
+13,MESURE_IEM_019_VALUE,교차윗몸일으키기,INT,,N,N,체력측정 원시 데이터
+14,MESURE_IEM_020_VALUE,오래달리기,INT,,N,N,체력측정 원시 데이터
+15,MESURE_IEM_035_VALUE,트레드밀 VO2max,DECIMAL,"4,1",N,N,체력측정 원시 데이터
+16,YEAR,년도/월,INT,,N,N,체력측정 원시 데이터

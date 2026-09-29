@@ -1,0 +1,375 @@
+/* ==========================================
+위 코드는 아래와 같습니다.
+1. app에서 사용할 css를 정의한 문서입니다.
+
+위 코드는 다음을 위해 작성되었습니다.  
+1. 정의된 css파일을 사용하여 app.py의 기본 규격을 쉽게 맞출 수 있습니다.
+2. 정의된 css파일을 사용하여 app.py의 코드의 가시성을 높이고 경량화 할 수 있습니다.
+
+================== */
+
+
+
+/* ==========================================
+   색상 정의 (CSS 변수)
+PRIMARY = "#2c3e4c"
+GOOD = "#4f6d45"
+WARN = "#e5a73b"
+RISK = "#d9534f"
+ACCENT = "#7a8f66"
+SOFT = "#8f8a73"
+NORMAL_COLOR = "#e9ecef"
+   ========================================== */
+:root {
+    --color-primary: #51340d;
+    --color-good: #4f6d45;
+    --color-warn: #e5a73b;
+    --color-risk: #d30005;
+    --color-accent: #7a8f66;
+    --color-soft: #8f8a73;
+    --color-normal: #e9ecef;
+    --color-bg: #F0F0F0;
+    --color-white: #ffffff;
+    --color-text-dark: #333333;
+    --color-text-light: #b0b0b0;
+    --color-border: rgba(0, 0, 0, 0.1);
+    
+    /* 배경 이미지 (Python에서 동적으로 설정) */
+    --bg-image: none;
+}
+
+
+/* ==========================================
+   배경 스타일
+   ========================================== */
+.stApp {
+    background-image: var(--bg-image);
+    background-color: var(--color-bg);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
+
+
+/* ==========================================
+   카드 스타일
+   ========================================== */
+
+/* 카드 컨테이너 */
+.status-card {
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 2px 2px 5px var(--color-border);
+    text-align: center;
+    background-color: var(--color-white);
+}
+
+/* 카드 헤더 (제목 부분) */
+.status-card__header {
+    color: var(--color-white);
+    padding: 10px;
+    font-weight: bold;
+    font-size: 16px;
+}
+
+/* 카드 헤더 - 상태별 배경색 */
+.status-card__header--good {
+    background-color: var(--color-good);
+}
+
+.status-card__header--warn {
+    background-color: var(--color-warn);
+}
+
+.status-card__header--risk {
+    background-color: var(--color-risk);
+}
+
+/* 카드 바디 (상태 정보 부분) */
+.status-card__body {
+    padding: 20px;
+    font-weight: bold;
+    font-size: 18px;
+    color: var(--color-text-dark);
+}
+
+
+/* ==========================================
+   정보 카드/테이블 스타일
+   ========================================== */
+
+/* 인물 정보 섹션 */
+.person-info {
+    border-radius: 8px;
+    padding: 20px;
+    background-color: var(--color-white);
+}
+
+.person-info__title {
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--color-text-dark);
+    margin-bottom: 5px;
+}
+
+.person-info__subtitle {
+    font-size: 14px;
+    color: var(--color-text-light);
+    margin-bottom: 20px;
+}
+
+
+/* ==========================================
+   테이블 스타일
+   ========================================== */
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th {
+    background-color: var(--color-primary);
+    color: var(--color-white);
+    padding: 12px;
+    text-align: left;
+    font-weight: bold;
+}
+
+.data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.data-table tr:hover {
+    background-color: var(--color-bg);
+}
+
+
+/* ==========================================
+   차트 컨테이너 스타일
+   ========================================== */
+
+.chart-container {
+    background-color: var(--color-white);
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 1px 3px var(--color-border);
+}
+
+.chart-title {
+    font-weight: bold;
+    font-size: 16px;
+    color: var(--color-text-dark);
+    margin-bottom: 15px;
+}
+
+
+/* ==========================================
+   범례 스타일
+   ========================================== */
+
+.legend {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin-top: 15px;
+    flex-wrap: wrap;
+}
+
+.legend__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.legend__color {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+}
+
+.legend__color--high-risk {
+    background-color: var(--color-risk);
+}
+
+.legend__color--mid-risk {
+    background-color: var(--color-warn);
+}
+
+.legend__color--normal {
+    background-color: var(--color-normal);
+}
+
+.legend__color--good {
+    background-color: var(--color-good);
+}
+
+
+/* ==========================================
+   분할 선 스타일
+   ========================================== */
+
+.divider {
+    border: none;
+    border-top: 2px solid var(--color-border);
+    margin: 30px 0;
+}
+
+
+/* ==========================================
+   경고/알림 스타일
+   ========================================== */
+
+.warning-box {
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 6px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.warning-box__title {
+    color: #856404;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.warning-box__content {
+    color: #856404;
+    font-size: 14px;
+}
+
+
+/* ==========================================
+   간격 조정 클래스
+   ========================================== */
+
+.space-sm {
+    margin-bottom: 10px;
+}
+
+.space-md {
+    margin-bottom: 20px;
+}
+
+.space-lg {
+    margin-bottom: 30px;
+}
+
+.space-xl {
+    margin-bottom: 50px;
+}
+
+/* 위쪽 간격 */
+.space-top-sm {
+    margin-top: 10px;
+}
+
+.space-top-md {
+    margin-top: 20px;
+}
+
+.space-top-lg {
+    margin-top: 30px;
+}
+
+
+/* ==========================================
+   텍스트 스타일
+   ========================================== */
+
+.text-center {
+    text-align: center;
+}
+
+.text-bold {
+    font-weight: bold;
+}
+
+.text-primary {
+    color: var(--color-primary);
+}
+
+.text-risk {
+    color: var(--color-risk);
+}
+
+.text-warn {
+    color: var(--color-warn);
+}
+
+.text-good {
+    color: var(--color-good);
+}
+
+.text-small {
+    font-size: 12px;
+}
+
+.text-large {
+    font-size: 18px;
+}
+
+
+/* ==========================================
+   반응형 디자인
+   ========================================== */
+
+@media (max-width: 768px) {
+    .status-card__header {
+        font-size: 14px;
+        padding: 8px;
+    }
+
+    .status-card__body {
+        font-size: 16px;
+        padding: 15px;
+    }
+
+    .person-info__title {
+        font-size: 20px;
+    }
+
+    .legend {
+        gap: 15px;
+    }
+}
+
+
+/* ==========================================
+   유틸리티 클래스
+   ========================================== */
+
+/* 레이아웃 */
+.flex-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.flex-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* 그림자 효과 */
+.shadow-sm {
+    box-shadow: 1px 1px 3px var(--color-border);
+}
+
+.shadow-md {
+    box-shadow: 2px 2px 5px var(--color-border);
+}
+
+.shadow-lg {
+    box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+/* 투명도 */
+.bg-overlay {
+    background-color: rgba(255, 255, 255, 0.95);
+}

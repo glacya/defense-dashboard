@@ -1,0 +1,12 @@
+순서,컬럼영문명,컬럼한글명,데이터타입,길이,PK여부,NOT NULL여부,데이터 상품명
+1,STAT_YEAR,기준연도,VARCHAR2,4,Y,Y,시/도별 20대 남성 질환 통계 추정 데이터
+2,PLACE_GROUP_NM,시/도구분명,VARCHAR2,50,Y,Y,시/도별 20대 남성 질환 통계 추정 데이터
+3,EST_20S_MALE_POP,추정20대남성인구수,NUMBER,10,N,N,시/도별 20대 남성 질환 통계 추정 데이터
+4,EST_DIAB_TOTAL_CO,추정당뇨병소계수,NUMBER,10,N,N,시/도별 20대 남성 질환 통계 추정 데이터
+5,EST_DIAB_NRML_CO,추정당뇨병정상수,NUMBER,10,N,N,시/도별 20대 남성 질환 통계 추정 데이터
+6,EST_DIAB_IFG_CO,추정공복혈당장애수,NUMBER,10,N,N,시/도별 20대 남성 질환 통계 추정 데이터
+7,EST_DIAB_PATNT_CO,추정당뇨병환자수,NUMBER,10,N,N,시/도별 20대 남성 질환 통계 추정 데이터
+8,EST_HTN_TOTAL_CO,추정고혈압소계수,NUMBER,10,N,N,시/도별 20대 남성 질환 통계 추정 데이터
+9,EST_HTN_NRML_CO,추정고혈압정상수,NUMBER,10,N,N,시/도별 20대 남성 질환 통계 추정 데이터
+10,EST_HTN_PRE_CO,추정고혈압전단계수,NUMBER,10,N,N,시/도별 20대 남성 질환 통계 추정 데이터
+11,EST_HTN_PATNT_CO,추정고혈압환자수,NUMBER,10,N,N,시/도별 20대 남성 질환 통계 추정 데이터

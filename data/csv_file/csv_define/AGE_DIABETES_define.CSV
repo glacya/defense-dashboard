@@ -1,0 +1,11 @@
+1,STAT_YEAR,년도,VARCHAR2,4,Y,Y,연령별 질환 통계 원시 데이터
+2,AGE_GROUP_NM,연령별(1),VARCHAR2,50,Y,Y,연령별 질환 통계 원시 데이터
+3,SEX_NM,성별(1),VARCHAR2,20,Y,Y,연령별 질환 통계 원시 데이터
+4,DIAB_TOTAL_CO,당뇨병 소계,NUMBER,10,N,N,연령별 질환 통계 원시 데이터
+5,DIAB_NRML_CO,당뇨병 정상,NUMBER,10,N,N,연령별 질환 통계 원시 데이터
+6,DIAB_IFG_CO,당뇨병 공복혈당장애,NUMBER,10,N,N,연령별 질환 통계 원시 데이터
+7,DIAB_PATNT_CO,당뇨병 환자,NUMBER,10,N,N,연령별 질환 통계 원시 데이터
+8,HTN_TOTAL_CO,고혈압 소계,NUMBER,10,N,N,연령별 질환 통계 원시 데이터
+9,HTN_NRML_CO,고혈압 정상,NUMBER,10,N,N,연령별 질환 통계 원시 데이터
+10,HTN_PRE_CO,고혈압 전단계,NUMBER,10,N,N,연령별 질환 통계 원시 데이터
+11,HTN_PATNT_CO,고혈압 환자,NUMBER,10,N,N,연령별 질환 통계 원시 데이터

@@ -14,7 +14,7 @@ _missing_files: list[str] = []
 _load_csv: csv파일(추후 DB)를 불러옵니다.
 load_css: CSS 파일을 로드하고 Streamlit에 적용합니다.
 load_css_colors: CSS파일의 색상을 로드하여 딕셔너리 형태로 제출합니다.
-
+load_js: js함수 및 파일을 관리하고 불러옵니다.
 위 코드는 다음을 위해 작성되었습니다.  
 1. 필요한
 ================== """
@@ -28,15 +28,25 @@ from dashboard.py.error_handlers import safe_execution
 # CSS 로드 함수
 # ============================================================================
 @safe_execution(error_message="CSS 로드 실패", error_type="error")
-def load_css(css_path: str | Path) -> None:
-  css_path = Path(css_path)
-  if not css_path.exists():
-    raise FileNotFoundError(f"CSS 파일을 찾을 수 없습니다: {css_path}")
+def load_css(css_path: str | Path) -> str:
+    """CSS 파일을 로드하고 내용을 반환합니다."""
+    css_path = Path(css_path)
+    if not css_path.exists():
+        raise FileNotFoundError(f"CSS 파일을 찾을 수 없습니다: {css_path}")
 
-  with open(css_path, "r", encoding="utf-8") as f:
-    css_content = f.read()
-    st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+        st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
+        return css_content  # ✅ CSS 내용 반환
 
+def load_js(js_path: str | Path) -> str:
+    """js코드를 로드하고 반환합니다."""
+    js_path = Path(js_path)
+    if not js_path.exists():
+        raise FileNotFoundError(f"JS 파일을 찾을 수 없습니다.: {js_path}")
+    with open(js_path, "r", encoding="utf-8") as f:
+        three_js_content = f.read()
+        return three_js_content
 
 # ============================================================================
 # CSV 로드  함수

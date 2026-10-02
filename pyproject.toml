@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "defense-dashboard"
+version = "0.1.0"
+description = "TODO"
+requires-python = ">=3.10"
+# 의존성 목록은 requirements.txt에서 관리합니다.
+
+# `pip install -e .`로 설치할 대상. 반드시 -e(editable)로 설치해야 config.py의 경로가 유지됨
+[tool.setuptools]
+py-modules = ["config"]
+
+[tool.setuptools.packages.find]
+include = ["dashboard*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# 루트를 sys.path에 추가하여 `from config import ...`, `from dashboard import ...` 사용 가능
+pythonpath = ["."]
+# importlib 모드: tests/dashboard 같은 폴더가 실제 dashboard 패키지를 가리지 않고,
+# 서로 다른 폴더에 같은 이름의 테스트 파일(test_app.py 등)을 둘 수 있음
+addopts = "-v --strict-markers --import-mode=importlib"

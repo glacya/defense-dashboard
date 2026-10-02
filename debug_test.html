@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    body { margin: 0; background: #d9d7cd; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script>
+const CONFIG = {
+  pentagon: { radius: 14, center: { x: 0, y: 0, z: 5 } },
+  pentagon_fill: { opacity: 0.3, emissiveIntensity: 0.6, bevelEnabled: true, thickness: 0.5, color: "#ff0000" }
+};
+
+function createPentagonStarData(options = {}) {
+  const radius = options.radius ?? CONFIG.pentagon.radius;
+  const center = options.center ?? CONFIG.pentagon.center;
+  const rawItems = [
+    { name: "BMI", indiv: 88, M_base: 100 },
+    { name: "유연성", indiv: 99, M_base: 100 },
+    { name: "심폐지구력", indiv: 94, M_base: 100 },
+    { name: "근력", indiv: 76, M_base: 100 },
+    { name: "근지구력", indiv: 88, M_base: 100 }
+  ];
+  const indivPoints = [];
+  rawItems.forEach((item, index) => {
+    const angleDeg = 90 - index * 72;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const radiusLen = radius * (item.indiv / 100);
+    indivPoints.push({
+      ...item,
+      x: Number((center.x + radiusLen * Math.cos(angleRad)).toFixed(2)),
+      y: Number((center.y + radiusLen * Math.sin(angleRad)).toFixed(2)),
+      z: center.z
+    });
+  });
+  return { indivPoints, basePoints: indivPoints };
+}
+
+function createPentagonFillMesh(indivPoints, options = {}) {
+  const config = { ...CONFIG.pentagon_fill, ...options };
+  const shape = new THREE.Shape();
+  shape.moveTo(indivPoints[0].x, indivPoints[0].y);
+  for (let i = 1; i < indivPoints.length; i++) shape.lineTo(indivPoints[i].x, indivPoints[i].y);
+  shape.closePath();
+
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: config.thickness ?? 0.2,
+    bevelEnabled: config.bevelEnabled ?? true,
+    bevelThickness: 0.05,
+    bevelSize: 0.05,
+    bevelSegments: 3
+  });
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xff0000,
+    emissive: 0xff0000,
+    emissiveIntensity: 0.6,
+    roughness: 0.3,
+    metalness: 0.2,
+    transparent: true,
+    opacity: 0.3,
+    side: THREE.DoubleSide
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  const avgZ = indivPoints.reduce((acc, p) => acc + (p.z || 0), 0) / indivPoints.length;
+  mesh.position.z = avgZ;
+  return mesh;
+}
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xd9d7cd);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 0, 40);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+scene.add(ambient);
+
+const light = new THREE.PointLight(0xffffff, 1.5);
+light.position.set(20, 20, 20);
+scene.add(light);
+
+const { indivPoints } = createPentagonStarData();
+const mesh = createPentagonFillMesh(indivPoints);
+scene.add(mesh);
+
+function animate() {
+  requestAnimationFrame(animate);
+  mesh.rotation.x = 0.4;
+  mesh.rotation.y = 0.3;
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

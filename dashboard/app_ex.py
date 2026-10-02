@@ -44,7 +44,7 @@ def refresh_when_css_changes():
 
 
 refresh_when_css_changes()
-COLOR_DICT= load_css(CSS_PATH)
+load_css(CSS_PATH)
 
 # 색상 정의 (파이썬 코드에서도 사용)
 colors = SimpleNamespace(**load_css_colors(CSS_PATH))

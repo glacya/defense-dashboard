@@ -16,7 +16,7 @@ SPECS_JSON_PATH = _ROOT_DIR / "data" / "csv_file" / "standard_specs.json"
 # 대시보드 리소스
 BASE64_DIR = _ROOT_DIR / "dashboard" / "img" / "base64.json"
 CSS_PATH = _ROOT_DIR / "dashboard" / "style.css"
-
+JS_PATH = _ROOT_DIR / "dashboard" / "test.js"
 DIR_DICT = {
     "_ROOT_DIR": _ROOT_DIR,
     "DB_DIR": DB_DIR,
@@ -26,5 +26,6 @@ DIR_DICT = {
     "SPECS_JSON_PATH": SPECS_JSON_PATH,
     "BASE64_DIR": BASE64_DIR,
     "CSS_PATH": CSS_PATH,
+    "JS_PATH": JS_PATH,
 }
 

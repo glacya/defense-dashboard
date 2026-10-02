@@ -4,11 +4,4 @@ dependencies:
   - python=3.10
   - pip
   - pip:
-      - streamlit
-      - numpy
-      - pandas
-      - pytest
-      - google-genai
-      - argparse
-      - pathlib
-      - oracledb
+      - -r requirements.txt

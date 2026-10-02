@@ -1,5 +1,3 @@
-import os
-import sys
 from pathlib import Path
 import json
 import pandas as pd
@@ -8,19 +6,14 @@ from streamlit.components.v1 import html
 import plotly.graph_objects as go
 from types import SimpleNamespace
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from config import DIR_DICT
-globals().update(DIR_DICT)
-from dashboard.py.loader import load_css, _load_csv, load_css_colors 
+from config import BASE64_DIR, CSV_FINAL_DIR, CSS_PATH, DB_DIR, JS_PATH
+from dashboard.py.loader import load_css, load_css_colors
 from dashboard.py.dataloader import (
-    get_kpi_data, 
-    get_risk_distribution, 
-    get_high_risk_personnel, 
-    get_individual_scores, 
-    get_persons
+    get_high_risk_personnel,
+    get_individual_scores,
+    get_kpi_data,
+    get_persons,
+    get_risk_distribution,
 )
 
 with open(BASE64_DIR, "r", encoding="utf-8") as f:

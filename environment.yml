@@ -4,11 +4,12 @@ dependencies:
   - python=3.10
   - pip
   - pip:
+      - -e .
       - streamlit
       - numpy
       - pandas
       - pytest
       - google-genai
-      - argparse
-      - pathlib
       - oracledb
+      - setuptools<81
+      - fg-data-profiling

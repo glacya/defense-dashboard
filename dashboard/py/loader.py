@@ -1,6 +1,5 @@
 import logging
 from pathlib import Path
-import sys
 import pandas as pd
 import streamlit as st
 logger = logging.getLogger(__name__)
@@ -72,6 +71,33 @@ def _load_csv(
     except Exception as e:
         _missing_files.append(filename)
         return sample, False  # 실패 시: (샘플 데이터, False)
+
+
+def load_csv_data(
+    source: str | Path,
+    pattern: str = "*.csv",
+    encoding: str = "utf-8-sig",
+    **read_csv_kwargs,
+) -> pd.DataFrame:
+    """CSV 파일 하나 또는 폴더의 CSV 파일들을 읽고 실패 시 예외를 전달합니다."""
+    source_path = Path(source)
+    if source_path.is_file():
+        csv_files = [source_path]
+    elif source_path.is_dir():
+        csv_files = sorted(source_path.glob(pattern))
+    else:
+        raise FileNotFoundError(f"CSV 입력 경로를 찾을 수 없습니다: {source_path}")
+
+    if not csv_files:
+        raise FileNotFoundError(
+            f"CSV 파일을 찾을 수 없습니다: {source_path} (패턴: {pattern})"
+        )
+
+    frames = [
+        pd.read_csv(path, encoding=encoding, **read_csv_kwargs)
+        for path in csv_files
+    ]
+    return pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
 
 #색깔 로드 함수
 def load_css_colors(css_path: Path) -> dict[str, str]:

@@ -1,8 +1,7 @@
 import streamlit as st
-import pandas as pd
-from pathlib import Path
-from csv_data_format import ColumnStandardizerPipeline
 from config import CSV_DATA_DIR, CSV_FINAL_DIR
+from csv_data_format import ColumnStandardizerPipeline
+
 
 # 페이지 설정
 st.set_page_config(
@@ -54,8 +53,33 @@ if 'loaded' in st.session_state and st.session_state['loaded']:
         st.subheader(f"[{db_name}] 원본 데이터 및 컬럼 정의서")
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**[컬럼 정의서 (_define.csv)]**")
-            st.dataframe(active_pipeline.df_define, use_container_width=True)
+            st.markdown("**[컬럼 정의서 편집]**")
+            st.info("저장하면 정의서의 영문속성명과 순서에 맞춰 CSV 컬럼을 재구성합니다. 정의서에 없는 CSV 컬럼은 제거되고, 원본에 없는 새 속성은 행 순번(1부터)으로 채웁니다. 원본 CSV는 .bak 파일로 보관됩니다.")
+            definition_for_edit = active_pipeline.df_define.copy()
+            definition_for_edit.insert(
+                0,
+                "__source_column",
+                definition_for_edit["영문속성명"].fillna("").astype(str).str.strip(),
+            )
+            editor_revision = st.session_state.get("definition_editor_revision", 0)
+            edited_definition = st.data_editor(
+                definition_for_edit,
+                num_rows="dynamic",
+                hide_index=True,
+                key=f"definition_editor_{db_name}_{editor_revision}",
+                column_config={"__source_column": None},
+                width="stretch",
+            )
+            if st.button("정의서 저장 및 CSV 변환", type="primary"):
+                try:
+                    missing_columns, backup_path = active_pipeline.save_definition_and_transform(edited_definition)
+                    st.session_state["pipeline"] = active_pipeline
+                    st.session_state["definition_editor_revision"] = editor_revision + 1
+                    st.success(f"정의서와 CSV를 저장했습니다. 기존 CSV 백업: {backup_path.name}")
+                    if missing_columns:
+                        st.warning(f"원본 CSV에 없는 새 속성은 행 순번(1부터)으로 채웠습니다: {', '.join(missing_columns)}")
+                except (OSError, RuntimeError, ValueError) as error:
+                    st.error(f"저장하지 못했습니다: {error}")
         with col2:
             st.markdown("**[원본 데이터셋 (.csv)]**")
             st.dataframe(active_pipeline.df_data, use_container_width=True)
@@ -91,6 +115,9 @@ if 'loaded' in st.session_state and st.session_state['loaded']:
 
     with tab3:
         st.subheader("🚀 AI 자동 매핑 및 데이터 정제")
+
+        if active_pipeline.client is None:
+            st.warning("Gemini API 키가 없어 AI 정제 실행은 비활성화되어 있습니다. 데이터 미리보기와 표준 규격 관리는 사용할 수 있습니다.")
         
         try:
             korean_cols = active_pipeline.df_define['컬럼한글명'].dropna().astype(str).tolist()
@@ -107,7 +134,7 @@ if 'loaded' in st.session_state and st.session_state['loaded']:
         else:
             st.warning(f"⚠️ [{target_attr}]에 대한 표준 규격이 JSON에 없습니다. 2번 탭에서 먼저 규격을 등록해주세요.")
             
-        if st.button("정제 및 병합 실행 파이프라인 가동", type="primary"):
+        if st.button("정제 및 병합 실행 파이프라인 가동", type="primary", disabled=active_pipeline.client is None):
             if not loaded_specs:
                 st.error("표준 규격 데이터가 없어 실행할 수 없습니다.")
             else:

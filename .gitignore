@@ -1,5 +1,7 @@
 # Byte-compiled / optimized / DLL files
-config.py
+
+dashboard/img/*.png
+
 __pycache__/
 *.py[codz]
 *$py.class

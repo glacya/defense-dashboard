@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 from pathlib import Path
-from pipeline import ColumnStandardizerPipeline
-from data.csv_file.test_py_folder.config import DB_DIR, DB_DEFINE_DIR, COMPLETE_DIR, SPECS_JSON_PATH
+from csv_data_format import ColumnStandardizerPipeline
+from config import CSV_DATA_DIR, CSV_FINAL_DIR
 
 # 페이지 설정
 st.set_page_config(
@@ -18,8 +18,8 @@ st.markdown("---")
 st.sidebar.header("📁 데이터 선택 및 설정")
 
 # DB 폴더에서 사용 가능한 파일 목록 동적 탐색 (확장자 제거한 이름들)
-if DB_DIR.exists():
-    available_dbs = [f.stem for f in DB_DIR.glob("*.csv")]
+if CSV_DATA_DIR.exists():
+    available_dbs = [f.stem for f in CSV_DATA_DIR.glob("*.csv")]
 else:
     available_dbs = []
 
@@ -130,7 +130,7 @@ if 'loaded' in st.session_state and st.session_state['loaded']:
                         file_name=f"{db_name}_completed.csv",
                         mime="text/csv"
                     )
-                    st.info(f"📁 파일이 서버의 `{COMPLETE_DIR}` 경로에도 자동 저장되었습니다.")
+                    st.info(f"📁 파일이 서버의 `{CSV_FINAL_DIR}` 경로에도 자동 저장되었습니다.")
 
 else:
     st.info("👈 왼쪽 사이드바에서 데이터셋을 선택한 뒤 **[파일 로드 및 검증]** 버튼을 눌러주세요.")

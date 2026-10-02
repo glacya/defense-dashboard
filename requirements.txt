@@ -1,0 +1,7 @@
+google-genai==2.27.0
+numpy==2.2.6
+oracledb==26.0.1
+pandas==2.3.3
+pytest==9.1.1
+python-dotenv==1.2.4
+streamlit==1.64.0

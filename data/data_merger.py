@@ -1,7 +1,7 @@
 """국민체력100 월별 측정 데이터(KS_NFA_FTNESS*.csv)에서 19~24세 남성 행만 모아 KS_NFA_TOTAL.csv로 저장합니다.
 
 장병 연령대와 비슷한 일반인 기록을 대시보드의 비교 기준으로 쓰기 위한 전처리 스크립트입니다.
-남기는 컬럼: 회원식별번호, 나이, 측정일, 6개 종목 기록, 운동 처방(본운동만), BMI, 체지방률
+남기는 컬럼: 회원식별번호, 나이, 측정일, 6개 종목 기록, 운동 처방(본운동만), 키(cm), 체중(kg), BMI, 체지방률
 원본 컬럼의 의미는 csv_file/csv_define/KS_NFA_COLUMN_DEFINITION.csv를 참고하세요.
 """
 
@@ -167,6 +167,8 @@ def main() -> None:
     candidate, total = load_candidates(files)
 
     merged = candidate[list(RENAME)].rename(columns=RENAME)
+    merged["키"] = candidate[HEIGHT_COL]
+    merged["체중"] = candidate[WEIGHT_COL]
     merged["BMI"] = calc_bmi(candidate)
     merged["체지방률"] = candidate[BODY_FAT_COL]
     merged["운동 처방"] = extract_main_exercise(merged["운동 처방"])

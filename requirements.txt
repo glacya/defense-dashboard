@@ -5,3 +5,5 @@ pandas==2.3.3
 pytest==9.1.1
 python-dotenv==1.2.4
 streamlit==1.64.0
+setuptools<81
+fg-data-profiling

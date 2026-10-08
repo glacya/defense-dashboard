@@ -1,6 +1,4 @@
 import pandas as pd
-import numpy as np
-import oracledb as oci
 """
     csv파일의 이름의 규격은 A_B와 같은 형태일때 컬럼정의서는 A_B_define의 형태.
     

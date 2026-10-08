@@ -1,9 +1,14 @@
 # pipeline.py
 import pandas as pd
 import json
-from pathlib import Path
+import os
+import shutil
+
+from config import (
+    CSV_DATA_DIR, CSV_DEFINE_DIR, CSV_FINAL_DIR, GEMINI_API_KEY, SPECS_JSON_PATH,
+)
+
 from google import genai
-from config import CSV_DATA_DIR ,CSV_DEFINE_DIR, CSV_FINAL_DIR, SPECS_JSON_PATH, GEMINI_API_KEY
 
 class ColumnStandardizerPipeline:
     def __init__(self, db_name):
@@ -19,7 +24,7 @@ class ColumnStandardizerPipeline:
         self.df_define = None
         self.df_data = None
         
-        self.client = genai.Client(api_key=GEMINI_API_KEY)
+        self.client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
     def load_standard_specs(self, target_korean_attr):
         """
@@ -67,6 +72,70 @@ class ColumnStandardizerPipeline:
             
         return True
 
+    def save_definition_and_transform(self, edited_definition):
+        source_column_key = "__source_column"
+        if self.df_data is None:
+            raise RuntimeError("먼저 데이터 파일을 로드해주세요.")
+        if source_column_key not in edited_definition.columns:
+            raise ValueError("편집된 정의서에서 원본 속성 정보를 찾을 수 없습니다.")
+
+        definition = edited_definition.drop(columns=[source_column_key]).copy()
+        definition.columns = [str(column).strip() for column in definition.columns]
+        if "영문속성명" not in definition.columns:
+            raise ValueError("정의서에 '영문속성명' 컬럼이 필요합니다.")
+
+        attribute_names = definition["영문속성명"].fillna("").astype(str).str.strip()
+        if attribute_names.empty or attribute_names.eq("").any():
+            raise ValueError("영문속성명은 비워둘 수 없습니다.")
+        duplicated_names = attribute_names[attribute_names.duplicated()].unique().tolist()
+        if duplicated_names:
+            raise ValueError(f"영문속성명이 중복되었습니다: {', '.join(duplicated_names)}")
+
+        definition["영문속성명"] = attribute_names
+        transformed = pd.DataFrame(index=self.df_data.index)
+        missing_columns = []
+
+        for source_name, target_name in zip(edited_definition[source_column_key], attribute_names):
+            source_name = "" if pd.isna(source_name) else str(source_name).strip()
+            if source_name == target_name and target_name in self.df_data.columns:
+                existing_values = self.df_data[target_name]
+                is_unpopulated = existing_values.isna() | existing_values.astype("string").str.strip().eq("")
+                if is_unpopulated.all():
+                    transformed[target_name] = range(1, len(self.df_data) + 1)
+                    missing_columns.append(target_name)
+                else:
+                    transformed[target_name] = existing_values
+            elif source_name in self.df_data.columns:
+                transformed[target_name] = self.df_data[source_name]
+            elif target_name in self.df_data.columns:
+                existing_values = self.df_data[target_name]
+                is_unpopulated = existing_values.isna() | existing_values.astype("string").str.strip().eq("")
+                if not source_name and is_unpopulated.all():
+                    transformed[target_name] = range(1, len(self.df_data) + 1)
+                    missing_columns.append(target_name)
+                else:
+                    transformed[target_name] = existing_values
+            else:
+                transformed[target_name] = range(1, len(self.df_data) + 1)
+                missing_columns.append(target_name)
+
+        backup_path = self.data_path.with_suffix(self.data_path.suffix + ".bak")
+        data_temp_path = self.data_path.with_name(f".{self.data_path.name}.tmp")
+        define_temp_path = self.define_path.with_name(f".{self.define_path.name}.tmp")
+        try:
+            transformed.to_csv(data_temp_path, index=False, encoding="utf-8-sig")
+            definition.to_csv(define_temp_path, index=False, encoding="utf-8-sig")
+            shutil.copy2(self.data_path, backup_path)
+            os.replace(data_temp_path, self.data_path)
+            os.replace(define_temp_path, self.define_path)
+        finally:
+            data_temp_path.unlink(missing_ok=True)
+            define_temp_path.unlink(missing_ok=True)
+
+        self.df_define = definition
+        self.df_data = transformed
+        return missing_columns, backup_path
+
     def generate_ai_mapping(self, not_stand_data, stand_data):
         if not not_stand_data:
             return []
@@ -109,6 +178,10 @@ class ColumnStandardizerPipeline:
                     return []
 
     def run_standardization_workflow(self, target_korean_attr, stand_data=None, composite_keys=None):
+        if self.client is None:
+            print("[Gemini API 경고] GEMINI_API_KEY가 설정되지 않아 AI 정제를 실행할 수 없습니다.")
+            return None
+
         if not self.validate_and_load_files():
             return None
 

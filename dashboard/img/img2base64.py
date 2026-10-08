@@ -19,7 +19,7 @@ def get_image_base64(image_path):
     return base64.b64encode(img_file.read()).decode()
 ROOT = Path(__file__).resolve().parent
 
-img_name = "bg_img"
+img_name = "bg_1"
 img = img_name + ".png"
 img_path = str(Path(ROOT)/img) 
 base64_str = get_image_base64(img_path)

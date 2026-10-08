@@ -1,8 +1,3 @@
-# pipeline.py
-import pandas as pd
-import json
-from pathlib import Path
-from google import genai
 from data.test_py_folder.csv_data_format import ColumnStandardizerPipeline
 
 if __name__ == "__main__":

@@ -5,8 +5,6 @@
 1. 코드의 오류를 방지합니다.
 2. 가시성을 높이기 위해 중복에러를 획일화 합니다.
 """
-from pathlib import Path
-import pandas as pd
 import logging
 from functools import wraps
 from typing import Any, Callable, Optional
@@ -25,6 +23,7 @@ logger = logging.getLogger(__name__)  # logger 객체 생성
 def safe_execution(
     error_message: Optional[str] = None,
     error_type: str = "error",  # "error", "warning", "info"
+    reraise: bool = False,
 ):
     def decorator(func: Callable) -> Callable:
         @wraps(func)
@@ -42,6 +41,8 @@ def safe_execution(
                 elif error_type == "info":
                     logger.info(log_msg)
 
+                if reraise:
+                    raise
                 return None
 
         return wrapper

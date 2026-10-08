@@ -1,0 +1,58 @@
+﻿순서,컬럼영문명,컬럼한글명,데이터타입,길이,PK여부,NOT NULL여부,데이터 상품명
+1,MBER_SEQ_NO_VALUE,회원일련번호값,VARCHAR,200,Y,Y,체력측정 및 운동처방 종합 데이터
+2,MESURE_SEQ_NO,측정일련번호,DECIMAL,30,Y,Y,체력측정 및 운동처방 종합 데이터
+3,CNTER_NM,센터명,VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+4,AGRDE_FLAG_NM,연령대구분명,VARCHAR,200,N,Y,체력측정 및 운동처방 종합 데이터
+5,MESURE_PLACE_FLAG_NM,측정장소구분명,VARCHAR,200,N,Y,체력측정 및 운동처방 종합 데이터
+6,MESURE_AGE_CO,측정연령수,DECIMAL,38,N,N,체력측정 및 운동처방 종합 데이터
+7,INPT_FLAG_NM,입력구분명,VARCHAR,200,N,Y,체력측정 및 운동처방 종합 데이터
+8,CRTFC_FLAG_NM,인증구분명,VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+9,MESURE_DE,측정일자,VARCHAR,8,Y,Y,체력측정 및 운동처방 종합 데이터
+10,SEXDSTN_FLAG_CD,성별구분코드,VARCHAR,30,N,N,체력측정 및 운동처방 종합 데이터
+11,MESURE_IEM_001_VALUE,측정항목_1값 : 신장(cm),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+12,MESURE_IEM_002_VALUE,측정항목_2값 : 체중(kg),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+13,MESURE_IEM_003_VALUE,측정항목_3값 : 체지방률(%),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+14,MESURE_IEM_004_VALUE,측정항목_4값 : 허리둘레(cm),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+15,MESURE_IEM_005_VALUE,측정항목_5값 : 이완기최저혈압(mmHg),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+16,MESURE_IEM_006_VALUE,측정항목_6값 : 수축기최고혈압(mmHg),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+17,MESURE_IEM_007_VALUE,측정항목_7값 : 악력_좌(kg),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+18,MESURE_IEM_008_VALUE,측정항목_8값 : 악력_우(kg),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+19,MESURE_IEM_009_VALUE,측정항목_9값 : 윗몸말아올리기(회),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+20,MESURE_IEM_010_VALUE,측정항목_10값 : 반복점프(회),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+21,MESURE_IEM_012_VALUE,측정항목_12값 : 앉아윗몸앞으로굽히기(cm),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+22,MESURE_IEM_013_VALUE,측정항목_13값 : 일리노이(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+23,MESURE_IEM_014_VALUE,측정항목_14값 : 체공시간(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+24,MESURE_IEM_015_VALUE,측정항목_15값 : 협응력시간(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+25,MESURE_IEM_016_VALUE,측정항목_16값 : 협응력실수횟수(회),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+26,MESURE_IEM_017_VALUE,측정항목_17값 : 협응력계산결과값(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+27,MESURE_IEM_018_VALUE,측정항목_18값 : BMI(kg/㎡),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+28,MESURE_IEM_019_VALUE,측정항목_19값 : 교차윗몸일으키기(회),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+29,MESURE_IEM_020_VALUE,측정항목_20값 : 왕복오래달리기(회),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+30,MESURE_IEM_021_VALUE,측정항목_21값 : 10M 4회 왕복달리기(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+31,MESURE_IEM_022_VALUE,측정항목_22값 : 제자리 멀리뛰기(cm),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+32,MESURE_IEM_023_VALUE,측정항목_23값 : 의자에앉았다일어서기(회),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+33,MESURE_IEM_024_VALUE,측정항목_24값 : 6분걷기(m),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+34,MESURE_IEM_025_VALUE,측정항목_25값 : 2분제자리걷기(회),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+35,MESURE_IEM_026_VALUE,측정항목_26값 : 의자에앉아 3M표적 돌아오기(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+36,MESURE_IEM_027_VALUE,측정항목_27값 : 8자보행(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+37,MESURE_IEM_028_VALUE,측정항목_28값 : 상대악력(%),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+38,MESURE_IEM_029_VALUE,측정항목_29값 : 피부두겹합,VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+39,MESURE_IEM_030_VALUE,측정항목_30값 : 왕복오래달리기출력(VO₂max),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+40,MESURE_IEM_031_VALUE,측정항목_31값 : 트레드밀_안정시(bpm),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+41,MESURE_IEM_032_VALUE,측정항목_32값 : 트레드밀_3분(bpm),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+42,MESURE_IEM_033_VALUE,측정항목_33값 : 트레드밀_6분(bpm),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+43,MESURE_IEM_034_VALUE,측정항목_34값 : 트레드밀_9분(bpm),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+44,MESURE_IEM_035_VALUE,측정항목_35값 : 트레드밀_계산(VO₂max),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+45,MESURE_IEM_036_VALUE,측정항목_36값 : 스텝검사_회복시 심박수(bpm),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+46,MESURE_IEM_037_VALUE,측정항목_37값 : 스텝검사출력(VO₂max),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+47,MESURE_IEM_038_VALUE,측정항목_38값 : 허벅지_좌(cm),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+48,MESURE_IEM_039_VALUE,측정항목_39값 : 허벅지_우(cm),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+49,MESURE_IEM_040_VALUE,측정항목_40값 : 반응시간(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+50,MESURE_IEM_041_VALUE,측정항목_41값 : 성인체공시간(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+51,MVM_PRSCRPTN_CN,운동처방내용,CLOB,,N,N,체력측정 및 운동처방 종합 데이터
+52,MESURE_IEM_042_VALUE,측정항목_42값 : 허리둘레-신장비(WHtR),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+53,MESURE_IEM_043_VALUE,측정항목_43값 : 반복옆뛰기(회),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+54,MESURE_IEM_044_VALUE,측정항목_44값 : 눈-손 협응력(벽패스)(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+55,MESURE_IEM_050_VALUE,측정항목_50값 : 5m 4회 왕복달리기(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+56,MESURE_IEM_051_VALUE,측정항목_51값 : 3×3 버튼누르기(초),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터
+57,MESURE_IEM_052_VALUE,측정항목_52값 : 절대악력(kg),VARCHAR,200,N,N,체력측정 및 운동처방 종합 데이터

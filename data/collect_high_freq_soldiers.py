@@ -1,11 +1,7 @@
-"""KS_NFA_TOTAL.csv에서 3번 이상 측정한 회원만 골라, 회원마다 첫·중간·마지막 측정 3건을 KS_NFA_THREE_MEASURES.csv로 저장합니다.
+"""회원별 측정 이력이 3건 이상인 경우 첫·중간·마지막 기록을 저장합니다.
 
-같은 사람의 체력 변화를 시간 순서로 비교하기 위한 데이터를 만드는 전처리 스크립트입니다.
-입력 파일은 data_merger.py가 만듭니다. 먼저 data_merger.py를 실행하세요.
-
-결측치와 이상치를 제거하지 않은 데이터를 이용해 3개를 고르는 것입니다.
-만약 결측치, 이상치를 제거한 데이터를 사용해야 한다면 대상 파일 경로와 파이프라인 스크립트를 바꾸기 바랍니다.
-
+입력 KS_NFA_TOTAL.csv는 data_merger.py가 생성하며, 회원 식별자는 M_CODE,
+측정일은 MESURE_DE(YYYYMMDD) 컬럼을 사용합니다.
 """
 
 import sys
@@ -18,43 +14,85 @@ from config import CSV_DATA_DIR
 INPUT_PATH = CSV_DATA_DIR / "KS_NFA_TOTAL.csv"
 OUTPUT_PATH = CSV_DATA_DIR / "KS_NFA_THREE_MEASURES.csv"
 
-ID_COL = "회원식별번호"
-DATE_COL = "측정일"  # YYYYMMDD 문자열
+ID_COL = "M_CODE"
+DATE_COL = "MESURE_DE"
 MIN_MEASURES = 3
+_REQUIRED_COLUMNS = (ID_COL, DATE_COL)
 
 
 def load_total(path: Path) -> pd.DataFrame:
-    """data_merger.py의 결과 파일을 모든 값을 문자열로 읽어 반환합니다.
+    """병합 데이터를 문자열 그대로 읽고 필수 컬럼을 검증합니다."""
+    df = pd.read_csv(path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    _validate_required_columns(df)
+    return df
 
-    숫자로 바꾸지 않고 읽어야 저장할 때 원본 값(소수점 자릿수, 빈 칸 등)이 그대로 유지됩니다.
-    """
-    return pd.read_csv(path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+
+def _validate_required_columns(df: pd.DataFrame) -> None:
+    missing = [column for column in _REQUIRED_COLUMNS if column not in df.columns]
+    if missing:
+        raise ValueError(f"필수 컬럼이 없습니다: {', '.join(missing)}")
 
 
-def filter_frequent_members(df: pd.DataFrame, min_count: int = MIN_MEASURES) -> pd.DataFrame:
-    """회원식별번호가 min_count번 이상 등장하는 회원의 행만 남깁니다.
+def filter_frequent_members(
+    df: pd.DataFrame, min_count: int = MIN_MEASURES
+) -> pd.DataFrame:
+    """유효한 회원 식별자가 있고 측정 건수가 min_count 이상인 행만 남깁니다."""
+    _validate_required_columns(df)
+    if min_count < 1:
+        raise ValueError("min_count는 1 이상이어야 합니다.")
 
-    같은 날 여러 번 측정한 기록도 각각 한 번으로 셉니다.
-    """
-    counts = df.groupby(ID_COL)[ID_COL].transform("size")
-    return df[counts >= min_count]
+    member_ids = df[ID_COL].astype("string").str.strip()
+    valid_ids = member_ids.notna() & member_ids.ne("")
+    counts = member_ids.groupby(member_ids).transform("size")
+    return df.loc[valid_ids & counts.ge(min_count)].copy()
 
 
 def pick_first_middle_last(df: pd.DataFrame) -> pd.DataFrame:
-    """회원마다 측정일 오름차순으로 정렬한 rows에서 rows[0], rows[N // 2], rows[N - 1]만 남깁니다.
+    """회원마다 날짜순 첫·중간·마지막 기록을 선택합니다.
 
-    N >= 3이어야 세 위치가 서로 겹치지 않으므로, filter_frequent_members를 거친 데이터를 넣어야 합니다.
-
-    Returns:
-        회원식별번호, 측정일 순으로 정렬된 DataFrame (회원당 3행)
+    같은 날짜의 기록은 입력된 순서를 유지합니다. 측정일이 YYYYMMDD 형식이
+    아니거나 측정 건수가 3건 미만인 회원이 있으면 명시적으로 오류를 냅니다.
     """
-    # 같은 회원이 같은 날 여러 번 측정한 행이 있어, 실행할 때마다 같은 행이 뽑히도록 안정 정렬로 원본 순서를 유지한다.
-    rows = df.sort_values(DATE_COL, kind="stable")
-    groups = rows.groupby(ID_COL, sort=False)
-    pos = groups.cumcount()
-    n = groups[ID_COL].transform("size")
-    picked = rows[(pos == 0) | (pos == n // 2) | (pos == n - 1)]
-    return picked.sort_values(ID_COL, kind="stable")
+    _validate_required_columns(df)
+    if df.empty:
+        return df.copy()
+
+    member_ids = df[ID_COL].astype("string").str.strip()
+    if member_ids.isna().any() or member_ids.eq("").any():
+        raise ValueError(f"{ID_COL} 값이 비어 있는 행이 있습니다.")
+
+    measure_dates = pd.to_datetime(
+        df[DATE_COL].astype("string").str.strip(),
+        format="%Y%m%d",
+        errors="coerce",
+    )
+    invalid_dates = measure_dates.isna()
+    if invalid_dates.any():
+        raise ValueError(
+            f"{DATE_COL} 값이 YYYYMMDD 형식이 아닌 행이 "
+            f"{int(invalid_dates.sum()):,}개 있습니다."
+        )
+
+    work = df.copy()
+    work["_normalized_member_id"] = member_ids
+    work["_measure_date"] = measure_dates
+    work = work.sort_values("_measure_date", kind="stable")
+
+    groups = work.groupby("_normalized_member_id", sort=False)
+    positions = groups.cumcount()
+    counts = groups["_normalized_member_id"].transform("size")
+    too_few = counts.lt(MIN_MEASURES)
+    if too_few.any():
+        raise ValueError(
+            f"{MIN_MEASURES}건 미만인 회원이 있습니다. "
+            "filter_frequent_members()를 먼저 적용하세요."
+        )
+
+    selected = work.loc[
+        positions.eq(0) | positions.eq(counts // 2) | positions.eq(counts - 1)
+    ]
+    selected = selected.sort_values("_normalized_member_id", kind="stable")
+    return selected.loc[:, df.columns].copy()
 
 
 def main() -> None:
@@ -64,11 +102,17 @@ def main() -> None:
     total = load_total(INPUT_PATH)
     frequent = filter_frequent_members(total)
     result = pick_first_middle_last(frequent)
-    # Excel에서 한글이 깨지지 않도록 BOM을 붙여 저장
     result.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
 
-    print(f"{INPUT_PATH.name}: {len(total):,}행, 회원 {total[ID_COL].nunique():,}명")
-    print(f"{MIN_MEASURES}회 이상 측정: {len(frequent):,}행, 회원 {frequent[ID_COL].nunique():,}명")
+    total_member_ids = total[ID_COL].astype("string").str.strip().replace("", pd.NA)
+    print(
+        f"{INPUT_PATH.name}: {len(total):,}행, "
+        f"회원 {total_member_ids.nunique():,}명"
+    )
+    print(
+        f"{MIN_MEASURES}회 이상 측정: {len(frequent):,}행, "
+        f"회원 {frequent[ID_COL].astype('string').str.strip().nunique():,}명"
+    )
     print(f"{OUTPUT_PATH.name}: {len(result):,}행")
 
 

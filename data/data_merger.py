@@ -1,7 +1,7 @@
 """국민체력100 월별 측정 데이터(KS_NFA_FTNESS*.csv)에서 19~24세 남성 행만 모아 KS_NFA_TOTAL.csv로 저장합니다.
 
 장병 연령대와 비슷한 일반인 기록을 대시보드의 비교 기준으로 쓰기 위한 전처리 스크립트입니다.
-남기는 컬럼: 회원식별번호, 나이, 6개 종목 기록, 운동 처방(본운동만), BMI, 체지방률
+남기는 컬럼: 회원식별번호, 나이, 측정일, 6개 종목 기록, 운동 처방(본운동만), BMI, 체지방률
 원본 컬럼의 의미는 csv_file/csv_define/KS_NFA_COLUMN_DEFINITION.csv를 참고하세요.
 """
 
@@ -42,6 +42,7 @@ EVENTS = {
 RENAME = {
     "MBER_SEQ_NO_VALUE": "회원식별번호",
     "MESURE_AGE_CO": "나이",
+    "MESURE_DE": "측정일",  # YYYYMMDD 문자열. 문자열 그대로 정렬해도 날짜 순서와 같음
     **{f"MESURE_IEM_{n:03d}_VALUE": f"{name} 종목 기록" for n, name in EVENTS.items()},
     "MVM_PRSCRPTN_CN": "운동 처방",
 }

@@ -220,6 +220,20 @@ def print_injury_report(df_personal: pd.DataFrame, df_injury: pd.DataFrame):
 # ==========================================
 # 5. run: 메인 실행
 # ==========================================
+def prepare_injury_csv_data(df_injury: pd.DataFrame) -> pd.DataFrame:
+    output_columns = {
+        '군번': 'SOLDIER_ID',
+        '이름': 'NAME',
+        '부상대분류_한글': 'INJURY_CATEGORY',
+        '부상세부부위_한글': 'INJURY_LOCATION',
+        '예방가능여부': 'PREVENTABLE_YN',
+        '부상심각도': 'SEVERITY',
+    }
+    csv_data = df_injury[list(output_columns)].rename(columns=output_columns)
+    csv_data.insert(0, 'INJURY_ID', range(1, len(csv_data) + 1))
+    return csv_data
+
+
 def run():
     # 동적 경로 설정 (현재 파일 기준 최상위 프로젝트 루트 접근)
     # 현재 파일 위치: .../defense-dashboard/data/csv_preprocessing/soldier_injury.py (예시)
@@ -270,15 +284,7 @@ def run():
     print_injury_report(df_personal, df_injury)
     
     # CSV 저장
-    output_columns = {
-        '군번': 'SOLDIER_ID',
-        '이름': 'NAME',
-        '부상대분류_한글': 'INJURY_CATEGORY',
-        '부상세부부위_한글': 'INJURY_LOCATION',
-        '예방가능여부': 'PREVENTABLE_YN',
-        '부상심각도': 'SEVERITY',
-    }
-    df_injury[list(output_columns)].rename(columns=output_columns).to_csv(
+    prepare_injury_csv_data(df_injury).to_csv(
         injury_csv_path, index=False, encoding='utf-8-sig'
     )
     print(f"\n장병 부상 가상 데이터 저장 완료: {injury_csv_path}")
@@ -297,9 +303,12 @@ def test_injury_data_and_unit_summary():
     })
     
     df_inj = generate_injury_data(df_dummy, injury_rate=0.5, seed=123)
+    csv_data = prepare_injury_csv_data(df_inj)
     unit_summary = get_unit_injury_summary(df_dummy, df_inj)
     
     assert len(df_inj) == 50
+    assert csv_data.columns[0] == 'INJURY_ID'
+    assert csv_data['INJURY_ID'].tolist() == list(range(1, len(df_inj) + 1))
     assert '총_부상건수' in unit_summary.columns
     assert '전체인원' in unit_summary.columns
     assert '부상률(%)' in unit_summary.columns

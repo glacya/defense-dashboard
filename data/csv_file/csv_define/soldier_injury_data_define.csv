@@ -1,0 +1,11 @@
+순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,NOT NULL여부,데이터 상품명
+1,SOLDIER_ID,군번,VARCHAR,200,Y,Y,장병 부상 기록 데이터
+2,SOLDIER_NAME,이름,VARCHAR,200,N,Y,장병 부상 기록 데이터
+3,UNIT_NAME,부대,VARCHAR,200,N,Y,장병 부상 기록 데이터
+4,RANK_NAME,계급,VARCHAR,200,N,Y,장병 부상 기록 데이터
+5,INJURY_CATEGORY,부상대분류,VARCHAR,200,N,Y,장병 부상 기록 데이터
+6,INJURY_DETAIL,부상세부부위,VARCHAR,200,N,Y,장병 부상 기록 데이터
+7,INJURY_CATEGORY_KOR,부상대분류_한글,VARCHAR,200,N,Y,장병 부상 기록 데이터
+8,INJURY_DETAIL_KOR,부상세부부위_한글,VARCHAR,200,N,Y,장병 부상 기록 데이터
+9,PREVENTABILITY,예방가능여부,VARCHAR,200,N,Y,장병 부상 기록 데이터
+10,INJURY_SEVERITY,부상심각도,VARCHAR,200,N,Y,장병 부상 기록 데이터

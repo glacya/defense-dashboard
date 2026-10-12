@@ -222,3 +222,6 @@ __marimo__/
 
 # 국민체력100 원본/병합 데이터 (용량이 커서 저장소에 올리지 않음, 컬럼정의서는 csv_define/에서 관리)
 data/csv_file/csv_data/KS_NFA_*.csv
+
+# Claude Code
+CLAUDE.md

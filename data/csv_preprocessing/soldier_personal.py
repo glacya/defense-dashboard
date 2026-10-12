@@ -1,5 +1,6 @@
 # %%
 import random
+from pathlib import Path
 import numpy as np
 import pandas as pd
 
@@ -151,8 +152,25 @@ def main():
     print('중복 군번 개수:', df_personal['군번'].duplicated().sum())
     print('동명이인 수:', df_personal['이름'].duplicated().sum())
 
-    df_personal.to_csv('soldier_personal.csv', index=False, encoding='utf-8-sig')
-    print('장병 가상 데이터 저장 완')
+    output_columns = {
+        '군번': 'SOLDIER_ID',
+        '이름': 'SOLDIER_NAME',
+        '지역': 'REGION_NAME',
+        '부대': 'UNIT_NAME',
+        '계급': 'RANK_NAME',
+        '전후방구분': 'FRONT_REAR_CLASSIFICATION',
+    }
+    output_path = (
+        Path(__file__).resolve().parents[1]
+        / 'csv_file'
+        / 'csv_data'
+        / 'soldier_personal_data.csv'
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df_personal.rename(columns=output_columns).to_csv(
+        output_path, index=False, encoding='utf-8-sig'
+    )
+    print(f'장병 가상 데이터 저장 완: {output_path}')
 
 if __name__ == '__main__':
     main()

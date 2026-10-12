@@ -12,29 +12,29 @@ from tabulate import tabulate
 # 논문 표(Table 4)의 부위별 부상 데이터 및 가중치 반영[cite: 1]
 INJURY_LOCATION_DATA = [
     # (상위 부위, 세부 부위, Total Frequency, Preventable Frequency)
-    ('Upper extremity', 'Head', 1, 0),
-    ('Upper extremity', 'Shoulder', 68, 25),
-    ('Upper extremity', 'Arm', 11, 0),
-    ('Upper extremity', 'Elbow', 6, 2),
-    ('Upper extremity', 'Forearm', 3, 1),
-    ('Upper extremity', 'Wrist', 24, 6),
-    ('Upper extremity', 'Hand/finger', 73, 8),
-    ('Upper extremity', 'Ribs', 1, 0),
-    ('Upper extremity', 'Back lower', 19, 13),
-    ('Lower extremity', 'Pelvic region', 9, 2),
-    ('Lower extremity', 'Hip', 3, 2),
-    ('Lower extremity', 'Leg upper', 12, 4),
-    ('Lower extremity', 'Knee', 183, 121),
-    ('Lower extremity', 'Leg lower', 22, 7),
-    ('Lower extremity', 'Ankle', 157, 108),
-    ('Lower extremity', 'Foot/toe', 23, 4),
-    ('Lower extremity', 'Not specified', 1, 0),
+    ('Upper', 'Head', 1, 0),
+    ('Upper', 'Shoulder', 68, 25),
+    ('Upper', 'Arm', 11, 0),
+    ('Upper', 'Elbow', 6, 2),
+    ('Upper', 'Forearm', 3, 1),
+    ('Upper', 'Wrist', 24, 6),
+    ('Upper', 'Hand/finger', 73, 8),
+    ('Upper', 'Ribs', 1, 0),
+    ('Upper', 'Back lower', 19, 13),
+    ('Lower', 'Pelvic region', 9, 2),
+    ('Lower', 'Hip', 3, 2),
+    ('Lower', 'Leg upper', 12, 4),
+    ('Lower', 'Knee', 183, 121),
+    ('Lower', 'Leg lower', 22, 7),
+    ('Lower', 'Ankle', 157, 108),
+    ('Lower', 'Foot/toe', 23, 4),
+    ('Lower', 'Not specified', 1, 0),
 ]
 
 # 한글 매핑 디렉터리
 LOCATION_KOR = {
-    'Upper extremity': '상지(상체)',
-    'Lower extremity': '하지(하체)',
+    'Upper': '상지(상체)',
+    'Lower': '하지(하체)',
 }
 
 SUB_LOCATION_KOR = {
@@ -42,7 +42,7 @@ SUB_LOCATION_KOR = {
     'Shoulder': '어깨',
     'Arm': '팔',
     'Elbow': '팔꿈치',
-    'Forearm': '전두골/전복부',
+    'Forearm': '전완',
     'Wrist': '손목',
     'Hand/finger': '손/손가락',
     'Ribs': '갈비뼈',
@@ -220,6 +220,20 @@ def print_injury_report(df_personal: pd.DataFrame, df_injury: pd.DataFrame):
 # ==========================================
 # 5. run: 메인 실행
 # ==========================================
+def prepare_injury_csv_data(df_injury: pd.DataFrame) -> pd.DataFrame:
+    output_columns = {
+        '군번': 'SOLDIER_ID',
+        '이름': 'SOLDIER_NAME',
+        '부상대분류_한글': 'INJURY_CATEGORY_KOR',
+        '부상세부부위_한글': 'INJURY_DETAIL_KOR',
+        '예방가능여부': 'PREVENTABILITY',
+        '부상심각도': 'INJURY_SEVERITY',
+    }
+    csv_data = df_injury[list(output_columns)].rename(columns=output_columns)
+    csv_data.insert(0, 'INJURY_ID', range(1, len(csv_data) + 1))
+    return csv_data
+
+
 def run():
     # 동적 경로 설정 (현재 파일 기준 최상위 프로젝트 루트 접근)
     # 현재 파일 위치: .../defense-dashboard/data/csv_preprocessing/soldier_injury.py (예시)
@@ -231,11 +245,18 @@ def run():
     injury_csv_path = project_root / 'data' / 'csv_file' / 'csv_data' / 'soldier_injury_data.csv'
     
     # 개인 인적사항 데이터 로드
-    personal_csv = Path(__file__).resolve().parents[1] / 'csv_file' / 'csv_data' / 'soldier_personal_data.csv'
     try:
-        df_personal = pd.read_csv(personal_csv, encoding='utf-8-sig')
+        df_personal = pd.read_csv(personal_csv_path, encoding='utf-8-sig')
+        df_personal = df_personal.rename(columns={
+            'SOLDIER_ID': '군번',
+            'SOLDIER_NAME': '이름',
+            'REGION_NAME': '지역',
+            'UNIT_NAME': '부대',
+            'RANK_NAME': '계급',
+            'FRONT_REAR_CLASSIFICATION': '전후방구분',
+        })
     except FileNotFoundError:
-        print(f"{personal_csv} 파일이 없어 임시 장병 데이터를 생성합니다.")
+        print(f"{personal_csv_path} 파일이 없어 임시 장병 데이터를 생성합니다.")
         df_personal = pd.DataFrame({
             '군번': [f'24-{i:09d}' for i in range(1000)],
             '이름': [f'장병_{i}' for i in range(1000)],
@@ -261,7 +282,9 @@ def run():
     print_injury_report(df_personal, df_injury)
     
     # CSV 저장
-    df_injury.to_csv(injury_csv_path, index=False, encoding='utf-8-sig')
+    prepare_injury_csv_data(df_injury).to_csv(
+        injury_csv_path, index=False, encoding='utf-8-sig'
+    )
     print(f"\n장병 부상 가상 데이터 저장 완료: {injury_csv_path}")
 
 
@@ -278,9 +301,12 @@ def test_injury_data_and_unit_summary():
     })
     
     df_inj = generate_injury_data(df_dummy, injury_rate=0.5, seed=123)
+    csv_data = prepare_injury_csv_data(df_inj)
     unit_summary = get_unit_injury_summary(df_dummy, df_inj)
     
     assert len(df_inj) == 50
+    assert csv_data.columns[0] == 'INJURY_ID'
+    assert csv_data['INJURY_ID'].tolist() == list(range(1, len(df_inj) + 1))
     assert '총_부상건수' in unit_summary.columns
     assert '전체인원' in unit_summary.columns
     assert '부상률(%)' in unit_summary.columns

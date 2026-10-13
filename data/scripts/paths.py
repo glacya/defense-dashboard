@@ -1,0 +1,27 @@
+"""전처리 파이프라인의 입출력 경로 상수입니다.
+
+main.py가 단계를 연결할 때와 각 단계 모듈을 단독으로 실행할 때 같은 경로를 쓰도록 이곳에 모아 둡니다.
+결과 파일이 여러 개인 단계는 폴더 경로이며, 폴더 안의 파일 이름은 각 단계 모듈이 정합니다.
+"""
+
+from config import DEFINITION_DIR, INTERMEDIATE_DIR, PROCESSED_DIR, RAW_DATA_DIR
+
+# 결과 파일이 여러 개인 단계에서 통과한 행을 저장하는 파일 이름. 다음 단계는 이 파일을 입력으로 쓴다.
+PASSED_FILENAME = "passed.csv"
+
+# 원본 데이터
+RAW_DIR = RAW_DATA_DIR
+
+# 컬럼 정의서 경로
+DEFINITION_KS_NFA_RAW = DEFINITION_DIR / "KS_NFA_RAW_DEFINITION.csv"
+DEFINITION_KS_NFA_MERGED = DEFINITION_DIR / "KS_NFA_MERGED_DEFINITION.csv"
+
+# 중간 및 최종 데이터 경로
+INTERMEDIATE_MERGED = INTERMEDIATE_DIR / "KS_NFA_MERGED.csv"
+INTERMEDIATE_CARDIO_FILTER = INTERMEDIATE_DIR / "cardio_filter"
+INTERMEDIATE_ENLISTMENT_FILTER = INTERMEDIATE_DIR / "enlistment_filter"
+PROCESSED_PATH = PROCESSED_DIR / "KS_NFA_PROCESSED.csv"
+
+# 현재 파이프라인에서 쓰지 않는 단계의 단독 실행용 경로
+INTERMEDIATE_3SIGMA = INTERMEDIATE_DIR / "3sigma_outliers"
+INTERMEDIATE_SHUTTLE_RUN = INTERMEDIATE_DIR / "shuttle_run_latent_scores"

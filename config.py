@@ -1,31 +1,37 @@
-# config.py
-import os
+"""프로젝트 전역 경로 상수입니다. dashboard와 data 양쪽에서 경로가 필요하면 여기 값을 import해서 씁니다.
+
+모든 경로는 이 파일 위치(프로젝트 루트)를 기준으로 계산하므로 `pip install -e .`(editable)로 설치해야 합니다.
+"""
+
 from pathlib import Path
 
-# 민감 정보는 저장소에 기록하지 않고 실행 환경에서 주입합니다.
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+ROOT_DIR = Path(__file__).resolve().parent
 
-# 코드에서 직접 사용하는 경로만 공개합니다.
-_ROOT_DIR = Path(__file__).resolve().parent
-DB_DIR = _ROOT_DIR / "data" / "database"
-CSV_DATA_DIR = _ROOT_DIR / "data" / "csv_file" / "csv_data"
-CSV_DEFINE_DIR = _ROOT_DIR / "data" / "csv_file" / "csv_define"
+# ============================================================================
+# data 영역
+# ============================================================================
+DATA_DIR = ROOT_DIR / "data"
+RAW_DATA_DIR = DATA_DIR / "raw"  # 원본 KS_NFA_FTNESS_MESURE_*.csv
+DEFINITION_DIR = DATA_DIR / "definitions"  # 원본·통합 컬럼 정의서
+INTERMEDIATE_DIR = DATA_DIR / "intermediate"  # 전처리 중간 결과물
+PROCESSED_DIR = DATA_DIR / "processed" # 최종 정제 데이터
+SAMPLE_DIR = DATA_DIR / "samples"  # 가상·샘플 데이터
+DATA_SCRIPTS_DIR = DATA_DIR / "scripts"
+DATA_LOG_DIR = DATA_SCRIPTS_DIR / "logs"
+
+# ============================================================================
+# dashboard 영역
+# ============================================================================
+DB_DIR = DATA_DIR / "database"
 CSV_FINAL_DIR = DB_DIR / "db_final"
-SPECS_JSON_PATH = _ROOT_DIR / "data" / "csv_file" / "standard_specs.json"
-
-# 대시보드 리소스
-BASE64_DIR = _ROOT_DIR / "dashboard" / "img" / "base64.json"
-CSS_PATH = _ROOT_DIR / "dashboard" / "style.css"
-JS_PATH = _ROOT_DIR / "dashboard" / "test.js"
+BASE64_DIR = ROOT_DIR / "dashboard" / "img" / "base64.json"
+CSS_PATH = ROOT_DIR / "dashboard" / "style.css"
+JS_PATH = ROOT_DIR / "dashboard" / "test.js"
 DIR_DICT = {
-    "_ROOT_DIR": _ROOT_DIR,
+    "ROOT_DIR": ROOT_DIR,
     "DB_DIR": DB_DIR,
-    "CSV_DATA_DIR": CSV_DATA_DIR,
-    "CSV_DEFINE_DIR": CSV_DEFINE_DIR,
     "CSV_FINAL_DIR": CSV_FINAL_DIR,
-    "SPECS_JSON_PATH": SPECS_JSON_PATH,
     "BASE64_DIR": BASE64_DIR,
     "CSS_PATH": CSS_PATH,
     "JS_PATH": JS_PATH,
 }
-

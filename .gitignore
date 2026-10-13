@@ -220,8 +220,16 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# 국민체력100 원본/병합 데이터 (용량이 커서 저장소에 올리지 않음, 컬럼정의서는 csv_define/에서 관리)
-data/csv_file/csv_data/KS_NFA_*.csv
+# 데이터 (docs/데이터-관리-요령.md 참고: 샘플 데이터(data/samples/)와 정의서(data/definitions/)만 저장소에 올림)
+data/raw/*.csv
+data/old/csv_file/csv_file/csv_data/*.csv
 
 # Claude Code
 CLAUDE.md
+
+# 전처리 파이프라인 결과물 (파생 데이터, 저장소에 올리지 않음)
+data/intermediate/*
+!data/intermediate/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+!data/scripts/logs/.gitkeep

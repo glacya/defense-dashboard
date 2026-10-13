@@ -14,7 +14,8 @@ requires-python = ">=3.10"
 py-modules = ["config"]
 
 [tool.setuptools.packages.find]
-include = ["dashboard*"]
+# data: 전처리 스크립트를 `from data.scripts... import ...`로 불러오기 위해 포함
+include = ["dashboard*", "data*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

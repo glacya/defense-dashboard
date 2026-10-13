@@ -1,18 +1,18 @@
 """회원별 측정 이력이 3건 이상인 경우 첫·중간·마지막 기록을 저장합니다.
 
-입력 KS_NFA_TOTAL.csv는 data_merger.py가 생성하며, 회원 식별자는 M_CODE,
+입력은 merge_raw_measurements.py의 결과이며, 회원 식별자는 M_CODE,
 측정일은 MESURE_DE(YYYYMMDD) 컬럼을 사용합니다.
 """
 
-import sys
+import logging
 from pathlib import Path
 
 import pandas as pd
 
-from config import CSV_DATA_DIR
+from data.scripts.logging_setup import display_path, setup_logging
+from data.scripts.paths import INTERMEDIATE_ENLISTMENT_FILTER, PASSED_FILENAME, PROCESSED_PATH
 
-INPUT_PATH = CSV_DATA_DIR / "KS_NFA_TOTAL.csv"
-OUTPUT_PATH = CSV_DATA_DIR / "KS_NFA_THREE_MEASURES.csv"
+logger = logging.getLogger(__name__)
 
 ID_COL = "M_CODE"
 DATE_COL = "MESURE_DE"
@@ -57,6 +57,7 @@ def pick_first_middle_last(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df.copy()
 
+    # 1. 회원 ID와 측정일 형식을 검사한다. 측정일은 날짜로 바꿔 정렬에 쓴다.
     member_ids = df[ID_COL].astype("string").str.strip()
     if member_ids.isna().any() or member_ids.eq("").any():
         raise ValueError(f"{ID_COL} 값이 비어 있는 행이 있습니다.")
@@ -73,11 +74,14 @@ def pick_first_middle_last(df: pd.DataFrame) -> pd.DataFrame:
             f"{int(invalid_dates.sum()):,}개 있습니다."
         )
 
+    # 2. 측정일 오름차순으로 정렬한다.
+    #    같은 날 측정한 기록이 있어, 실행할 때마다 같은 행이 뽑히도록 안정 정렬로 입력 순서를 유지한다.
     work = df.copy()
     work["_normalized_member_id"] = member_ids
     work["_measure_date"] = measure_dates
     work = work.sort_values("_measure_date", kind="stable")
 
+    # 3. 회원별로 날짜순 위치(0, 1, 2, ...)와 측정 건수 N을 구한다.
     groups = work.groupby("_normalized_member_id", sort=False)
     positions = groups.cumcount()
     counts = groups["_normalized_member_id"].transform("size")
@@ -88,6 +92,7 @@ def pick_first_middle_last(df: pd.DataFrame) -> pd.DataFrame:
             "filter_frequent_members()를 먼저 적용하세요."
         )
 
+    # 4. rows[0], rows[N // 2], rows[N - 1]만 남기고, 회원 ID 순으로 정렬해 원래 컬럼만 반환한다.
     selected = work.loc[
         positions.eq(0) | positions.eq(counts // 2) | positions.eq(counts - 1)
     ]
@@ -95,25 +100,36 @@ def pick_first_middle_last(df: pd.DataFrame) -> pd.DataFrame:
     return selected.loc[:, df.columns].copy()
 
 
-def main() -> None:
-    if not INPUT_PATH.exists():
-        sys.exit(f"{INPUT_PATH}이 없습니다. data_merger.py를 먼저 실행하세요.")
-
-    total = load_total(INPUT_PATH)
+def run(input_path: Path, output_path: Path) -> None:
+    """input_path에서 3회 이상 측정한 회원의 첫·중간·마지막 기록을 골라 output_path에 저장합니다."""
+    # 1. 입력 로드
+    total = load_total(input_path)
+    # 2. 3회 이상 측정한 회원의 행만 남긴다.
     frequent = filter_frequent_members(total)
+    # 3. 회원마다 첫·중간·마지막 기록 3건을 고른다.
     result = pick_first_middle_last(frequent)
-    result.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
+    # 4. 저장
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    result.to_csv(output_path, index=False, encoding="utf-8-sig")
 
+    # 5. 요약 로그
     total_member_ids = total[ID_COL].astype("string").str.strip().replace("", pd.NA)
-    print(
-        f"{INPUT_PATH.name}: {len(total):,}행, "
-        f"회원 {total_member_ids.nunique():,}명"
+    logger.info(
+        "입력 %s: %s행, 회원 %s명",
+        display_path(input_path), f"{len(total):,}", f"{total_member_ids.nunique():,}",
     )
-    print(
-        f"{MIN_MEASURES}회 이상 측정: {len(frequent):,}행, "
-        f"회원 {frequent[ID_COL].astype('string').str.strip().nunique():,}명"
+    logger.info(
+        "%d회 이상 측정: %s행, 회원 %s명",
+        MIN_MEASURES, f"{len(frequent):,}",
+        f"{frequent[ID_COL].astype('string').str.strip().nunique():,}",
     )
-    print(f"{OUTPUT_PATH.name}: {len(result):,}행")
+    logger.info("저장: %s (%s행)", display_path(output_path), f"{len(result):,}")
+
+
+def main() -> None:
+    """data/scripts/paths.py의 기본 경로로 이 단계만 실행합니다."""
+    setup_logging(Path(__file__).stem)
+    run(INTERMEDIATE_ENLISTMENT_FILTER / PASSED_FILENAME, PROCESSED_PATH)
 
 
 if __name__ == "__main__":

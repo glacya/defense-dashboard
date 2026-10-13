@@ -34,6 +34,7 @@ BMI_OUTPUT_COLUMN = "BMI"
 BODY_FAT_COLUMN = "MESURE_IEM_003_VALUE"
 MEMBER_ID_COLUMN = "MBER_SEQ_NO_VALUE"
 PRESCRIPTION_COLUMN = "MVM_PRSCRPTN_CN"
+MESURE_DE_COLUMN = "MESURE_DE"
 
 OUTPUT_SOURCE_COLUMNS = {
     "M_CODE": MEMBER_ID_COLUMN,
@@ -49,6 +50,7 @@ OUTPUT_SOURCE_COLUMNS = {
     "KG": WEIGHT_COLUMN,
     BMI_OUTPUT_COLUMN: None,
     "BODY_FAT": BODY_FAT_COLUMN,
+    "MESURE_DE": MESURE_DE_COLUMN,
 }
 
 # 운동 처방 값 형식: '준비운동:A / 본운동:B / 정리운동:C' (일부 단계는 없을 수 있음)
@@ -94,10 +96,19 @@ def read_csv(path: Path) -> pd.DataFrame:
 
 def filter_candidates(df: pd.DataFrame) -> pd.DataFrame:
     """나이가 AGE_MIN~AGE_MAX이고 성별이 남성(M)인 행만 반환합니다."""
-    # 나이가 숫자가 아닌 행은 NaN이 되어 between에서 자동으로 제외됨
+    candidate_mask, _, _ = get_candidate_masks(df)
+    return df[candidate_mask]
+
+
+def get_candidate_masks(
+    df: pd.DataFrame,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """대상자, 여성, 연령 범위 밖 행을 구분하는 마스크를 반환합니다."""
+    # 나이가 숫자가 아니거나 비어 있는 행도 연령 범위 밖으로 분류합니다.
     age = pd.to_numeric(df[AGE_COLUMN].str.strip(), errors="coerce")
+    in_age_range = age.between(AGE_MIN, AGE_MAX)
     sex = df[SEX_COLUMN].str.strip()
-    return df[age.between(AGE_MIN, AGE_MAX) & (sex == "M")]
+    return in_age_range & sex.eq("M"), sex.eq("F"), ~in_age_range
 
 
 def load_candidates(files: list[Path]) -> tuple[pd.DataFrame, int]:
@@ -114,6 +125,8 @@ def load_candidates(files: list[Path]) -> tuple[pd.DataFrame, int]:
     ref_cols = None
     frames = []
     total = 0
+    total_female = 0
+    total_outside_age_range = 0
     for path in files:
         df = read_csv(path)
         if ref_cols is None:
@@ -127,10 +140,23 @@ def load_candidates(files: list[Path]) -> tuple[pd.DataFrame, int]:
             diff = [(a, b) for a, b in zip(df.columns, ref_cols) if a != b]
             print(f"[경고] {path.name}: 헤더 불일치 {diff} -> 기준 헤더로 교체", file=sys.stderr)
             df.columns = ref_cols
-        cand = filter_candidates(df)
+        candidate_mask, female_mask, outside_age_range_mask = get_candidate_masks(df)
+        cand = df[candidate_mask]
+        female_count = int(female_mask.sum())
+        outside_age_range_count = int(outside_age_range_mask.sum())
         frames.append(cand)
         total += len(df)
-        print(f"{path.name}: {len(df):,}행 -> {len(cand):,}행")
+        total_female += female_count
+        total_outside_age_range += outside_age_range_count
+        print(
+            f"{path.name}: {len(df):,}행 -> {len(cand):,}행 "
+            f"(여성 {female_count:,}행, 나이 범위 밖 {outside_age_range_count:,}행)"
+        )
+    print(
+        f"전체 제외 현황: 여성 {total_female:,}행, "
+        f"나이 범위 밖 {total_outside_age_range:,}행"
+    )
+    print("※ 여성과 나이 범위 밖 건수는 서로 겹칠 수 있습니다.")
     return pd.concat(frames, ignore_index=True), total
 
 

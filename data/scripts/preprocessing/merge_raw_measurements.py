@@ -1,23 +1,22 @@
-"""국민체력100 월별 측정 데이터(KS_NFA_FTNESS*.csv)에서 19~24세 남성 행만 모아 KS_NFA_TOTAL.csv로 저장합니다.
+"""국민체력100 월별 측정 데이터(KS_NFA_FTNESS_MESURE_*.csv)에서 19~24세 남성 행만 모아 하나의 CSV로 저장합니다.
 
-장병 연령대와 비슷한 일반인 기록을 대시보드의 비교 기준으로 쓰기 위한 전처리 스크립트입니다.
-출력 컬럼과 순서는 KS_NFA_TOTAL_define.csv의 영문속성명을 따릅니다.
+장병 연령대와 비슷한 일반인 기록을 대시보드의 비교 기준으로 쓰기 위한 전처리 단계입니다.
+출력 컬럼과 순서는 통합 정의서의 영문속성명을 따릅니다.
 BMI는 키와 체중으로 계산하고, 운동 처방은 본운동만 남깁니다.
-원본 컬럼의 의미는 csv_file/csv_define/KS_NFA_COLUMN_define.csv를 참고하세요.
 """
 
-import sys
+import logging
 from pathlib import Path
 
 import pandas as pd
 
-from config import CSV_DATA_DIR, CSV_DEFINE_DIR
+from data.scripts.logging_setup import display_path, setup_logging
+from data.scripts.paths import DEFINITION_KS_NFA_MERGED, DEFINITION_KS_NFA_RAW, INTERMEDIATE_MERGED, RAW_DIR
 
-# 입출력
-INPUT_PATTERN = "KS_NFA_FTNESS*.csv"
-OUTPUT_PATH = CSV_DATA_DIR / "KS_NFA_TOTAL.csv"
-SOURCE_DEFINITION_PATH = CSV_DEFINE_DIR / "KS_NFA_COLUMN_define.csv"
-OUTPUT_DEFINITION_PATH = CSV_DEFINE_DIR / "KS_NFA_TOTAL_define.csv"
+logger = logging.getLogger(__name__)
+
+# 원본 월별 파일만 읽는다. 다른 CSV가 raw 폴더에 섞여 있어도 원본으로 잘못 읽지 않도록 이름 패턴을 좁게 지정한다.
+INPUT_PATTERN = "KS_NFA_FTNESS_MESURE_*.csv"
 # 공공데이터 원본은 UTF-8(BOM)과 CP949가 섞여 있을 수 있어 순서대로 시도
 _ENCODINGS = ("utf-8-sig", "cp949")
 
@@ -34,7 +33,9 @@ BMI_OUTPUT_COLUMN = "BMI"
 BODY_FAT_COLUMN = "MESURE_IEM_003_VALUE"
 MEMBER_ID_COLUMN = "MBER_SEQ_NO_VALUE"
 PRESCRIPTION_COLUMN = "MVM_PRSCRPTN_CN"
+MESURE_DE_COLUMN = "MESURE_DE"
 
+# 출력 컬럼 -> 원본 컬럼. None은 원본에서 가져오지 않고 계산하는 컬럼
 OUTPUT_SOURCE_COLUMNS = {
     "M_CODE": MEMBER_ID_COLUMN,
     "AGE": AGE_COLUMN,
@@ -49,6 +50,7 @@ OUTPUT_SOURCE_COLUMNS = {
     "KG": WEIGHT_COLUMN,
     BMI_OUTPUT_COLUMN: None,
     "BODY_FAT": BODY_FAT_COLUMN,
+    "MESURE_DE": MESURE_DE_COLUMN,
 }
 
 # 운동 처방 값 형식: '준비운동:A / 본운동:B / 정리운동:C' (일부 단계는 없을 수 있음)
@@ -94,10 +96,19 @@ def read_csv(path: Path) -> pd.DataFrame:
 
 def filter_candidates(df: pd.DataFrame) -> pd.DataFrame:
     """나이가 AGE_MIN~AGE_MAX이고 성별이 남성(M)인 행만 반환합니다."""
-    # 나이가 숫자가 아닌 행은 NaN이 되어 between에서 자동으로 제외됨
+    candidate_mask, _, _ = get_candidate_masks(df)
+    return df[candidate_mask]
+
+
+def get_candidate_masks(
+    df: pd.DataFrame,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """대상자, 여성, 연령 범위 밖 행을 구분하는 마스크를 반환합니다."""
+    # 나이가 숫자가 아니거나 비어 있는 행도 연령 범위 밖으로 분류합니다.
     age = pd.to_numeric(df[AGE_COLUMN].str.strip(), errors="coerce")
+    in_age_range = age.between(AGE_MIN, AGE_MAX)
     sex = df[SEX_COLUMN].str.strip()
-    return df[age.between(AGE_MIN, AGE_MAX) & (sex == "M")]
+    return in_age_range & sex.eq("M"), sex.eq("F"), ~in_age_range
 
 
 def load_candidates(files: list[Path]) -> tuple[pd.DataFrame, int]:
@@ -114,7 +125,10 @@ def load_candidates(files: list[Path]) -> tuple[pd.DataFrame, int]:
     ref_cols = None
     frames = []
     total = 0
+    total_female = 0
+    total_outside_age_range = 0
     for path in files:
+        # 파일 하나를 읽고, 첫 파일의 헤더를 기준으로 컬럼 구성이 같은지 확인한다.
         df = read_csv(path)
         if ref_cols is None:
             ref_cols = list(df.columns)
@@ -125,12 +139,26 @@ def load_candidates(files: list[Path]) -> tuple[pd.DataFrame, int]:
                     f"{path.name}: 컬럼 수가 다릅니다 ({len(df.columns)} != {len(ref_cols)})"
                 )
             diff = [(a, b) for a, b in zip(df.columns, ref_cols) if a != b]
-            print(f"[경고] {path.name}: 헤더 불일치 {diff} -> 기준 헤더로 교체", file=sys.stderr)
+            logger.warning("%s: 헤더 불일치 %s -> 기준 헤더로 교체", path.name, diff)
             df.columns = ref_cols
-        cand = filter_candidates(df)
+        # 19~24세 남성 행만 남기고, 제외한 건수는 로그용으로 센다.
+        candidate_mask, female_mask, outside_age_range_mask = get_candidate_masks(df)
+        cand = df[candidate_mask]
+        female_count = int(female_mask.sum())
+        outside_age_range_count = int(outside_age_range_mask.sum())
         frames.append(cand)
         total += len(df)
-        print(f"{path.name}: {len(df):,}행 -> {len(cand):,}행")
+        total_female += female_count
+        total_outside_age_range += outside_age_range_count
+        logger.info(
+            "%s: %s행 -> %s행 (여성 %s행, 나이 범위 밖 %s행)",
+            path.name, f"{len(df):,}", f"{len(cand):,}",
+            f"{female_count:,}", f"{outside_age_range_count:,}",
+        )
+    logger.info(
+        "전체 제외 현황: 여성 %s행, 나이 범위 밖 %s행 (두 건수는 서로 겹칠 수 있음)",
+        f"{total_female:,}", f"{total_outside_age_range:,}",
+    )
     return pd.concat(frames, ignore_index=True), total
 
 
@@ -166,7 +194,7 @@ def split_stages(value: str) -> list[tuple[str | None, str]]:
 def extract_main_exercise(values: pd.Series) -> pd.Series:
     """운동 처방에서 본운동 내용만 남깁니다. 본운동이 없으면 빈 문자열을 넣습니다.
 
-    형식이 예상과 다른 값의 개수는 표준 에러로 경고합니다.
+    형식이 예상과 다른 값의 개수는 경고 로그로 남깁니다.
     """
     results = []
     malformed = 0
@@ -176,13 +204,32 @@ def extract_main_exercise(values: pd.Series) -> pd.Series:
             malformed += 1
         results.append(next((body for label, body in stages if label == _MAIN_STAGE), ""))
     if malformed:
-        print(f"[경고] 운동 처방 형식이 다른 값 {malformed:,}개", file=sys.stderr)
+        logger.warning("운동 처방 형식이 다른 값 %s개", f"{malformed:,}")
     return pd.Series(results, index=values.index)
 
 
-def main() -> None:
-    source_columns = load_definition_columns(SOURCE_DEFINITION_PATH, "컬럼영문명")
-    output_columns = load_definition_columns(OUTPUT_DEFINITION_PATH, "영문속성명")
+def run(
+    raw_dir: Path,
+    source_definition_path: Path,
+    output_definition_path: Path,
+    output_path: Path,
+) -> None:
+    """raw_dir의 원본 월별 파일을 합쳐 output_path에 저장합니다.
+
+    Args:
+        raw_dir: *.csv 원본 파일이 있는 폴더
+        source_definition_path: 원본 컬럼 정의서 (컬럼영문명 컬럼 필요)
+        output_definition_path: 통합 결과 정의서 (영문속성명 컬럼 필요). 출력 컬럼 순서를 정함
+        output_path: 결과 CSV 경로
+
+    Raises:
+        FileNotFoundError: raw_dir에 원본 파일이 없을 때
+        ValueError: 정의서와 코드의 컬럼 매핑이 맞지 않을 때
+    """
+    # 1. 정의서 검사: 코드의 컬럼 매핑(OUTPUT_SOURCE_COLUMNS)이 두 정의서와 맞는지 확인한다.
+    #    원본(약 600MB)을 모두 읽은 뒤에 실패하지 않도록 가장 먼저 검사한다.
+    source_columns = load_definition_columns(source_definition_path, "컬럼영문명")
+    output_columns = load_definition_columns(output_definition_path, "영문속성명")
     required_output_columns = set(OUTPUT_SOURCE_COLUMNS)
     missing_output_columns = sorted(required_output_columns.difference(output_columns))
     if missing_output_columns:
@@ -202,12 +249,16 @@ def main() -> None:
             f"{', '.join(undefined_source_columns)}"
         )
 
-    files = sorted(CSV_DATA_DIR.glob(INPUT_PATTERN))
+    # 2. 원본 파일 목록 수집 (KS_NFA_FTNESS_MESURE_*.csv만)
+    files = sorted(raw_dir.glob(INPUT_PATTERN))
     if not files:
-        sys.exit(f"{CSV_DATA_DIR}에 {INPUT_PATTERN} 파일이 없습니다.")
+        raise FileNotFoundError(f"{display_path(raw_dir)}에 {INPUT_PATTERN} 파일이 없습니다.")
+    logger.info("원본 파일 %d개 읽기 시작: %s", len(files), display_path(raw_dir))
 
+    # 3. 파일별로 읽으면서 19~24세 남성 행만 모은다.
     candidate, total = load_candidates(files)
 
+    # 4. 합친 데이터에 매핑에 필요한 원본 컬럼이 모두 있는지 확인한다.
     required_input_columns = {
         source_column
         for output_column, source_column in OUTPUT_SOURCE_COLUMNS.items()
@@ -219,6 +270,8 @@ def main() -> None:
             f"원본 CSV에 정의서 컬럼이 없습니다: {', '.join(missing_input_columns)}"
         )
 
+    # 5. 통합 정의서 순서대로 출력 컬럼을 만든다.
+    #    원본 컬럼은 이름만 바꿔 옮기고, BMI는 키·체중으로 새로 계산한다.
     merged = pd.DataFrame(index=candidate.index)
     for output_column in output_columns:
         source_column = OUTPUT_SOURCE_COLUMNS[output_column]
@@ -228,18 +281,29 @@ def main() -> None:
             merged[output_column] = calc_bmi(candidate)
         else:
             raise ValueError(f"통합 컬럼의 원본 매핑이 정의되지 않았습니다: {output_column}")
+    # 6. 운동 처방은 본운동 내용만 남긴다.
     merged[PRESCRIPTION_COLUMN] = extract_main_exercise(
         merged[PRESCRIPTION_COLUMN]
     )
 
+    # 7. BMI 계산 불가 행 제거 후 저장
     # BMI를 계산할 수 없는 행은 측정값이 모두 비어 있는 행이라 분석에 쓸 수 없으므로 제거한다.
     no_bmi = merged[BMI_OUTPUT_COLUMN].isna()
     merged = merged.loc[~no_bmi, output_columns]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     # Excel에서 한글이 깨지지 않도록 BOM을 붙여 저장
-    merged.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
+    merged.to_csv(output_path, index=False, encoding="utf-8-sig")
 
-    print(f"파일: {len(files)}개, 전체: {total:,}행")
-    print(f"{OUTPUT_PATH.name}: {len(merged):,}행 (BMI 계산 불가 {no_bmi.sum():,}행 제거)")
+    # 8. 요약 로그
+    logger.info("파일: %d개, 전체: %s행", len(files), f"{total:,}")
+    logger.info("BMI 계산 불가로 제거: %s행", f"{no_bmi.sum():,}")
+    logger.info("저장: %s (%s행)", display_path(output_path), f"{len(merged):,}")
+
+
+def main() -> None:
+    """data/scripts/paths.py의 기본 경로로 이 단계만 실행합니다."""
+    setup_logging(Path(__file__).stem)
+    run(RAW_DIR, DEFINITION_KS_NFA_RAW, DEFINITION_KS_NFA_MERGED, INTERMEDIATE_MERGED)
 
 
 if __name__ == "__main__":

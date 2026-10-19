@@ -3,6 +3,7 @@
 장병 연령대와 비슷한 일반인 기록을 대시보드의 비교 기준으로 쓰기 위한 전처리 단계입니다.
 출력 컬럼과 순서는 통합 정의서의 영문속성명을 따릅니다.
 BMI는 키와 체중으로 계산하고, 운동 처방은 본운동만 남깁니다.
+BMI를 계산할 수 없는 행과 트레드밀 심박수가 거꾸로 기입된 행은 제거합니다.
 """
 
 import logging
@@ -34,6 +35,13 @@ BODY_FAT_COLUMN = "MESURE_IEM_003_VALUE"
 MEMBER_ID_COLUMN = "MBER_SEQ_NO_VALUE"
 PRESCRIPTION_COLUMN = "MVM_PRSCRPTN_CN"
 MESURE_DE_COLUMN = "MESURE_DE"
+MESURE_SEQ_NO_COLUMN = "MESURE_SEQ_NO"
+
+# 트레드밀 심박수 컬럼 (bpm). 기입 오류 판정에만 쓰고 결과에는 남기지 않는다.
+TREADMILL_REST_HR_COLUMN = "MESURE_IEM_031_VALUE"  # 안정시
+TREADMILL_3MIN_HR_COLUMN = "MESURE_IEM_032_VALUE"  # 3분
+TREADMILL_6MIN_HR_COLUMN = "MESURE_IEM_033_VALUE"  # 6분
+TREADMILL_HR_COLUMNS = (TREADMILL_REST_HR_COLUMN, TREADMILL_3MIN_HR_COLUMN, TREADMILL_6MIN_HR_COLUMN)
 
 # 출력 컬럼 -> 원본 컬럼. None은 원본에서 가져오지 않고 계산하는 컬럼
 OUTPUT_SOURCE_COLUMNS = {
@@ -47,10 +55,11 @@ OUTPUT_SOURCE_COLUMNS = {
     "SIT_REACH": "MESURE_IEM_012_VALUE",
     PRESCRIPTION_COLUMN: PRESCRIPTION_COLUMN,
     "HEIGHT": HEIGHT_COLUMN,
-    "KG": WEIGHT_COLUMN,
+    "WEIGHT": WEIGHT_COLUMN,
     BMI_OUTPUT_COLUMN: None,
-    "BODY_FAT": BODY_FAT_COLUMN,
+    "BODY_FAT_PERCENTAGE": BODY_FAT_COLUMN,
     "MESURE_DE": MESURE_DE_COLUMN,
+    "M_SEQ_NO": MESURE_SEQ_NO_COLUMN,
 }
 
 # 운동 처방 값 형식: '준비운동:A / 본운동:B / 정리운동:C' (일부 단계는 없을 수 있음)
@@ -103,10 +112,14 @@ def filter_candidates(df: pd.DataFrame) -> pd.DataFrame:
 def get_candidate_masks(
     df: pd.DataFrame,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
-    """대상자, 여성, 연령 범위 밖 행을 구분하는 마스크를 반환합니다."""
-    # 나이가 숫자가 아니거나 비어 있는 행도 연령 범위 밖으로 분류합니다.
+    """대상자, 여성, 연령 범위 밖 행을 구분하는 마스크를 반환합니다.
+
+    나이는 AGE_MIN~AGE_MAX 사이의 정수여야 대상자로 봅니다.
+    """
+    # 나이가 숫자가 아니거나 비어 있는 행, 정수가 아닌 행(예: 19.5)도 연령 범위 밖으로 분류합니다.
+    # 범위 검사만 하면 19.5 같은 값이 통과하므로 정수 조건을 함께 둔다.
     age = pd.to_numeric(df[AGE_COLUMN].str.strip(), errors="coerce")
-    in_age_range = age.between(AGE_MIN, AGE_MAX)
+    in_age_range = age.between(AGE_MIN, AGE_MAX) & age.mod(1).eq(0)
     sex = df[SEX_COLUMN].str.strip()
     return in_age_range & sex.eq("M"), sex.eq("F"), ~in_age_range
 
@@ -114,7 +127,7 @@ def get_candidate_masks(
 def load_candidates(files: list[Path]) -> tuple[pd.DataFrame, int]:
     """파일들을 하나씩 읽어 대상자 행만 합칩니다.
 
-    월별 파일 전체(약 600MB)를 한 번에 합치지 않고, 파일마다 먼저 걸러서 메모리 사용량을 줄입니다.
+    월별 파일 전체(약 670MB)를 한 번에 합치지 않고, 파일마다 먼저 걸러서 메모리 사용량을 줄입니다.
 
     Returns:
         (대상자 행을 합친 DataFrame, 걸러내기 전 전체 행 수)
@@ -127,6 +140,7 @@ def load_candidates(files: list[Path]) -> tuple[pd.DataFrame, int]:
     total = 0
     total_female = 0
     total_outside_age_range = 0
+    total_excluded = 0
     for path in files:
         # 파일 하나를 읽고, 첫 파일의 헤더를 기준으로 컬럼 구성이 같은지 확인한다.
         df = read_csv(path)
@@ -146,18 +160,25 @@ def load_candidates(files: list[Path]) -> tuple[pd.DataFrame, int]:
         cand = df[candidate_mask]
         female_count = int(female_mask.sum())
         outside_age_range_count = int(outside_age_range_mask.sum())
+        # 성별·나이 필터 중 하나라도 걸린 행 (두 조건에 모두 걸린 행은 한 번만 센다)
+        excluded_count = len(df) - len(cand)
         frames.append(cand)
         total += len(df)
         total_female += female_count
         total_outside_age_range += outside_age_range_count
+        total_excluded += excluded_count
         logger.info(
-            "%s: %s행 -> %s행 (여성 %s행, 나이 범위 밖 %s행)",
+            "%s: %s행 -> %s행 (제외 %s행: 여성 %s행, 나이 범위 밖 %s행)",
             path.name, f"{len(df):,}", f"{len(cand):,}",
-            f"{female_count:,}", f"{outside_age_range_count:,}",
+            f"{excluded_count:,}", f"{female_count:,}", f"{outside_age_range_count:,}",
         )
     logger.info(
         "전체 제외 현황: 여성 %s행, 나이 범위 밖 %s행 (두 건수는 서로 겹칠 수 있음)",
         f"{total_female:,}", f"{total_outside_age_range:,}",
+    )
+    logger.info(
+        "성별·나이 필터 중 하나라도 걸려 제외된 행: %s행 (전체 %s행 중 대상자 %s행)",
+        f"{total_excluded:,}", f"{total:,}", f"{total - total_excluded:,}",
     )
     return pd.concat(frames, ignore_index=True), total
 
@@ -172,6 +193,20 @@ def calc_bmi(df: pd.DataFrame) -> pd.Series:
     # 신장이 0이면 나눗셈 결과가 inf가 되어 isna()로 걸러지지 않으므로 미리 NaN으로 바꿔 둔다.
     height = height.where(height > 0)
     return (weight / (height / 100) ** 2).round(2)
+
+
+def find_treadmill_hr_errors(df: pd.DataFrame) -> pd.Series:
+    """트레드밀 3분·6분 심박수가 모두 안정시 심박수보다 낮은 행(기입 오류)을 True로 표시합니다.
+
+    운동을 할수록 심박수가 올라가야 정상인데, 2022년 5~6월 KSPO 송파 일부 센터처럼
+    값이 거꾸로 입력된 기록이 있다. 이런 행은 심박수로 계산하는 VO₂max(TRAD)도 믿을 수 없다.
+    세 값 중 하나라도 비어 있거나 숫자가 아니면 판정할 수 없으므로 오류로 보지 않는다.
+    """
+    rest, after_3min, after_6min = (
+        pd.to_numeric(df[column].str.strip(), errors="coerce") for column in TREADMILL_HR_COLUMNS
+    )
+    # NaN과의 비교는 False이므로, 값이 빠진 행은 자동으로 오류에서 제외된다.
+    return (after_3min < rest) & (after_6min < rest)
 
 
 def split_stages(value: str) -> list[tuple[str | None, str]]:
@@ -227,7 +262,7 @@ def run(
         ValueError: 정의서와 코드의 컬럼 매핑이 맞지 않을 때
     """
     # 1. 정의서 검사: 코드의 컬럼 매핑(OUTPUT_SOURCE_COLUMNS)이 두 정의서와 맞는지 확인한다.
-    #    원본(약 600MB)을 모두 읽은 뒤에 실패하지 않도록 가장 먼저 검사한다.
+    #    원본(약 670MB)을 모두 읽은 뒤에 실패하지 않도록 가장 먼저 검사한다.
     source_columns = load_definition_columns(source_definition_path, "컬럼영문명")
     output_columns = load_definition_columns(output_definition_path, "영문속성명")
     required_output_columns = set(OUTPUT_SOURCE_COLUMNS)
@@ -258,12 +293,12 @@ def run(
     # 3. 파일별로 읽으면서 19~24세 남성 행만 모은다.
     candidate, total = load_candidates(files)
 
-    # 4. 합친 데이터에 매핑에 필요한 원본 컬럼이 모두 있는지 확인한다.
+    # 4. 합친 데이터에 매핑과 트레드밀 기입 오류 판정에 필요한 원본 컬럼이 모두 있는지 확인한다.
     required_input_columns = {
         source_column
         for output_column, source_column in OUTPUT_SOURCE_COLUMNS.items()
         if output_column in output_columns and source_column is not None
-    }
+    } | set(TREADMILL_HR_COLUMNS)
     missing_input_columns = sorted(required_input_columns.difference(candidate.columns))
     if missing_input_columns:
         raise ValueError(
@@ -286,10 +321,12 @@ def run(
         merged[PRESCRIPTION_COLUMN]
     )
 
-    # 7. BMI 계산 불가 행 제거 후 저장
+    # 7. BMI 계산 불가 행과 트레드밀 심박수 기입 오류 행을 제거한 뒤 저장
     # BMI를 계산할 수 없는 행은 측정값이 모두 비어 있는 행이라 분석에 쓸 수 없으므로 제거한다.
     no_bmi = merged[BMI_OUTPUT_COLUMN].isna()
-    merged = merged.loc[~no_bmi, output_columns]
+    # 심박수 컬럼은 결과에 남기지 않으므로, 컬럼을 버리기 전인 이 단계에서 판정한다.
+    treadmill_error = find_treadmill_hr_errors(candidate)
+    merged = merged.loc[~no_bmi & ~treadmill_error, output_columns]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     # Excel에서 한글이 깨지지 않도록 BOM을 붙여 저장
     merged.to_csv(output_path, index=False, encoding="utf-8-sig")
@@ -297,6 +334,10 @@ def run(
     # 8. 요약 로그
     logger.info("파일: %d개, 전체: %s행", len(files), f"{total:,}")
     logger.info("BMI 계산 불가로 제거: %s행", f"{no_bmi.sum():,}")
+    logger.info(
+        "트레드밀 컬럼 값 기입 오류로 제거: %s행 (3분·6분 심박수가 모두 안정시보다 낮음, BMI 계산 불가와 겹치는 행 %s행)",
+        f"{treadmill_error.sum():,}", f"{(treadmill_error & no_bmi).sum():,}",
+    )
     logger.info("저장: %s (%s행)", display_path(output_path), f"{len(merged):,}")
 
 

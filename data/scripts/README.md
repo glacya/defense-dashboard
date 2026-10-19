@@ -29,10 +29,11 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/main.py
 
 | 순서 | 모듈 (`preprocessing/`) | 하는 일 | 출력 |
 |---|---|---|---|
-| 1 | `merge_raw_measurements` | 원본 54개에서 19~24세 남성 행을 모으고, 컬럼을 통합 정의서대로 맞춥니다. BMI는 키·체중으로 계산하고 운동 처방은 본운동만 남깁니다. | `intermediate/KS_NFA_MERGED.csv` |
-| 2 | `filter_single_cardio_records` | 심폐 종목(트레드밀·스텝검사·20m 왕복 오래달리기) 중 정확히 하나만 기록된 행을 남깁니다. | `intermediate/cardio_filter/` |
+| 1 | `merge_raw_measurements` | 원본 55개에서 19~24세 남성 행을 모으고, 컬럼을 통합 정의서대로 맞춥니다. BMI는 키·체중으로 계산하고 운동 처방은 본운동만 남깁니다. BMI 계산 불가 행과 트레드밀 심박수 기입 오류 행(3분·6분 심박수 < 안정시)을 제거합니다. | `intermediate/KS_NFA_MERGED.csv` |
+| 2 | `filter_single_cardio_records` | 심폐 종목(트레드밀·스텝검사·20m 왕복 오래달리기) 중 정확히 하나만 기록된 행을 남깁니다. 운동 처방은 비어 있어도 제거하지 않습니다. | `intermediate/cardio_filter/` |
 | 3 | `filter_enlistment_candidates` | 키·체중·BMI·체지방률이 입대 후보 범위 안에 있는 행만 남깁니다. | `intermediate/enlistment_filter/` |
-| 4 | `select_three_measures` | 3회 이상 측정한 회원마다 측정일 기준 첫·중간·마지막 기록 3건을 고릅니다. | `processed/KS_NFA_PROCESSED.csv` |
+| 4 | `select_three_measures` | 3회 이상 측정한 회원마다 측정일 기준 첫·중간·마지막 기록 3건을 고릅니다. | `intermediate/KS_NFA_THREE_MEASURES.csv` |
+| 5 | `apply_processed_definition` | 측정일 → 회원식별번호 → 측정일련번호 순으로 정렬해 `MESURE_ID`를 붙이고, 측정 데이터(PROCESSED 정의서)와 운동 처방 데이터(처방 1개당 1행, PRESCRIPTION 정의서)로 나눠 저장합니다. 같은 측정 안의 중복 처방은 제거합니다. | `processed/KS_NFA_PROCESSED.csv`, `processed/KS_NFA_PRESCRIPTION.csv` |
 
 `remove_3sigma_outliers`(3σ 이상치 제거)와 `estimate_shuttle_run_latent_scores`(셔틀런 잠재 점수 추정)는 현재 파이프라인에서 쓰지 않습니다. 필요하면 단독으로 실행할 수 있습니다.
 

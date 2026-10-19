@@ -1,6 +1,6 @@
 """전처리 파이프라인 진입점입니다. 단계의 실행 순서와 입출력 연결은 이 파일에서만 정합니다.
 
-흐름: 원본 통합 -> 심폐 단일 종목 필터 -> 입대 후보 조건 필터 -> 3회 이상 측정 회원 추출
+흐름: 원본 통합 -> 심폐 단일 종목 필터 -> 입대 후보 조건 필터 -> 3회 이상 측정 회원 추출 -> 최종 정의서 적용(측정·운동 처방 분리)
 경로 상수는 data/scripts/paths.py에 있으며, 각 단계 모듈을 단독 실행할 때도 같은 경로를 씁니다.
 실행: python data/scripts/main.py
 로그는 data/scripts/logs/{yyyymmdd}_{hhmmss}_main.log에 남습니다.
@@ -15,15 +15,20 @@ from typing import Callable
 from data.scripts.logging_setup import display_path, setup_logging
 from data.scripts.paths import (
     DEFINITION_KS_NFA_MERGED,
+    DEFINITION_KS_NFA_PRESCRIPTION,
+    DEFINITION_KS_NFA_PROCESSED,
     DEFINITION_KS_NFA_RAW,
     INTERMEDIATE_CARDIO_FILTER,
     INTERMEDIATE_ENLISTMENT_FILTER,
     INTERMEDIATE_MERGED,
+    INTERMEDIATE_THREE_MEASURES,
     PASSED_FILENAME,
-    PROCESSED_PATH,
+    PROCESSED_FITNESS_PATH,
+    PROCESSED_PRESCRIPTION_PATH,
     RAW_DIR,
 )
 from data.scripts.preprocessing import (
+    apply_processed_definition,
     filter_enlistment_candidates,
     filter_single_cardio_records,
     merge_raw_measurements,
@@ -72,7 +77,20 @@ def build_pipeline() -> list[Step]:
             "3회 이상 측정한 회원의 측정 데이터 추출",
             select_three_measures.run,
             inputs={"input_path": INTERMEDIATE_ENLISTMENT_FILTER / PASSED_FILENAME},
-            outputs={"output_path": PROCESSED_PATH},
+            outputs={"output_path": INTERMEDIATE_THREE_MEASURES},
+        ),
+        Step(
+            "최종 정의서 적용 (MESURE_ID 부여, 측정·운동 처방 분리)",
+            apply_processed_definition.run,
+            inputs={
+                "input_path": INTERMEDIATE_THREE_MEASURES,
+                "fitness_definition_path": DEFINITION_KS_NFA_PROCESSED,
+                "prescription_definition_path": DEFINITION_KS_NFA_PRESCRIPTION,
+            },
+            outputs={
+                "fitness_output_path": PROCESSED_FITNESS_PATH,
+                "prescription_output_path": PROCESSED_PRESCRIPTION_PATH,
+            },
         ),
     ]
 
@@ -99,7 +117,10 @@ def main() -> None:
     logger.info("전처리 시작: %d단계, 로그 %s", len(pipeline), display_path(log_path))
     for index, step in enumerate(pipeline, 1):
         run_step(index, len(pipeline), step)
-    logger.info("전처리 완료: 최종 결과 %s", display_path(PROCESSED_PATH))
+    logger.info(
+        "전처리 완료: 최종 결과 %s, %s",
+        display_path(PROCESSED_FITNESS_PATH), display_path(PROCESSED_PRESCRIPTION_PATH),
+    )
 
 
 if __name__ == "__main__":

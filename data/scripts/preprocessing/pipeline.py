@@ -5,13 +5,14 @@
 """
 
 from data.scripts.paths import (
+    DEFINITION_KS_NFA_FINAL,
     DEFINITION_KS_NFA_MERGED,
     DEFINITION_KS_NFA_PRESCRIPTION,
-    DEFINITION_KS_NFA_PROCESSED,
     DEFINITION_KS_NFA_RAW,
     INTERMEDIATE_BASIC_REFINEMENT,
     INTERMEDIATE_ENLISTMENT_FILTER,
     INTERMEDIATE_MERGED,
+    INTERMEDIATE_MULTI_CARDIO,
     INTERMEDIATE_THREE_MEASURES,
     PASSED_FILENAME,
     PROCESSED_FITNESS_PATH,
@@ -20,7 +21,7 @@ from data.scripts.paths import (
 )
 from data.scripts.pipeline import Step
 from data.scripts.preprocessing import (
-    apply_processed_definition,
+    apply_final_definition,
     filter_enlistment_candidates,
     merge_raw_measurements,
     remove_missings_and_outliers,
@@ -41,7 +42,7 @@ def build_steps() -> list[Step]:
                 "source_definition_path": DEFINITION_KS_NFA_RAW,
                 "output_definition_path": DEFINITION_KS_NFA_MERGED,
             },
-            outputs={"output_path": INTERMEDIATE_MERGED},
+            outputs={"output_path": INTERMEDIATE_MERGED, "multi_cardio_path": INTERMEDIATE_MULTI_CARDIO},
         ),
         Step(
             "결측치·이상치 제거",
@@ -63,10 +64,10 @@ def build_steps() -> list[Step]:
         ),
         Step(
             "최종 정의서 적용 (MESURE_ID 부여, 측정·운동 처방 분리)",
-            apply_processed_definition.run,
+            apply_final_definition.run,
             inputs={
                 "input_path": INTERMEDIATE_THREE_MEASURES,
-                "fitness_definition_path": DEFINITION_KS_NFA_PROCESSED,
+                "fitness_definition_path": DEFINITION_KS_NFA_FINAL,
                 "prescription_definition_path": DEFINITION_KS_NFA_PRESCRIPTION,
             },
             outputs={

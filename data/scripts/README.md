@@ -37,11 +37,11 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/main.py analy
 
 | 순서 | 모듈 (`preprocessing/`) | 하는 일 | 출력 |
 |---|---|---|---|
-| 1 | `merge_raw_measurements` | 원본 55개에서 19~24세 남성 행을 모으고, 컬럼을 통합 정의서대로 맞춥니다. BMI는 키·체중으로 계산하고 운동 처방은 본운동만 남깁니다. BMI 계산 불가 행과 트레드밀 심박수 기입 오류 행(3분·6분 심박수 < 안정시)을 제거합니다. | `intermediate/KS_NFA_MERGED.csv` |
-| 2 | `remove_missings_and_outliers` | 심폐 종목(트레드밀·스텝검사·20m 왕복 오래달리기) 중 정확히 하나만 기록된 행을 남깁니다. 운동 처방은 비어 있어도 제거하지 않습니다. | `intermediate/basic_refinement/` |
+| 1 | `merge_raw_measurements` | 원본 55개에서 19~24세 남성 행을 모으고, 컬럼을 통합 정의서대로 맞춥니다. BMI는 키·체중으로 계산하고 운동 처방은 본운동만 남깁니다. 심폐지구력(`CARDIO`)은 세 종목의 VO₂max 출력 중 기록된 하나를 쓰고, 두 종목 이상이면 오래달리기 값을 쓰되 `KS_NFA_MERGED_MULTI_CARDIO.csv`에 따로 저장합니다. BMI 계산 불가 행과 트레드밀 심박수 기입 오류 행(3분·6분 심박수 < 안정시)을 제거합니다. | `intermediate/KS_NFA_MERGED.csv`, `intermediate/KS_NFA_MERGED_MULTI_CARDIO.csv` |
+| 2 | `remove_missings_and_outliers` | 결측값이 있는 행을 제거한 뒤, 이상치(횟수 종목인 교차윗몸일으키기의 소수 기록, 80 mL/kg/min을 넘는 심폐지구력)가 있는 행을 제거합니다. 운동 처방은 비어 있어도 제거하지 않습니다. | `intermediate/basic_refinement/` |
 | 3 | `filter_enlistment_candidates` | 키·체중·BMI·체지방률이 입대 후보 범위 안에 있는 행만 남깁니다. | `intermediate/enlistment_filter/` |
 | 4 | `select_three_measures` | 3회 이상 측정한 회원마다 측정일 기준 첫·중간·마지막 기록 3건을 고릅니다. | `intermediate/KS_NFA_THREE_MEASURES.csv` |
-| 5 | `apply_processed_definition` | 측정일 → 회원식별번호 → 측정일련번호 순으로 정렬해 `MESURE_ID`를 붙이고, 측정 데이터(PROCESSED 정의서)와 운동 처방 데이터(처방 1개당 1행, PRESCRIPTION 정의서)로 나눠 저장합니다. 같은 측정 안의 중복 처방은 제거합니다. | `processed/KS_NFA_PROCESSED.csv`, `processed/KS_NFA_PRESCRIPTION.csv` |
+| 5 | `apply_final_definition` | 측정일 → 회원식별번호 → 측정일련번호 순으로 정렬해 `MESURE_ID`를 붙이고, 측정 컬럼을 체력 요소 이름(근력·근지구력·심폐지구력·유연성)으로 바꿔 측정 데이터(FINAL 정의서)와 운동 처방 데이터(처방 1개당 1행, PRESCRIPTION 정의서)로 나눠 저장합니다. 같은 측정 안의 중복 처방은 제거합니다. | `processed/KS_NFA_PROCESSED.csv`, `processed/KS_NFA_PRESCRIPTION.csv` |
 
 `remove_3sigma_outliers`(3σ 이상치 제거)는 현재 파이프라인에서 쓰지 않습니다. 필요하면 단독으로 실행할 수 있습니다.
 
@@ -61,18 +61,17 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/preprocessing
 
 ## 분석 스크립트 (`analysis/`)
 
-데이터를 전처리하지 않고 통계·탐색 결과만 내는 스크립트입니다. `main.py analysis`(또는 `all`)로 아래 목록을 실행하며, 각 모듈은 `paths.py`의 기본 경로로 단독 실행할 수도 있습니다. `view_fitness_statistics`는 오래 걸리고 반복할 필요가 없어 파이프라인에 넣지 않았으므로 단독으로만 실행합니다.
+데이터를 전처리하지 않고 통계·탐색 결과만 내는 스크립트입니다. 각 모듈은 `paths.py`의 기본 경로로 단독 실행합니다. `analysis/pipeline.py`의 실행 목록은 지금 비어 있어 `main.py analysis`는 아무것도 실행하지 않습니다.
 
 | 모듈 | 하는 일 | 출력 |
 |---|---|---|
-| `estimate_shuttle_run_latent_scores` | 셔틀런 컷오프(41·52·62회) 몰림을 구간으로 보고 잠재 점수 분포를 추정합니다. | `intermediate/shuttle_run_latent_scores/` |
-| `standardize_cardio_scores` | 심폐 종목별 Z점수를 계산합니다(오래달리기는 잠재 점수로 보정). | `intermediate/cardio_zscore/` |
-| `summarize_cut_anchored_scores` | 등급 컷 기준 선형 변환 점수의 통계, 등급 비율, 종목 전환 시 점수 변화를 정리합니다. | `intermediate/cut_anchored_scores/` |
-| `compare_cardio_groups` | 심폐 종목 집단(트레드밀·스텝 대 오래달리기)의 다른 체력·신체조성 분포를 비교합니다. | `intermediate/cardio_group_comparison/` |
-| `view_fitness_statistics` | 최종 측정 데이터(`processed/KS_NFA_PROCESSED.csv`)의 프로파일링 보고서를 만들고 한국어로 바꿉니다. | `intermediate/fitness_profile/` |
+| `summarize_official_cut_ratios` | 심폐지구력(`CARDIO`, VO₂max)에 공식 등급 컷(42.0/44.8/47.6)을 적용해 등급별 비율과 컷 미만 비율을 설계(30/50/70%)와 함께 정리합니다. | `intermediate/official_cut_ratios/` |
+| `view_fitness_statistics` | 최종 측정 데이터(`processed/KS_NFA_PROCESSED.csv`)의 프로파일링 보고서를 만들고 한국어로 바꿉니다. 30분 넘게 걸립니다. | `intermediate/fitness_profile/` |
+
+심폐지구력을 종목별로 비교하던 실험 스크립트(셔틀런 잠재 점수, 종목별 Z점수, 컷 기준 선형 변환, 종목 집단 비교)는 VO₂max 통일 결정 뒤 삭제했습니다. 코드는 Git 기록에 남아 있습니다.
 
 ```powershell
-conda run --no-capture-output -n kdt-project-1 python data/scripts/analysis/compare_cardio_groups.py
+python data/scripts/analysis/summarize_official_cut_ratios.py
 ```
 
 ## 단계 추가·수정

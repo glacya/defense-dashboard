@@ -3,6 +3,8 @@
 장병 연령대와 비슷한 일반인 기록을 대시보드의 비교 기준으로 쓰기 위한 전처리 단계입니다.
 출력 컬럼과 순서는 통합 정의서의 영문속성명을 따릅니다.
 BMI는 키와 체중으로 계산하고, 운동 처방은 본운동만 남깁니다.
+심폐지구력(CARDIO)은 세 종목(20m 왕복 오래달리기·트레드밀·스텝검사)의 VO₂max 출력 중 기록된 값 하나를 씁니다.
+두 종목 이상 기록된 행은 오래달리기 값을 쓰고, 확인할 수 있도록 따로 저장합니다.
 BMI를 계산할 수 없는 행과 트레드밀 심박수가 거꾸로 기입된 행은 제거합니다.
 """
 
@@ -12,7 +14,13 @@ from pathlib import Path
 import pandas as pd
 
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
-from data.scripts.paths import DEFINITION_KS_NFA_MERGED, DEFINITION_KS_NFA_RAW, INTERMEDIATE_MERGED, RAW_DIR
+from data.scripts.paths import (
+    DEFINITION_KS_NFA_MERGED,
+    DEFINITION_KS_NFA_RAW,
+    INTERMEDIATE_MERGED,
+    INTERMEDIATE_MULTI_CARDIO,
+    RAW_DIR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +51,26 @@ TREADMILL_3MIN_HR_COLUMN = "MESURE_IEM_032_VALUE"  # 3분
 TREADMILL_6MIN_HR_COLUMN = "MESURE_IEM_033_VALUE"  # 6분
 TREADMILL_HR_COLUMNS = (TREADMILL_REST_HR_COLUMN, TREADMILL_3MIN_HR_COLUMN, TREADMILL_6MIN_HR_COLUMN)
 
+# 심폐 종목별 VO₂max 출력 컬럼. 순서가 두 종목 이상 기록됐을 때의 우선순위다.
+# 오래달리기는 횟수(MESURE_IEM_020)가 아니라 시스템이 회귀식으로 환산한 VO₂max(030)를 써서 세 종목의 단위를 맞춘다.
+# 오래달리기를 우선하는 이유: 공식 VO₂max 등급 컷이 오래달리기 환산값으로 만들어졌기 때문(2018 한국스포츠개발원 보고서).
+CARDIO_SOURCE_COLUMNS = {
+    "20M_RUN": "MESURE_IEM_030_VALUE",
+    "TRAD": "MESURE_IEM_035_VALUE",
+    "STEP": "MESURE_IEM_037_VALUE",
+}
+CARDIO_OUTPUT_COLUMN = "CARDIO"
+# 심폐 종목이 두 개 이상 기록된 행을 따로 저장할 때 덧붙이는 컬럼
+CARDIO_COUNT_COLUMN = "심폐 종목 수"
+CARDIO_SELECTED_COLUMN = "선택한 종목"
+
 # 출력 컬럼 -> 원본 컬럼. None은 원본에서 가져오지 않고 계산하는 컬럼
 OUTPUT_SOURCE_COLUMNS = {
     "M_CODE": MEMBER_ID_COLUMN,
     "AGE": AGE_COLUMN,
     "REL_GRIP": "MESURE_IEM_028_VALUE",
     "CROSS_UP": "MESURE_IEM_019_VALUE",
-    "TRAD": "MESURE_IEM_035_VALUE",
-    "STEP": "MESURE_IEM_037_VALUE",
-    "20M_RUN": "MESURE_IEM_020_VALUE",
+    CARDIO_OUTPUT_COLUMN: None,
     "SIT_REACH": "MESURE_IEM_012_VALUE",
     PRESCRIPTION_COLUMN: PRESCRIPTION_COLUMN,
     "HEIGHT": HEIGHT_COLUMN,
@@ -209,6 +228,26 @@ def find_treadmill_hr_errors(df: pd.DataFrame) -> pd.Series:
     return (after_3min < rest) & (after_6min < rest)
 
 
+def select_cardio(df: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """행마다 심폐 종목 VO₂max 출력 중 하나를 골라 (CARDIO 값, 기록된 종목 수, 고른 종목 이름)을 반환합니다.
+
+    한 종목만 기록됐으면 그 값을, 두 종목 이상이면 CARDIO_SOURCE_COLUMNS 순서상 앞선 종목(오래달리기)의 값을 씁니다.
+    한 종목도 기록되지 않았으면 값과 종목 이름을 빈 문자열로 둡니다.
+    """
+    values = df[list(CARDIO_SOURCE_COLUMNS.values())].apply(lambda column: column.str.strip())
+    values.columns = list(CARDIO_SOURCE_COLUMNS)
+    present = values.ne("")
+    count = present.sum(axis=1)
+
+    cardio = pd.Series("", index=df.index, dtype=object)
+    selected = pd.Series("", index=df.index, dtype=object)
+    # 우선순위가 낮은 종목부터 덮어쓰면, 마지막에는 기록된 종목 중 우선순위가 가장 높은 값이 남는다.
+    for event in reversed(list(CARDIO_SOURCE_COLUMNS)):
+        cardio = cardio.mask(present[event], values[event])
+        selected = selected.mask(present[event], event)
+    return cardio, count, selected
+
+
 def split_stages(value: str) -> list[tuple[str | None, str]]:
     """운동 처방 문자열을 단계별로 나눕니다.
 
@@ -248,6 +287,7 @@ def run(
     source_definition_path: Path,
     output_definition_path: Path,
     output_path: Path,
+    multi_cardio_path: Path,
 ) -> None:
     """raw_dir의 원본 월별 파일을 합쳐 output_path에 저장합니다.
 
@@ -256,6 +296,8 @@ def run(
         source_definition_path: 원본 컬럼 정의서 (컬럼영문명 컬럼 필요)
         output_definition_path: 통합 결과 정의서 (영문속성명 컬럼 필요). 출력 컬럼 순서를 정함
         output_path: 결과 CSV 경로
+        multi_cardio_path: 심폐 종목이 두 개 이상 기록된 행을 확인용으로 저장할 CSV 경로.
+            이 행들은 output_path에도 오래달리기 값으로 들어간다.
 
     Raises:
         FileNotFoundError: raw_dir에 원본 파일이 없을 때
@@ -271,13 +313,10 @@ def run(
         raise ValueError(
             f"통합 정의서에 필수 컬럼이 없습니다: {', '.join(missing_output_columns)}"
         )
-    undefined_source_columns = sorted(
-        {
-            source_column
-            for source_column in OUTPUT_SOURCE_COLUMNS.values()
-            if source_column is not None and source_column not in source_columns
-        }
-    )
+    mapped_source_columns = {
+        source_column for source_column in OUTPUT_SOURCE_COLUMNS.values() if source_column is not None
+    } | set(CARDIO_SOURCE_COLUMNS.values())
+    undefined_source_columns = sorted(mapped_source_columns.difference(source_columns))
     if undefined_source_columns:
         raise ValueError(
             "통합 출력 매핑의 원본 컬럼이 원본 정의서에 없습니다: "
@@ -298,7 +337,7 @@ def run(
         source_column
         for output_column, source_column in OUTPUT_SOURCE_COLUMNS.items()
         if output_column in output_columns and source_column is not None
-    } | set(TREADMILL_HR_COLUMNS)
+    } | set(TREADMILL_HR_COLUMNS) | set(CARDIO_SOURCE_COLUMNS.values())
     missing_input_columns = sorted(required_input_columns.difference(candidate.columns))
     if missing_input_columns:
         raise ValueError(
@@ -306,7 +345,8 @@ def run(
         )
 
     # 5. 통합 정의서 순서대로 출력 컬럼을 만든다.
-    #    원본 컬럼은 이름만 바꿔 옮기고, BMI는 키·체중으로 새로 계산한다.
+    #    원본 컬럼은 이름만 바꿔 옮기고, BMI는 키·체중으로 새로 계산하고, 심폐지구력은 세 종목 중 하나를 고른다.
+    cardio, cardio_count, cardio_selected = select_cardio(candidate)
     merged = pd.DataFrame(index=candidate.index)
     for output_column in output_columns:
         source_column = OUTPUT_SOURCE_COLUMNS[output_column]
@@ -314,6 +354,8 @@ def run(
             merged[output_column] = candidate[source_column]
         elif output_column == BMI_OUTPUT_COLUMN:
             merged[output_column] = calc_bmi(candidate)
+        elif output_column == CARDIO_OUTPUT_COLUMN:
+            merged[output_column] = cardio
         else:
             raise ValueError(f"통합 컬럼의 원본 매핑이 정의되지 않았습니다: {output_column}")
     # 6. 운동 처방은 본운동 내용만 남긴다.
@@ -326,25 +368,42 @@ def run(
     no_bmi = merged[BMI_OUTPUT_COLUMN].isna()
     # 심박수 컬럼은 결과에 남기지 않으므로, 컬럼을 버리기 전인 이 단계에서 판정한다.
     treadmill_error = find_treadmill_hr_errors(candidate)
-    merged = merged.loc[~no_bmi & ~treadmill_error, output_columns]
+    kept = ~no_bmi & ~treadmill_error
+    merged = merged.loc[kept, output_columns]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     # Excel에서 한글이 깨지지 않도록 BOM을 붙여 저장
     merged.to_csv(output_path, index=False, encoding="utf-8-sig")
 
-    # 8. 요약 로그
+    # 8. 심폐 종목이 두 개 이상 기록된 행은 통합 결과에 남기되, 확인할 수 있도록 세 종목 값과 고른 종목을 붙여 따로 저장한다.
+    multi_cardio_rows = kept & cardio_count.gt(1)
+    multi_cardio = merged.loc[multi_cardio_rows[kept]].copy()
+    for event, source_column in CARDIO_SOURCE_COLUMNS.items():
+        multi_cardio[event] = candidate.loc[multi_cardio.index, source_column]
+    multi_cardio[CARDIO_COUNT_COLUMN] = cardio_count.loc[multi_cardio.index]
+    multi_cardio[CARDIO_SELECTED_COLUMN] = cardio_selected.loc[multi_cardio.index]
+    multi_cardio_path.parent.mkdir(parents=True, exist_ok=True)
+    multi_cardio.to_csv(multi_cardio_path, index=False, encoding="utf-8-sig")
+
+    # 9. 요약 로그
     logger.info("파일: %d개, 전체: %s행", len(files), f"{total:,}")
     logger.info("BMI 계산 불가로 제거: %s행", f"{no_bmi.sum():,}")
     logger.info(
         "트레드밀 컬럼 값 기입 오류로 제거: %s행 (3분·6분 심박수가 모두 안정시보다 낮음, BMI 계산 불가와 겹치는 행 %s행)",
         f"{treadmill_error.sum():,}", f"{(treadmill_error & no_bmi).sum():,}",
     )
+    logger.info("심폐지구력(%s) 선택 결과 (저장 행 기준):", CARDIO_OUTPUT_COLUMN)
+    for event in CARDIO_SOURCE_COLUMNS:
+        logger.info("  %s: %s행", event, f"{int((kept & cardio_selected.eq(event)).sum()):,}")
+    logger.info("  기록 없음(빈칸): %s행", f"{int((kept & cardio_count.eq(0)).sum()):,}")
+    logger.info("  두 종목 이상 기록(오래달리기 우선): %s행", f"{int(multi_cardio_rows.sum()):,}")
     logger.info("저장: %s (%s행)", display_path(output_path), f"{len(merged):,}")
+    logger.info("저장(심폐 종목 두 개 이상): %s (%s행)", display_path(multi_cardio_path), f"{len(multi_cardio):,}")
 
 
 def main() -> None:
     """data/scripts/paths.py의 기본 경로로 이 단계만 실행합니다."""
     setup_logging(caller_name(__file__))
-    run(RAW_DIR, DEFINITION_KS_NFA_RAW, DEFINITION_KS_NFA_MERGED, INTERMEDIATE_MERGED)
+    run(RAW_DIR, DEFINITION_KS_NFA_RAW, DEFINITION_KS_NFA_MERGED, INTERMEDIATE_MERGED, INTERMEDIATE_MULTI_CARDIO)
 
 
 if __name__ == "__main__":

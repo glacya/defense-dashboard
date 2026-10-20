@@ -4,22 +4,6 @@
 프로파일링 보고서(view_fitness_statistics)는 실행이 오래 걸리고 반복할 필요가 없어 넣지 않습니다. 필요하면 단독 실행합니다.
 """
 
-from data.scripts.analysis import (
-    compare_cardio_groups,
-    estimate_shuttle_run_latent_scores,
-    standardize_cardio_scores,
-    summarize_cut_anchored_scores,
-)
-from data.scripts.paths import (
-    INTERMEDIATE_BASIC_REFINEMENT,
-    INTERMEDIATE_CARDIO_GROUPS,
-    INTERMEDIATE_CARDIO_ZSCORE,
-    INTERMEDIATE_CUT_ANCHORED,
-    INTERMEDIATE_ENLISTMENT_FILTER,
-    INTERMEDIATE_SHUTTLE_RUN,
-    INTERMEDIATE_THREE_MEASURES,
-    PASSED_FILENAME,
-)
 from data.scripts.pipeline import Step
 
 TITLE = "분석"
@@ -27,29 +11,6 @@ TITLE = "분석"
 
 def build_steps() -> list[Step]:
     """분석 단계 목록을 만듭니다. 입출력은 각 모듈의 단독 실행 기본 경로와 같습니다."""
-    return [
-        Step(
-            "셔틀런 잠재 점수 추정",
-            estimate_shuttle_run_latent_scores.run,
-            inputs={"input_path": INTERMEDIATE_BASIC_REFINEMENT / PASSED_FILENAME},
-            outputs={"output_dir": INTERMEDIATE_SHUTTLE_RUN},
-        ),
-        Step(
-            "심폐 종목별 Z점수",
-            standardize_cardio_scores.run,
-            inputs={"input_path": INTERMEDIATE_THREE_MEASURES},
-            outputs={"output_dir": INTERMEDIATE_CARDIO_ZSCORE},
-        ),
-        Step(
-            "등급 컷 기준 선형 변환 점수 통계",
-            summarize_cut_anchored_scores.run,
-            inputs={"input_path": INTERMEDIATE_THREE_MEASURES},
-            outputs={"output_dir": INTERMEDIATE_CUT_ANCHORED},
-        ),
-        Step(
-            "심폐 종목 집단 간 체력·신체조성 비교",
-            compare_cardio_groups.run,
-            inputs={"input_path": INTERMEDIATE_ENLISTMENT_FILTER / PASSED_FILENAME},
-            outputs={"output_dir": INTERMEDIATE_CARDIO_GROUPS},
-        ),
-    ]
+    # 2026-10-20 심폐지구력을 CARDIO(VO2max)로 통일하면서 종목 비교 실험 스크립트를 모두 지웠다.
+    # 남은 분석(공식 컷 등급 비율, 프로파일링 보고서)은 임시·단독 실행용이라 아직 등록하지 않는다.
+    return []

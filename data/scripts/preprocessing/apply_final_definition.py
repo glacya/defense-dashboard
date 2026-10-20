@@ -1,6 +1,6 @@
-"""전처리 결과를 최종 정의서 두 개(PROCESSED, PRESCRIPTION)의 구성으로 나눠 저장합니다.
+"""전처리 결과를 최종 정의서 두 개(FINAL, PRESCRIPTION)의 구성으로 나눠 저장합니다.
 
-- 측정 데이터: KS_NFA_PROCESSED_DEFINITION.csv의 컬럼만 정의서 순서대로 남깁니다.
+- 측정 데이터: 측정 컬럼 이름을 체력 요소 이름(근력·근지구력·유연성)으로 바꾼 뒤 KS_NFA_FINAL_DEFINITION.csv의 컬럼만 정의서 순서대로 남깁니다.
 - 운동 처방: 쉼표로 이어진 처방 목록을 처방 하나당 한 행으로 나눠 KS_NFA_PRESCRIPTION_DEFINITION.csv 구성으로 저장합니다.
 두 파일은 이 단계에서 새로 부여하는 측정식별번호(MESURE_ID)로 연결됩니다.
 """
@@ -12,8 +12,8 @@ import pandas as pd
 
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import (
+    DEFINITION_KS_NFA_FINAL,
     DEFINITION_KS_NFA_PRESCRIPTION,
-    DEFINITION_KS_NFA_PROCESSED,
     INTERMEDIATE_THREE_MEASURES,
     PROCESSED_FITNESS_PATH,
     PROCESSED_PRESCRIPTION_PATH,
@@ -37,6 +37,13 @@ PRESCRIPTION_COLUMN = "PRESCRIPTION"
 
 # 운동 처방 목록의 항목 구분자. 예: '앉았다 일어서기,윗몸올리기 ,팔굽혀펴기'
 PRESCRIPTION_SEP = ","
+
+# 통합 데이터의 측정 컬럼 이름 -> 최종 정의서의 체력 요소 이름. 심폐지구력(CARDIO)은 통합 단계부터 같은 이름이다.
+FINAL_COLUMN_NAMES = {
+    "REL_GRIP": "STRENGTH",
+    "CROSS_UP": "ENDURANCE",
+    "SIT_REACH": "FLEXIBILITY",
+}
 
 
 def assign_mesure_id(df: pd.DataFrame) -> pd.DataFrame:
@@ -111,7 +118,7 @@ def run(
 
     Args:
         input_path: 3회 이상 측정 회원 추출 단계의 결과
-        fitness_definition_path: 측정 데이터 정의서 (KS_NFA_PROCESSED_DEFINITION.csv)
+        fitness_definition_path: 측정 데이터 정의서 (KS_NFA_FINAL_DEFINITION.csv)
         prescription_definition_path: 운동 처방 정의서 (KS_NFA_PRESCRIPTION_DEFINITION.csv)
         fitness_output_path: 측정 데이터 저장 경로
         prescription_output_path: 운동 처방 데이터 저장 경로
@@ -124,8 +131,8 @@ def run(
     prescription_columns = load_definition_columns(prescription_definition_path, DEFINITION_NAME_COLUMN)
     df = pd.read_csv(input_path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
 
-    # 2. 측정일 -> 회원식별번호 -> 측정일련번호 순으로 정렬하고 새 PK인 MESURE_ID를 붙인다.
-    df = assign_mesure_id(df)
+    # 2. 측정일 -> 회원식별번호 -> 측정일련번호 순으로 정렬하고 새 PK인 MESURE_ID를 붙인 뒤, 측정 컬럼을 최종 이름으로 바꾼다.
+    df = assign_mesure_id(df).rename(columns=FINAL_COLUMN_NAMES)
 
     # 3. 측정 데이터: 정의서 컬럼만 정의서 순서대로 남겨 저장한다.
     fitness = select_definition_columns(df, fitness_columns, fitness_definition_path.name)
@@ -166,7 +173,7 @@ def main() -> None:
     setup_logging(caller_name(__file__))
     run(
         INTERMEDIATE_THREE_MEASURES,
-        DEFINITION_KS_NFA_PROCESSED,
+        DEFINITION_KS_NFA_FINAL,
         DEFINITION_KS_NFA_PRESCRIPTION,
         PROCESSED_FITNESS_PATH,
         PROCESSED_PRESCRIPTION_PATH,

@@ -1,4 +1,4 @@
-"""숫자형 속성마다 평균 ± 3표준편차를 벗어난 행과 20m 왕복 오래달리기 기록이 0인 행을 제거합니다.
+"""숫자형 속성마다 평균 ± 3표준편차를 벗어난 행을 제거합니다.
 
 통과 행과 제거 행(사유 포함)을 나눠 저장하고, 속성별 분포와 제거 구간을 PDF 보고서로 남깁니다.
 """
@@ -22,8 +22,6 @@ logger = logging.getLogger(__name__)
 REMOVED_FILENAME = "removed.csv"
 REPORT_FILENAME = "report.pdf"
 
-SHUTTLE_RUN_20M = "20M_RUN"
-
 EXCLUDED_COLUMNS = {"YEAR_MONTH", "PERSON_CODE", "MESURE_DE"}
 # None이면 사용 가능한 모든 숫자형 속성에 적용합니다. 일부만 적용하려면 컬럼명을 지정하세요.
 THREE_SIGMA_COLUMNS: tuple[str, ...] | None = None
@@ -33,10 +31,8 @@ for korean_font in ("Malgun Gothic", "NanumGothic", "Gulim", "Noto Sans CJK KR")
         plt.rcParams["font.family"] = korean_font
         break
 plt.rcParams["axes.unicode_minus"] = False
-FILTER_RULE = (
-    f"선택한 속성 중 하나라도 평균 ± 3표준편차 범위를 벗어나거나 "
-    f"{SHUTTLE_RUN_20M}=0이면 제외"
-)
+# 2026-10-20 전처리가 심폐지구력을 CARDIO(VO2max) 한 컬럼으로 통일하면서 20M_RUN=0 제외 규칙은 뺐다(횟수 컬럼이 없음).
+FILTER_RULE = "선택한 속성 중 하나라도 평균 ± 3표준편차 범위를 벗어나면 제외"
 
 
 def save_distribution_report(
@@ -116,14 +112,6 @@ def save_distribution_report(
                     label="표준편차 0 (제외 기준선)",
                 )
 
-            if column == SHUTTLE_RUN_20M:
-                axis.axvline(
-                    0,
-                    color="tab:purple",
-                    linestyle=":",
-                    label="왕복 오래달리기 0 기록 제외 기준",
-                )
-
             removed_count = int(removed_mask.sum())
             removed_rate = removed_count / len(values) * 100
             stats_text = (
@@ -195,13 +183,8 @@ def run(input_path: Path, output_dir: Path) -> None:
             )
         selected_columns = list(dict.fromkeys(THREE_SIGMA_COLUMNS))
 
-    # 4. 보고서에 그릴 컬럼을 정한다. 20M_RUN=0 제외 기준을 보여주기 위해 20M_RUN은 3σ 대상이 아니어도 포함한다.
+    # 4. 보고서에 그릴 컬럼은 3σ를 적용하는 컬럼과 같다.
     report_columns = list(selected_columns)
-    if (
-        SHUTTLE_RUN_20M in available_numeric_columns
-        and SHUTTLE_RUN_20M not in report_columns
-    ):
-        report_columns.append(SHUTTLE_RUN_20M)
 
     # 5. 컬럼마다 평균 ± 3표준편차 밖의 값을 표시하고, 행별 제외 사유를 기록한다.
     outlier_rows = pd.Series(False, index=df.index)
@@ -231,20 +214,10 @@ def run(input_path: Path, output_dir: Path) -> None:
                     f"(평균={mean:.2f}, 표준편차={standard_deviation:.2f})"
                 )
 
-        if column == SHUTTLE_RUN_20M:
-            column_removed |= values.eq(0)
         removed_by_column[column] = column_removed
         outlier_rows |= column_removed
 
-    # 6. 20M_RUN 기록이 0인 행도 제외한다 (허용 기준: 0 초과).
-    shuttle_zero_rows = numeric_df[SHUTTLE_RUN_20M].eq(0)
-    outlier_rows |= shuttle_zero_rows
-    for index in numeric_df.index[shuttle_zero_rows]:
-        outlier_reasons[index].append(
-            "SHUTTLE_RUN_20M=0이므로 제외 (허용 기준: 0 초과)"
-        )
-
-    # 7. 속성별 분포와 제외 구간을 PDF 보고서로 저장한다.
+    # 6. 속성별 분포와 제외 구간을 PDF 보고서로 저장한다.
     save_distribution_report(
         numeric_df,
         report_columns,
@@ -253,7 +226,7 @@ def run(input_path: Path, output_dir: Path) -> None:
         report_path,
     )
 
-    # 8. 통과 행(적용 규칙 컬럼 추가)과 제외 행(사유 컬럼 추가)을 저장한다.
+    # 7. 통과 행(적용 규칙 컬럼 추가)과 제외 행(사유 컬럼 추가)을 저장한다.
     clean_df = df.loc[~outlier_rows].copy()
     applied_rule = f"{FILTER_RULE}: {', '.join(selected_columns)}"
     clean_df["OUTLIER_FILTER_RULE"] = applied_rule
@@ -265,15 +238,14 @@ def run(input_path: Path, output_dir: Path) -> None:
     )
     outlier_df.to_csv(outlier_path, index=False, encoding="utf-8-sig")
 
-    # 9. 요약 로그
+    # 8. 요약 로그
     logger.info("3-sigma 적용 컬럼: %s", ", ".join(selected_columns))
     logger.info("속성별 제외 행 수 (한 행이 여러 속성에서 제외될 수 있음):")
     for column, removed in removed_by_column.items():
         logger.info("  %s: %s행", column, f"{int(removed.sum()):,}")
     logger.info(
-        "입력 %s: %s행 -> 통과 %s행, 제외 %s행 (%s=0 포함 %s행)",
+        "입력 %s: %s행 -> 통과 %s행, 제외 %s행",
         display_path(input_path), f"{len(df):,}", f"{len(clean_df):,}", f"{len(outlier_df):,}",
-        SHUTTLE_RUN_20M, f"{int(shuttle_zero_rows.sum()):,}",
     )
     logger.info("저장(통과): %s", display_path(clean_path))
     logger.info("저장(제외): %s", display_path(outlier_path))

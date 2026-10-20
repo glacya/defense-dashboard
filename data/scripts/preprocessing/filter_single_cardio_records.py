@@ -33,13 +33,18 @@ NUMERIC_ATTRIBUTE_COLUMNS = [
     "20M_RUN",
     "SIT_REACH",
     "HEIGHT",
-    "KG",
+    "WEIGHT",
     "BMI",
-    "BODY_FAT",
+    "BODY_FAT_PERCENTAGE",
 ]
 INTEGER_SCORE_COLUMNS = [
     "CROSS_UP",
     "20M_RUN",
+]
+# 비어 있어도 결측으로 제거하지 않는 컬럼.
+# 운동 처방은 측정값이 아니고, 본운동 단계가 없는 처방은 원본 통합 단계에서 빈칸이 되므로 결측 검사에서 뺀다.
+NULLABLE_COLUMNS = [
+    "MVM_PRSCRPTN_CN",
 ]
 
 
@@ -78,10 +83,10 @@ def run(input_path: Path, output_dir: Path) -> None:
     exactly_one_cardio = cardio_count.eq(1)
     missing_cardio = cardio_count.eq(0)
     multiple_cardio = cardio_count.gt(1)
-    # 4. 심폐 3종목을 뺀 나머지 컬럼이 모두 채워졌는지 확인한다.
-    #    MVM_PRSCRPTN_CN(운동 처방)도 포함되므로, 운동 처방만 빈 행도 결측으로 제거된다.
+    # 4. 심폐 3종목과 NULLABLE_COLUMNS(운동 처방)를 뺀 나머지 컬럼이 모두 채워졌는지 확인한다.
     other_columns = [column for column in df.columns if column not in CARDIO_COLUMNS]
-    complete_other_attributes = df[other_columns].astype("string").apply(
+    required_columns = [column for column in other_columns if column not in NULLABLE_COLUMNS]
+    complete_other_attributes = df[required_columns].astype("string").apply(
         lambda column: column.str.strip().ne("")
     ).all(axis=1)
 
@@ -99,50 +104,13 @@ def run(input_path: Path, output_dir: Path) -> None:
         & integer_scores[column].mod(1).ne(0)
         for column in INTEGER_SCORE_COLUMNS
     }
-    # 6. [진단용] 숫자 속성끼리 값이 같은 행을 표시한다.
-    #    마지막 로그의 '이상치 의심 건수'에만 쓰이고 행을 제거하지는 않는다.
-    #    AGE=BMI처럼 우연히 같은 경우도 포함되므로 실제 이상치 수가 아니다.
-    numeric_attributes = df[NUMERIC_ATTRIBUTE_COLUMNS].apply(
-        lambda column: pd.to_numeric(column.astype("string").str.strip(), errors="coerce")
-    )
-    same_value_by_attribute = {
-        column: pd.Series(False, index=df.index)
-        for column in NUMERIC_ATTRIBUTE_COLUMNS
-    }
-    for index, left_column in enumerate(NUMERIC_ATTRIBUTE_COLUMNS):
-        for right_column in NUMERIC_ATTRIBUTE_COLUMNS[index + 1 :]:
-            left_values = numeric_attributes[left_column]
-            right_values = numeric_attributes[right_column]
-            same_value = (
-                left_values.notna()
-                & right_values.notna()
-                & left_values.eq(right_values)
-            )
-            same_value_by_attribute[left_column] |= same_value
-            same_value_by_attribute[right_column] |= same_value
-    outlier_masks_by_attribute = {
-        column: mask.copy()
-        for column, mask in same_value_by_attribute.items()
-    }
-    for column, mask in decimal_score_masks.items():
-        outlier_masks_by_attribute[column] |= mask
-
     # [진단용] 컬럼별 결측 수 (로그 출력용)
     missing_by_attribute = df.astype("string").apply(
         lambda column: column.isna() | column.str.strip().eq("")
     ).sum()
 
-    # 7. CROSS_UP과 20M_RUN 값이 같은 행을 찾는다.
-    #    컬럼이 밀려 값이 복사된 오류로 보고 제거하지만, 두 값이 우연히 같은 정상 기록도 함께 제거될 수 있다.
-    same_integer_score = (
-        integer_score_present.all(axis=1)
-        & integer_scores.notna().all(axis=1)
-        & integer_scores[INTEGER_SCORE_COLUMNS[0]].eq(
-            integer_scores[INTEGER_SCORE_COLUMNS[1]]
-        )
-    )
-
-    # 8. 행마다 걸린 조건을 모두 '사유1; 사유2' 형태의 제거 사유로 기록한다.
+    # 6. 행마다 걸린 조건을 모두 '사유1; 사유2' 형태의 제거 사유로 기록한다.
+    #    CROSS_UP과 20M_RUN 값이 같은 행은 두 횟수가 우연히 같은 정상 기록일 수 있으므로 제거하지 않는다.
     removal_reasons = pd.Series("", index=df.index, dtype="string")
 
     def add_reason(mask: pd.Series, reason: str) -> None:
@@ -156,20 +124,15 @@ def run(input_path: Path, output_dir: Path) -> None:
     add_reason(~complete_other_attributes, "나머지 속성 결측")
     for column, mask in decimal_score_masks.items():
         add_reason(mask, f"{column}에 소수 기록")
-    add_reason(
-        same_integer_score,
-        f"{INTEGER_SCORE_COLUMNS[0]}와 {INTEGER_SCORE_COLUMNS[1]} 점수가 동일",
-    )
 
-    # 9. 남길 행과 제거할 행을 나눈다.
-    #    제거 행은 한 파일에만 들어가며, 우선순위는 소수 이상치 > 결측 > 기타(심폐 2개 이상, CROSS_UP=20M_RUN)다.
+    # 7. 남길 행과 제거할 행을 나눈다.
+    #    제거 행은 한 파일에만 들어가며, 우선순위는 소수 이상치 > 결측 > 기타(심폐 2개 이상)다.
     #    제거 사유 컬럼에는 우선순위와 관계없이 걸린 조건이 모두 적힌다.
     integer_outlier_rows = pd.concat(decimal_score_masks, axis=1).any(axis=1)
     keep_rows = (
         exactly_one_cardio
         & complete_other_attributes
         & ~integer_outlier_rows
-        & ~same_integer_score
     )
     retained = df.loc[keep_rows].copy()
     missing_rows = (missing_cardio | ~complete_other_attributes) & ~integer_outlier_rows
@@ -181,18 +144,13 @@ def run(input_path: Path, output_dir: Path) -> None:
     other_removed = df.loc[other_removed_rows].copy()
     other_removed["제거 사유"] = removal_reasons.loc[other_removed_rows]
 
-    # [진단용] 기타 조건으로 제거된 행이 어느 컬럼 때문인지 표시한다 (로그 출력용).
+    # [진단용] 기타 조건(심폐 2개 이상)으로 제거된 행에 어느 심폐 종목이 기록돼 있었는지 표시한다 (로그 출력용).
     other_attribute_masks = {
         column: multiple_cardio & cardio_presence[column]
         for column in CARDIO_COLUMNS
     }
-    for column in INTEGER_SCORE_COLUMNS:
-        other_attribute_masks[column] = (
-            other_attribute_masks.get(column, pd.Series(False, index=df.index))
-            | same_integer_score
-        )
 
-    # 10. 저장 후, 통과 + 제거 행 수가 입력 행 수와 같은지 검증한다.
+    # 8. 저장 후, 통과 + 제거 행 수가 입력 행 수와 같은지 검증한다.
     retained.to_csv(output_path, index=False, encoding="utf-8-sig")
     missing_removed.to_csv(missing_removed_path, index=False, encoding="utf-8-sig")
     outlier_removed.to_csv(outlier_removed_path, index=False, encoding="utf-8-sig")
@@ -208,27 +166,24 @@ def run(input_path: Path, output_dir: Path) -> None:
             "통과/결측 제거/이상치 제거/기타 제거 행 수가 원본 행 수와 일치하지 않습니다."
         )
 
-    # 11. 요약 로그
+    # 9. 요약 로그
     logger.info(
         "입력 %s: %s행 -> %s행 (결측 %s행, 정수형 소수 이상치 %s행, 기타 조건 %s행 제거)",
         display_path(input_path), f"{len(df):,}", f"{len(retained):,}",
         f"{len(missing_removed):,}", f"{len(outlier_removed):,}", f"{len(other_removed):,}",
     )
-    logger.info("기타 조건 제거 속성별 관련 행 수(속성 간 중복 집계):")
-    for column in [*CARDIO_COLUMNS, "CROSS_UP"]:
+    logger.info("기타 조건(심폐 2개 이상) 제거 행의 종목별 기록 수(종목 간 중복 집계):")
+    for column in CARDIO_COLUMNS:
         count = int((other_removed_rows & other_attribute_masks[column]).sum())
         logger.info("  %s: %s행", column, f"{count:,}")
-    logger.info("속성별 결측/이상치 수 (동일값은 의심 건수, 속성 간 중복 가능):")
-    for column in df.columns:
-        missing_count = int(missing_by_attribute[column])
-        outlier_mask = outlier_masks_by_attribute.get(column)
-        if outlier_mask is None:
-            logger.info("  %s: 결측 %s행, 이상치 진단 대상 아님", column, f"{missing_count:,}")
-        else:
-            logger.info(
-                "  %s: 결측 %s행, 이상치 %s행",
-                column, f"{missing_count:,}", f"{int(outlier_mask.sum()):,}",
-            )
+    # 심폐 3종목은 하나만 측정하는 것이 정상이라 컬럼별 결측 수는 의미가 적으므로, 행마다 기록된 개수로 보여준다.
+    logger.info("심폐 종목(%s) 기록 개수별 행 수:", "·".join(CARDIO_COLUMNS))
+    for count in range(len(CARDIO_COLUMNS) + 1):
+        logger.info("  %d개: %s행", count, f"{int(cardio_count.eq(count).sum()):,}")
+    logger.info("심폐 종목 외 속성별 결측 수 (한 행이 여러 속성에서 결측일 수 있음):")
+    for column in other_columns:
+        note = " (결측이어도 제거하지 않음)" if column in NULLABLE_COLUMNS else ""
+        logger.info("  %s: 결측 %s행%s", column, f"{int(missing_by_attribute[column]):,}", note)
     logger.info("정수형 속성 소수값 이상치 제거 수:")
     for column in INTEGER_SCORE_COLUMNS:
         logger.info("  %s: %s행", column, f"{int(decimal_score_masks[column].sum()):,}")

@@ -1,13 +1,17 @@
-"""회원별 측정 이력이 3건 이상인 경우 첫·중간·마지막 기록을 저장합니다.
+"""회원마다 측정 기록 3건을 골라 저장합니다.
 
-입력 KS_NFA_TOTAL.csv는 data_merger.py가 생성하며, 회원 식별자는 M_CODE,
+입력은 입대 후보 조건 필터의 결과(enlistment_filter/passed.csv)이며, 회원 식별자는 M_CODE,
 측정일은 MESURE_DE(YYYYMMDD) 컬럼을 사용합니다.
+측정 간격이 모두 MIN_INTERVAL_DAYS(30일) 이상인 3건 조합 중 전체 기간이 가장 길고, 두 간격이 가장 고른 조합을 고릅니다.
+고른 3건의 첫 측정과 마지막 측정이 3년 넘게 떨어진 회원은 제외합니다.
+같은 날 두 번 입력된 중복 기록은 간격이 0일이라 함께 뽑히지 않습니다.
 """
 
+import itertools
 import logging
 from pathlib import Path
-import itertools
 
+import numpy as np
 import pandas as pd
 
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
@@ -19,6 +23,7 @@ ID_COL = "M_CODE"
 DATE_COL = "MESURE_DE"
 MIN_MEASURES = 3
 MIN_INTERVAL_DAYS = 30  # 최소 측정일 간격 설정 변수
+MAX_SPAN_DAYS = 365 * 3  # 고른 3건의 첫 측정과 마지막 측정 사이 최대 기간
 _REQUIRED_COLUMNS = (ID_COL, DATE_COL)
 
 
@@ -48,11 +53,37 @@ def filter_frequent_members(
     return df.loc[valid_ids & counts.ge(min_count)].copy()
 
 
-def pick_first_middle_last(df: pd.DataFrame) -> pd.DataFrame:
-    """회원마다 날짜순 첫·중간·마지막 기록을 선택합니다.
+def select_valid_triplet(dates: np.ndarray) -> tuple[int, int, int] | None:
+    """날짜순으로 정렬된 한 회원의 측정일 배열에서 고를 3건의 위치를 반환합니다. 조건에 맞는 조합이 없으면 None입니다.
 
-    같은 날짜의 기록은 입력된 순서를 유지합니다. 측정일이 YYYYMMDD 형식이
-    아니거나 조건에 맞는 3개의 측정 기록을 확보할 수 없는 회원은 제외합니다.
+    두 간격이 모두 MIN_INTERVAL_DAYS 이상인 조합 중, 전체 기간(두 간격의 합)이 가장 길고
+    그다음으로 두 간격의 차이가 가장 작은 조합을 고릅니다.
+    """
+    if len(dates) < MIN_MEASURES:
+        return None
+    min_interval = np.timedelta64(MIN_INTERVAL_DAYS, "D")
+    candidates = []
+    for i, j, k in itertools.combinations(range(len(dates)), 3):
+        first_gap = dates[j] - dates[i]
+        second_gap = dates[k] - dates[j]
+        if first_gap >= min_interval and second_gap >= min_interval:
+            # 정렬 기준: 전체 기간이 길수록, 두 간격의 차이가 작을수록 앞(내림차순 정렬이라 차이는 음수로 둔다).
+            candidates.append((first_gap + second_gap, -abs(first_gap - second_gap), i, j, k))
+    if not candidates:
+        return None
+    _, _, best_i, best_j, best_k = max(candidates)
+    return best_i, best_j, best_k
+
+
+def pick_first_middle_last(df: pd.DataFrame) -> pd.DataFrame:
+    """회원마다 측정 기록 3건을 고릅니다. 고르는 규칙은 select_valid_triplet()을 따릅니다.
+
+    같은 날짜의 기록은 입력된 순서를 유지합니다. 조건에 맞는 3건을 고를 수 없는 회원과,
+    고른 3건의 기간이 MAX_SPAN_DAYS를 넘는 회원은 제외합니다.
+    결과에는 원래 컬럼 뒤에 정렬용 도우미 컬럼(_normalized_member_id, _measure_date)이 붙습니다.
+
+    Raises:
+        ValueError: 회원 식별자가 비어 있거나 측정일이 YYYYMMDD 형식이 아닌 행이 있을 때
     """
     _validate_required_columns(df)
     if df.empty:
@@ -78,67 +109,32 @@ def pick_first_middle_last(df: pd.DataFrame) -> pd.DataFrame:
     work["_measure_date"] = measure_dates
     work = work.sort_values(["_normalized_member_id", "_measure_date"], kind="stable")
 
-    # 회원별로 3번 이상 측정 및 설정된 간격 이상을 만족하는 최적의 3행을 찾는 함수
-    def select_valid_triplet(group_df: pd.DataFrame) -> pd.DataFrame:
-        dates = group_df["_measure_date"].values
-        n = len(dates)
-        
-        # 3번 미만 측정한 경우 모든 행 제거 (빈 DataFrame 반환)
-        if n < 3:
-            return pd.DataFrame(columns=group_df.columns)
-        
-        valid_triplets = []
-        min_interval = pd.Timedelta(days=MIN_INTERVAL_DAYS)
-        
-        # 가능한 모든 3개의 조합(i, j, k) 탐색
-        for i, j, k in itertools.combinations(range(n), 3):
-            diff1 = dates[j] - dates[i]
-            diff2 = dates[k] - dates[j]
-            
-            # 측정일 간격이 설정된 최소 일수 이상 벌어져 있는지 확인
-            if diff1 >= min_interval and diff2 >= min_interval:
-                total_span = diff1 + diff2      # 두 간격의 합 (전체 기간의 크기)
-                abs_diff = abs(diff1 - diff2)   # 두 간격의 차이 (편차)
-                
-                # 정렬 기준: 
-                # 1순위: total_span이 클수록 우선 (총 기간이 넓음)
-                # 2순위: abs_diff가 작을수록 우선 (diff1과 diff2의 차이가 적음) -> -abs_diff 사용
-                valid_triplets.append((total_span, -abs_diff, i, j, k))
-                
-        # 조건에 맞는 3행 조합이 없으면 모든 행 제거
-        if not valid_triplets:
-            return pd.DataFrame(columns=group_df.columns)
-        
-        # 총 간격이 가장 크고, 두 간격의 차이가 가장 적은 조합 채택
-        valid_triplets.sort(reverse=True)
-        _, _, best_i, best_j, best_k = valid_triplets[0]
-        
-        return group_df.iloc[[best_i, best_j, best_k]]
-
-    # 그룹별 적용
-    work = work.groupby("_normalized_member_id", sort=False).apply(select_valid_triplet)
-    
-    # apply로 인해 생긴 멀티 인덱스 정리
-    if isinstance(work.index, pd.MultiIndex):
-        work = work.reset_index(level=0, drop=True)
-    work = work.reset_index(drop=True)
+    # 회원마다 고를 3건의 행 라벨을 모은다.
+    # groupby().apply()로 행을 돌려받으면 pandas 2.2부터 그룹 컬럼 처리·빈 DataFrame 이어 붙이기에 대한
+    # FutureWarning이 나고 이후 버전에서 동작이 바뀌므로, 라벨만 모아 한 번에 고른다.
+    selected_labels = []
+    for _, group in work.groupby("_normalized_member_id", sort=False):
+        triplet = select_valid_triplet(group["_measure_date"].to_numpy())
+        if triplet is not None:
+            selected_labels.extend(group.index[list(triplet)])
+    work = work.loc[selected_labels].reset_index(drop=True)
 
     if work.empty:
         return work
 
-    # 최대/최소 측정일 차이가 3년 이내인 회원만 필터링
-    groups = work.groupby("_normalized_member_id", sort=False)
-    member_min_date = groups["_measure_date"].transform("min")
-    member_max_date = groups["_measure_date"].transform("max")
-    
-    date_diff_3years = (member_max_date - member_min_date) <= pd.Timedelta(days=365 * 3)
-    work = work[date_diff_3years]
+    # 고른 3건의 첫 측정과 마지막 측정이 MAX_SPAN_DAYS 이내인 회원만 남긴다.
+    groups = work.groupby("_normalized_member_id", sort=False)["_measure_date"]
+    span = groups.transform("max") - groups.transform("min")
+    return work[span <= pd.Timedelta(days=MAX_SPAN_DAYS)]
 
-    return work
+
 def run(input_path: Path, output_path: Path) -> None:
+    """input_path에서 3회 이상 측정한 회원마다 측정 기록 3건을 골라 output_path에 저장합니다."""
     total = load_total(input_path)
     frequent = filter_frequent_members(total)
     result = pick_first_middle_last(frequent)
+    # 새 환경에서 출력 폴더가 없어도 저장할 수 있도록 먼저 만든다.
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(output_path, index=False, encoding="utf-8-sig")
 
     total_member_ids = total[ID_COL].astype("string").str.strip().replace("", pd.NA)

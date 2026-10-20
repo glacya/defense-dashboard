@@ -45,8 +45,8 @@
 | 원본 통합 (19~24세 남성) | `intermediate/KS_NFA_MERGED.csv` | 126,097 |
 | 결측치·이상치 제거 | `intermediate/basic_refinement/passed.csv` | 124,113 |
 | 입대 후보 조건 필터 | `intermediate/enlistment_filter/passed.csv` | 123,634 |
-| 3회 이상 측정 회원의 첫·중간·마지막 기록 | `intermediate/KS_NFA_THREE_MEASURES.csv` | 23,622 (7,874명 × 3건) |
-| 최종: 측정 데이터 (`MESURE_ID` 부여) | `processed/KS_NFA_PROCESSED.csv` | 23,622 |
-| 최종: 운동 처방 데이터 (처방 1개당 1행) | `processed/KS_NFA_PRESCRIPTION.csv` | 114,662 |
+| 3회 이상 측정 회원의 기록 3건 (간격 30일 이상, 3년 이내) | `intermediate/KS_NFA_THREE_MEASURES.csv` | 10,746 (3,582명 × 3건) |
+| 최종: 측정 데이터 (`MESURE_ID` 부여) | `processed/KS_NFA_PROCESSED.csv` | 10,746 |
+| 최종: 운동 처방 데이터 (처방 1개당 1행) | `processed/KS_NFA_PRESCRIPTION.csv` | 51,729 |
 
 각 단계가 하는 일은 [scripts/README.md](scripts/README.md)를 참고하세요.

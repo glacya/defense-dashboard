@@ -1,0 +1,2 @@
+﻿evaluated_count,TP,FP,FN,TN,precision_pct,recall_pct,accuracy_pct,f1_score
+5708,983,1241,183,3301,44.2,84.31,75.05,0.5799

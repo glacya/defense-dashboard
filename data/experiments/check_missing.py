@@ -10,11 +10,15 @@ counts = df.groupby("M_CODE").size()
 print("전체 장병 수:", counts.size)
 print("전체 측정 기록 수:", len(df))
 
-# 측정 횟수별 장병 수
+
+print( counts)
+# 측정 횟수별 장병 수 
+# 동일한 측정 횟수를 가진 장병이 몇 명인지 빈도 계산
 print(counts.value_counts().sort_index())
 
 # 모든 장병이 정확히 3회 측정했는지
 print("모두 3회 측정:", counts.eq(3).all())
+print(counts.eq(3).sum())
 
 
 
@@ -23,14 +27,14 @@ print("모두 3회 측정:", counts.eq(3).all())
 counts = df.groupby("M_CODE").size()
 
 # 3개 이상인 M_CODE
-codes = counts[counts >= 3].index
+# codes = counts[counts >= 3].index
 
-# 해당 M_CODE의 전체 데이터 추출
-df_3 = df[df["M_CODE"].isin(codes)]
+# # 해당 M_CODE의 전체 데이터 추출
+# df_3 = df[df["M_CODE"].isin(codes)]
 
-print("3개 이상인 M_CODE 수:", len(codes))
-print("3개 이상인 데이터 행 수:", len(df_3))
-print("추출 데이터 크기:", df_3.shape)
+# print("3개 이상인 M_CODE 수:", len(codes))
+# print("3개 이상인 데이터 행 수:", len(df_3))
+# print("추출 데이터 크기:", df_3.shape)
 
 
 

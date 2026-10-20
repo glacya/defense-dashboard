@@ -1,10 +1,9 @@
+import argparse
 import random
+from pathlib import Path
 import numpy as np
 import pandas as pd
 
-
-# 장병 생성 수
-N_SAMPLES = 1000
 
 # 지역별 가중치 설정
 REGION_WEIGHTS = {
@@ -102,27 +101,51 @@ def assign_month_group(rank):
 
 # main: 메인 함수
 def main():
+    default_dir = (
+        Path(__file__).resolve().parents[1]
+        / 'csv_file'
+        / 'csv_data'
+        )
+    parser = argparse.ArgumentParser(
+        description='지정한 행 수의 장병 인적사항 데이터를 생성합니다.'
+        )
+    parser.add_argument(
+        '-n', '--count', type=int, default=1000,
+        help='생성할 장병 수 (기본값: 1000)',
+        )
+    parser.add_argument(
+        '-o', '--output', type=Path, default=None,
+        help='CSV 저장 경로 전체 (선택 사항)',
+        )
+    parser.add_argument(
+        '-f', '--filename', type=str, default='soldier_personal_data.csv',
+        help='저장할 CSV 파일 이름 (기본값: soldier_personal_data.csv)',
+        )
+    args = parser.parse_args()
+    if args.count < 1:
+        parser.error('--count는 1 이상의 정수여야 합니다.')
+
     assigned_regions = list(
-        np.random.choice(REGIONS, size=N_SAMPLES, p=REGION_PROBABILITIES)
-    )
+        np.random.choice(REGIONS, size=args.count, p=REGION_PROBABILITIES)
+        )
     assigned_units = [
         random.choice(UNITS_BY_REGION[region]) for region in assigned_regions
-    ]
+        ]
     assigned_ranks = list(
-        np.random.choice(RANKS, size=N_SAMPLES, p=RANK_PROBABILITIES)
-    )
+        np.random.choice(RANKS, size=args.count, p=RANK_PROBABILITIES)
+        )
 
-    service_numbers = generate_unique_service_numbers('24', N_SAMPLES)
+    service_numbers = generate_unique_service_numbers('24', args.count)
     df_personal = pd.DataFrame({
         '군번': service_numbers,
-        '이름': [get_rand_name() for _ in range(N_SAMPLES)],
+        '이름': [get_rand_name() for _ in range(args.count)],
         '지역': assigned_regions,
         '부대': assigned_units,
         '계급': assigned_ranks,
-    })
+        })
     df_personal['전후방구분'] = df_personal['지역'].apply(
         lambda region: '전방' if region in FRONT_REGIONS else '후방'
-    )
+        )
 
     print(df_personal.head())
 
@@ -132,26 +155,44 @@ def main():
         .round(1)
         .astype(str)
         + '%'
-    )
+        )
 
     region_summary = pd.DataFrame({
         '인원수(명)': df_personal['지역'].value_counts(),
         '비율(%)': (df_personal['지역'].value_counts(normalize=True) * 100).round(1),
-    }).sort_values(by='인원수(명)', ascending=False)
+        }).sort_values(by='인원수(명)', ascending=False) 
     print(region_summary[['인원수(명)', '비율(%)']])
 
     rank_summary = pd.DataFrame({
         '인원수(명)': df_personal['계급'].value_counts(),
         '비율(%)': (df_personal['계급'].value_counts(normalize=True) * 100).round(1),
-    }).reindex(RANK_ORDER)
+        }).reindex(RANK_ORDER)
     print('[계급별 인원수 및 비율 집계]')
     print(rank_summary)
 
     print('중복 군번 개수:', df_personal['군번'].duplicated().sum())
     print('동명이인 수:', df_personal['이름'].duplicated().sum())
 
-    df_personal.to_csv('soldier_personal.csv', index=False, encoding='utf-8-sig')
-    print('장병 가상 데이터 저장 완')
+    output_columns = {
+        '군번': 'SOLDIER_ID',
+        '이름': 'SOLDIER_NAME',
+        '지역': 'REGION_NAME',
+        '부대': 'UNIT_NAME',
+        '계급': 'RANK_NAME',
+        '전후방구분': 'FRONT_REAR_CLASSIFICATION',
+        }
+    # 최종 경로 결정 로직 (-o가 있으면 그 경로, 없으면 기본 폴더 + -f 파일명)
+    if args.output:
+        output_path = args.output
+    else:
+        output_path = default_dir / args.filename
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df_personal.rename(columns=output_columns).to_csv(
+        output_path, index=False, encoding='utf-8-sig'
+    )
+    print(f'장병 가상 데이터 저장 완: {output_path}')
+
 
 if __name__ == '__main__':
     main()

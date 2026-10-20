@@ -1,6 +1,6 @@
 """전처리 단계의 실행 순서와 입출력 연결을 정합니다.
 
-흐름: 원본 통합 -> 결측치·이상치 제거 -> 입대 후보 조건 필터 -> 3회 이상 측정 회원 추출 -> 최종 정의서 적용(측정·운동 처방 분리)
+흐름: 원본 통합 -> 결측치·이상치 제거 -> 입대 후보 조건 필터 -> 3회 이상 측정 회원 추출 -> 최종 정의서 적용(측정·운동 처방·처방 유형 분리)
 경로 상수는 data/scripts/paths.py에 있으며, 각 단계 모듈을 단독 실행할 때도 같은 경로를 씁니다.
 """
 
@@ -8,6 +8,7 @@ from data.scripts.paths import (
     DEFINITION_KS_NFA_FINAL,
     DEFINITION_KS_NFA_MERGED,
     DEFINITION_KS_NFA_PRESCRIPTION,
+    DEFINITION_KS_NFA_PRESCRIPTION_DETAIL,
     DEFINITION_KS_NFA_RAW,
     INTERMEDIATE_BASIC_REFINEMENT,
     INTERMEDIATE_ENLISTMENT_FILTER,
@@ -16,6 +17,7 @@ from data.scripts.paths import (
     INTERMEDIATE_THREE_MEASURES,
     PASSED_FILENAME,
     PROCESSED_FITNESS_PATH,
+    PROCESSED_PRESCRIPTION_DETAIL_PATH,
     PROCESSED_PRESCRIPTION_PATH,
     RAW_DIR,
 )
@@ -63,16 +65,18 @@ def build_steps() -> list[Step]:
             outputs={"output_path": INTERMEDIATE_THREE_MEASURES},
         ),
         Step(
-            "최종 정의서 적용 (MESURE_ID 부여, 측정·운동 처방 분리)",
+            "최종 정의서 적용 (MESURE_ID 부여, 측정·운동 처방·처방 유형 분리)",
             apply_final_definition.run,
             inputs={
                 "input_path": INTERMEDIATE_THREE_MEASURES,
                 "fitness_definition_path": DEFINITION_KS_NFA_FINAL,
                 "prescription_definition_path": DEFINITION_KS_NFA_PRESCRIPTION,
+                "prescription_detail_definition_path": DEFINITION_KS_NFA_PRESCRIPTION_DETAIL,
             },
             outputs={
                 "fitness_output_path": PROCESSED_FITNESS_PATH,
                 "prescription_output_path": PROCESSED_PRESCRIPTION_PATH,
+                "prescription_detail_output_path": PROCESSED_PRESCRIPTION_DETAIL_PATH,
             },
         ),
     ]

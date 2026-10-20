@@ -20,16 +20,43 @@
 | 파일 | 내용 |
 |---|---|
 | `config.py` | 프로젝트 전역 경로 상수. `dashboard`와 `data` 모두 경로는 여기서 import합니다. |
-| `requirements.txt` | 의존성 목록(버전 고정). 패키지를 추가하면 여기에 `==` 버전으로 적습니다. |
-| `environment.yml` | conda 환경 `kdt-project-1` 정의(Python 3.10). 패키지 목록은 `requirements.txt`를 참조합니다. |
+| `requirements.txt` | 의존성 목록(버전 고정). 로컬·CI·배포 모두 이 파일을 기준으로 설치합니다. 패키지를 추가하면 여기에 `==` 버전으로 적습니다. |
+| `environment.yml` | **로컬 전용.** conda 환경 `kdt-project-1` 정의(Python 3.10). 패키지 목록은 `requirements.txt`를 참조합니다. |
 | `pyproject.toml` | 프로젝트 설치 설정(`pip install -e .`)과 pytest 설정 |
-| `setup.ps1` | conda 환경을 새로 만들고 프로젝트를 editable 모드로 설치한 뒤 환경을 활성화합니다. 기존 환경은 삭제됩니다. |
-| `run_dashboard.ps1` | 대시보드를 실행합니다. |
-| `run_data_pipeline.ps1` | 데이터 파이프라인을 실행합니다. 인자 없이 실행하면 전체, `preprocessing`·`synthesis`·`analysis`를 주면 그 영역만 실행합니다. |
-| `test.ps1` | 전체 테스트를 실행합니다. 인자는 pytest에 그대로 전달됩니다. |
+| `setup.ps1` | **로컬 전용.** conda 환경을 새로 만들고 프로젝트를 editable 모드로 설치한 뒤 환경을 활성화합니다. 기존 환경은 삭제됩니다. |
+| `run_dashboard.ps1` | **로컬 전용.** 대시보드를 실행합니다. |
+| `run_data_pipeline.ps1` | **로컬 전용.** 데이터 파이프라인을 실행합니다. 인자 없이 실행하면 전체, `preprocessing`·`synthesis`·`analysis`를 주면 그 영역만 실행합니다. |
+| `test.ps1` | **로컬 전용.** 전체 테스트를 실행합니다. 인자는 pytest에 그대로 전달됩니다. |
+| `ensure_env.ps1` | **로컬 전용.** `run_*.ps1`과 `test.ps1`이 맨 앞에서 불러오는 공통 스크립트. `kdt-project-1` 환경이 아니면 활성화하고, 환경이 아예 없으면 `setup.ps1`로 설치합니다. 직접 실행하지 않습니다. |
 | `.gitignore` | Git에서 제외할 파일. 원본·중간·결과 데이터는 올리지 않습니다. |
 
-## 시작하기
+## 실행 환경: 로컬 개발과 CI·배포
+
+**conda는 로컬 개발(Windows)에서만 씁니다.** CI와 추후 배포에서는 conda를 쓰지 않고, Python 3.10에 `requirements.txt`를 pip로 설치합니다.
+
+| 구분 | 환경 | 설치·실행 |
+|---|---|---|
+| 로컬 개발 | conda 환경 `kdt-project-1` (`environment.yml`) | `*.ps1` 스크립트 (아래 [시작하기](#시작하기-로컬-개발)) |
+| CI (GitHub Actions) | Ubuntu·Windows의 Python 3.10 | `.github/workflows/test.yml`에서 pip로 설치 후 `pytest` |
+| 배포 (예정) | Python 3.10 | CI와 같은 pip 방식 |
+
+conda 없이 실행할 때는 Python 3.10에서 프로젝트 루트 기준으로 다음과 같이 합니다. CI가 하는 일과 같습니다.
+
+```bash
+python -m pip install -r requirements.txt
+python -m pip install -e .          # 반드시 -e(editable)로 설치해야 config.py의 경로가 프로젝트 폴더를 가리킵니다.
+python -m pytest                    # 테스트
+python data/scripts/main.py         # 데이터 파이프라인
+python -m streamlit run dashboard/app.py   # 대시보드
+```
+
+이 때문에 다음을 지켜 주세요.
+
+- **패키지는 `requirements.txt`에만 추가합니다.** `environment.yml`에 conda 패키지를 직접 넣으면 로컬에서만 설치되고 CI·배포에서는 빠집니다.
+- **코드는 conda에 기대지 않습니다.** conda 명령이나 conda 환경 경로를 코드에서 쓰지 않습니다. `*.ps1` 스크립트는 로컬 편의용이므로 CI·배포에서 부르지 않습니다.
+- 문서의 `conda run ...`·`conda activate ...` 예시는 로컬 기준입니다. 다른 환경에서는 같은 `python ...` 명령을 그대로 실행하면 됩니다.
+
+## 시작하기 (로컬 개발)
 
 Windows PowerShell 기준이며, 모든 명령은 프로젝트 루트에서 실행합니다.
 
@@ -37,16 +64,13 @@ Windows PowerShell 기준이며, 모든 명령은 프로젝트 루트에서 실�
    ```powershell
    conda init powershell
    ```
-2. 환경을 만들고 프로젝트를 설치합니다. 끝나면 `kdt-project-1` 환경이 활성화된 상태가 됩니다.
+2. 스크립트를 실행합니다. `run_*.ps1`과 `test.ps1`은 `kdt-project-1` 환경이 아니면 스스로 활성화하고, 환경이 아직 없으면 `setup.ps1`로 설치한 뒤 실행합니다. 활성화 결과는 그 터미널에 남습니다.
    ```powershell
-   .\setup.ps1
-   ```
-3. 이후 새 터미널에서는 환경을 먼저 활성화하고 스크립트를 실행합니다. `run_*.ps1`과 `test.ps1`은 환경이 활성화되어 있지 않으면 실행하지 않습니다.
-   ```powershell
-   conda activate kdt-project-1
    .\run_data_pipeline.ps1   # 데이터 파이프라인 (원본 데이터 준비는 data/README.md 참고)
    .\run_dashboard.ps1       # 대시보드
    .\test.ps1                # 테스트
    ```
+   - 환경은 있는데 활성화에 실패하면(대개 1단계를 하지 않은 경우) 기존 환경을 지우지 않도록 설치하지 않고 멈춥니다.
+   - 환경을 처음부터 다시 만들고 싶으면 `.\setup.ps1`을 직접 실행합니다. 기존 환경을 지우고 새로 만듭니다.
 
 > 스크립트 실행이 막히면(`이 시스템에서 스크립트를 실행할 수 없으므로…`) 현재 사용자에 한해 실행 정책을 바꿉니다: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`

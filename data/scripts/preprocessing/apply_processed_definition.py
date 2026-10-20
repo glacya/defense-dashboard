@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from data.scripts.logging_setup import display_path, setup_logging
+from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import (
     DEFINITION_KS_NFA_PRESCRIPTION,
     DEFINITION_KS_NFA_PROCESSED,
@@ -163,7 +163,7 @@ def run(
 
 def main() -> None:
     """data/scripts/paths.py의 기본 경로로 이 단계만 실행합니다."""
-    setup_logging(Path(__file__).stem)
+    setup_logging(caller_name(__file__))
     run(
         INTERMEDIATE_THREE_MEASURES,
         DEFINITION_KS_NFA_PROCESSED,

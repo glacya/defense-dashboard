@@ -1,4 +1,7 @@
-"""심폐지구력 종목(트레드밀·스텝검사·20m 왕복 오래달리기) 중 정확히 하나만 기록된 행만 남깁니다.
+"""통합 측정 데이터에서 결측치와 이상치가 있는 행을 제거합니다.
+
+심폐지구력 종목(트레드밀·스텝검사·20m 왕복 오래달리기)은 정확히 하나만 기록된 행만 남기고,
+나머지 측정 컬럼은 빈칸과 정수형 컬럼의 소수 기록을 검사합니다.
 
 제거한 행은 사유를 붙여 결측·정수형 소수 이상치·기타 조건의 세 파일로 나눠 저장합니다.
 """
@@ -9,8 +12,8 @@ from pathlib import Path
 import pandas as pd
 
 from dashboard.py.loader import load_csv_data
-from data.scripts.logging_setup import display_path, setup_logging
-from data.scripts.paths import INTERMEDIATE_CARDIO_FILTER, INTERMEDIATE_MERGED, PASSED_FILENAME
+from data.scripts.logging_setup import caller_name, display_path, setup_logging
+from data.scripts.paths import INTERMEDIATE_BASIC_REFINEMENT, INTERMEDIATE_MERGED, PASSED_FILENAME
 
 logger = logging.getLogger(__name__)
 
@@ -195,8 +198,8 @@ def run(input_path: Path, output_dir: Path) -> None:
 
 def main() -> None:
     """data/scripts/paths.py의 기본 경로로 이 단계만 실행합니다."""
-    setup_logging(Path(__file__).stem)
-    run(INTERMEDIATE_MERGED, INTERMEDIATE_CARDIO_FILTER)
+    setup_logging(caller_name(__file__))
+    run(INTERMEDIATE_MERGED, INTERMEDIATE_BASIC_REFINEMENT)
 
 
 if __name__ == "__main__":

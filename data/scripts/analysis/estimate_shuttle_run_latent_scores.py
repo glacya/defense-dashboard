@@ -16,8 +16,8 @@ from scipy.special import log_ndtr
 from scipy.stats import norm, truncnorm
 
 from dashboard.py.loader import load_csv_data
-from data.scripts.logging_setup import display_path, setup_logging
-from data.scripts.paths import INTERMEDIATE_CARDIO_FILTER, INTERMEDIATE_SHUTTLE_RUN, PASSED_FILENAME
+from data.scripts.logging_setup import caller_name, display_path, setup_logging
+from data.scripts.paths import INTERMEDIATE_BASIC_REFINEMENT, INTERMEDIATE_SHUTTLE_RUN, PASSED_FILENAME
 
 logger = logging.getLogger(__name__)
 
@@ -561,8 +561,8 @@ def run(input_path: Path, output_dir: Path) -> None:
 
 def main() -> None:
     """data/scripts/paths.py의 기본 경로로 이 단계만 실행합니다."""
-    setup_logging(Path(__file__).stem)
-    run(INTERMEDIATE_CARDIO_FILTER / PASSED_FILENAME, INTERMEDIATE_SHUTTLE_RUN)
+    setup_logging(caller_name(__file__))
+    run(INTERMEDIATE_BASIC_REFINEMENT / PASSED_FILENAME, INTERMEDIATE_SHUTTLE_RUN)
 
 
 if __name__ == "__main__":

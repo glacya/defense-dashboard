@@ -1,6 +1,6 @@
 """실행: streamlit run data/experiments/위험장병식별with변동률basic.py
 
-종목별체력미달자변화률2의 원본 데이터 로딩과 3등급 판정을 재사용한다.
+종목별체력미달자_회차별변화율의 원본 데이터 로딩과 3등급 판정을 재사용한다.
 """
 from pathlib import Path
 import sys
@@ -10,7 +10,7 @@ import streamlit as st
 import altair as alt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from 종목별체력미달자변화률2 import analyze, AREAS, MEASURES
+from 종목별체력미달자_회차별변화율 import analyze, AREAS, MEASURES
 
 
 def aggregate_risk(detail, complete_only=True):
@@ -54,7 +54,7 @@ def main():
         st.caption(f'비교 대상 {target.M_CODE.nunique():,}명 · 판정불가 회차가 있어 제외한 장병 {excluded:,}명')
     else:
         st.warning('회차별 판정가능 인원이 다를 수 있습니다. 판정불가는 미달 개수 집계에서 제외합니다.')
-    st.caption('심폐는 TRAD 42·STEP 42·20M_RUN 41 중 실제 측정한 검사 기준으로 하나의 종목으로 판정합니다. 기준값과 같으면 충족입니다.')
+    st.caption('심폐는 통합 CARDIO(VO₂max) 값이 42 미만이면 미달로 판정합니다. 기준값과 같으면 충족입니다.')
     with st.expander('적용 3등급 기준표'):
         st.dataframe(standards.loc[standards.exercise.isin(MEASURES)], hide_index=True)
 

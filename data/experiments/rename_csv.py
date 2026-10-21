@@ -1,8 +1,10 @@
 import os
 import pandas as pd
 import re
+from pathlib import Path
 
-folder_path = 'csv_file'
+ROOT = Path(__file__).resolve().parents[2]
+folder_path = ROOT / 'data/raw'
 all_dfs = []
 
 # 12개 파일 탐색 및 MONTH 컬럼 추가
@@ -40,7 +42,8 @@ if all_dfs:
         integrated_df = integrated_df.sort_values(by=['CNTER_NM', 'MONTH']).reset_index(drop=True)
     
     # 통합 파일 저장 (Oracle SQL Developer 등에서 임포트하기 편리하도록 인코딩 설정)
-    output_path = 'integrated_fitness_data1.csv'
+    output_path = ROOT / 'data/experiments/results/integrated_fitness_data1.csv'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     integrated_df.to_csv(output_path, index=False, encoding='cp949')
     print(f"\n🎉 통합 완료! 파일이 생성되었습니다: {output_path}")
 else:

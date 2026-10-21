@@ -1,9 +1,7 @@
 ﻿sex,age_min,age_max,exercise,description,rule,min_value,max_value,unit
-M,19,24,REL_GRIP,상대악력,min_inclusive,51.8,,%
-M,19,24,CROSS_UP,교차윗몸일으키기,min_inclusive,42,,회
-M,19,24,TRAD,트레드밀,min_inclusive,42.0,,ml/kg/min
-M,19,24,STEP,스텝검사,min_inclusive,42.0,,ml/kg/min
-M,19,24,20M_RUN,20m 왕복오래달리기,min_inclusive,41,,회
-M,19,24,SIT_REACH,앉아윗몸앞으로굽히기,min_inclusive,6.1,,cm
+M,19,24,STRENGTH,근력,min_inclusive,51.8,,%
+M,19,24,ENDURANCE,근지구력,min_inclusive,42,,회
+M,19,24,CARDIO,심폐지구력(VO₂max),min_inclusive,42,,ml/kg/min
+M,19,24,FLEXIBILITY,유연성,min_inclusive,6.1,,cm
 M,19,24,BMI,BMI,min_inclusive_max_exclusive,18.5,25,
-M,19,24,BODY_FAT,체지방률,min_exclusive_max_exclusive,7,27,%
+M,19,24,BODY_FAT_PERCENTAGE,체지방률,min_exclusive_max_exclusive,7,27,%

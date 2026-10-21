@@ -130,6 +130,7 @@ def run(
     # 3. 측정 데이터: 정의서 컬럼만 정의서 순서대로 남겨 저장한다.
     fitness = select_definition_columns(df, fitness_columns, fitness_definition_path.name)
     dropped_columns = [column for column in df.columns if column not in fitness_columns]
+    add_columns = [MESURE_ID_COLUMN, MESURE_DE_COLUMN, MEMBER_ID_COLUMN, MESURE_SEQ_NO_COLUMN]
     fitness_output_path.parent.mkdir(parents=True, exist_ok=True)
     fitness.to_csv(fitness_output_path, index=False, encoding="utf-8-sig")
 
@@ -149,8 +150,10 @@ def run(
         f"{len(df):,}", MESURE_DE_COLUMN, MEMBER_ID_COLUMN, MESURE_SEQ_NO_COLUMN,
     )
     logger.info(
-        "측정 데이터: 컬럼 %d개, 정의서에 없어 제외한 컬럼: %s",
-        len(fitness_columns), ", ".join(dropped_columns) if dropped_columns else "(없음)",
+    "측정 데이터: 컬럼 %d개, 정의서 변동 사항: %s, %s",
+    len(fitness_columns),
+    ", ".join(dropped_columns) if dropped_columns else "(없음)",
+    "정의서에 추가 컬럼 없음" if not add_columns else f"정의서에 추가된 컬럼: {', '.join(add_columns)}",
     )
     logger.info(
         "운동 처방 데이터: %s행 (측정 %s건에서 분리, 처방이 비어 있는 측정 %s건)",

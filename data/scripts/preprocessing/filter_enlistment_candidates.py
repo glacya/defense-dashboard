@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from data.scripts.logging_setup import display_path, setup_logging
-from data.scripts.paths import INTERMEDIATE_CARDIO_FILTER, INTERMEDIATE_ENLISTMENT_FILTER, PASSED_FILENAME
+from data.scripts.logging_setup import caller_name, display_path, setup_logging
+from data.scripts.paths import INTERMEDIATE_BASIC_REFINEMENT, INTERMEDIATE_ENLISTMENT_FILTER, PASSED_FILENAME
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +16,9 @@ REMOVED_OUTLIER_FILENAME = "removed_outlier.csv"
 
 AGE_COLUMN = "AGE"
 HEIGHT_COLUMN = "HEIGHT"
-WEIGHT_COLUMN = "KG"
+WEIGHT_COLUMN = "WEIGHT"
 BMI_COLUMN = "BMI"
-BODY_FAT_COLUMN = "BODY_FAT"
+BODY_FAT_COLUMN = "BODY_FAT_PERCENTAGE"
 AGE_MIN = 19
 AGE_MAX = 24
 HEIGHT_MIN_CM = 159
@@ -185,8 +185,8 @@ def run(input_path: Path, output_dir: Path) -> None:
 
 def main() -> None:
     """data/scripts/paths.py의 기본 경로로 이 단계만 실행합니다."""
-    setup_logging(Path(__file__).stem)
-    run(INTERMEDIATE_CARDIO_FILTER / PASSED_FILENAME, INTERMEDIATE_ENLISTMENT_FILTER)
+    setup_logging(caller_name(__file__))
+    run(INTERMEDIATE_BASIC_REFINEMENT / PASSED_FILENAME, INTERMEDIATE_ENLISTMENT_FILTER)
 
 
 if __name__ == "__main__":

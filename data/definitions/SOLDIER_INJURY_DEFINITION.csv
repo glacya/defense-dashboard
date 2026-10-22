@@ -4,5 +4,5 @@
 3,NAME,이름,VARCHAR,10,N,Y,장병 부상 기록 데이터
 4,INJURY_CATEGORY,부상대분류,VARCHAR,10,N,Y,장병 부상 기록 데이터
 5,INJURY_LOCATION,부상세부부위,VARCHAR,20,N,Y,장병 부상 기록 데이터
-6,PREVENTABLE_YN,예방가능여부,BOOLEAN,,N,Y,장병 부상 기록 데이터
+6,PREVENTABLE_YN,예방가능여부,VARCHAR,,N,Y,장병 부상 기록 데이터
 7,SEVERITY,부상심각도,VARCHAR,10,N,Y,장병 부상 기록 데이터

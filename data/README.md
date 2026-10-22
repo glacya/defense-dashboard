@@ -20,7 +20,7 @@
 | 폴더 | 내용 | Git |
 |---|---|---|
 | `raw/` | 원본 데이터 (`KS_NFA_FTNESS_MESURE_*.csv` 55개만) | 제외 |
-| `definitions/` | 컬럼 정의서 (원본: `KS_NFA_RAW_DEFINITION.csv`, 통합: `KS_NFA_MERGED_DEFINITION.csv`, 최종: `KS_NFA_FINAL_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DETAIL_DEFINITION.csv`) | 추적 |
+| `definitions/` | 컬럼 정의서 (원본: `KS_NFA_RAW_DEFINITION.csv`, 통합: `KS_NFA_MERGED_DEFINITION.csv`, 최종: `KS_NFA_FINAL_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DETAIL_DEFINITION.csv`, 가상 장병 연계: `SOLDIER_PERSONAL_INJURY_RISK_DEFINITION.csv`) | 추적 |
 | `intermediate/` | 전처리 중간 결과물과 단계별 제거 행 | 제외 |
 | `processed/` | 전처리 최종 결과물 | 제외 |
 | `samples/` | 샘플 데이터 (100행 내외). 데이터 형태를 예시로 볼 때 사용 | 추적 |

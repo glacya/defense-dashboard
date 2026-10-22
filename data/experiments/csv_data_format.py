@@ -4,11 +4,15 @@ import json
 import os
 import shutil
 
-from config import (
+from experiment_settings import (
     CSV_DATA_DIR, CSV_DEFINE_DIR, CSV_FINAL_DIR, GEMINI_API_KEY, SPECS_JSON_PATH,
+    definition_path,
 )
 
-from google import genai
+try:
+    from google import genai
+except ImportError:
+    genai = None
 
 class ColumnStandardizerPipeline:
     def __init__(self, db_name):
@@ -18,13 +22,14 @@ class ColumnStandardizerPipeline:
         self.complete_dir = CSV_FINAL_DIR
         self.specs_path = SPECS_JSON_PATH
         
-        self.define_path = self.define_dir / f"{db_name}_define.csv"
+        self.define_path = definition_path(db_name)
         self.data_path = self.data_dir / f"{db_name}.csv"
         
         self.df_define = None
         self.df_data = None
         
-        self.client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+        self.client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY and genai is not None else None
+        self.complete_dir.mkdir(parents=True, exist_ok=True)
 
     def load_standard_specs(self, target_korean_attr):
         """

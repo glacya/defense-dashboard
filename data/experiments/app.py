@@ -1,5 +1,5 @@
 import streamlit as st
-from config import CSV_DATA_DIR, CSV_FINAL_DIR
+from experiment_settings import CSV_DATA_DIR, CSV_FINAL_DIR
 from csv_data_format import ColumnStandardizerPipeline
 
 
@@ -82,7 +82,7 @@ if 'loaded' in st.session_state and st.session_state['loaded']:
                     st.error(f"저장하지 못했습니다: {error}")
         with col2:
             st.markdown("**[원본 데이터셋 (.csv)]**")
-            st.dataframe(active_pipeline.df_data, use_container_width=True)
+            st.dataframe(active_pipeline.df_data, width='stretch')
 
     with tab2:
         st.subheader("⚙️ 표준 규격 리스트 관리 (standard_specs.json)")
@@ -147,7 +147,7 @@ if 'loaded' in st.session_state and st.session_state['loaded']:
                 if result_df is not None:
                     st.success("데이터 정제 및 병합이 완료되었습니다!")
                     st.markdown("**[정제 및 집계된 최종 데이터]**")
-                    st.dataframe(result_df, use_container_width=True)
+                    st.dataframe(result_df, width='stretch')
                     
                     # 다운로드 버튼 제공
                     csv_data = result_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')

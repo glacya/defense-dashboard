@@ -1,4 +1,4 @@
-"""실행: python -m streamlit run data/experiments/bmi별미달여부_카이제곱.py"""
+﻿"""실행: python -m streamlit run data/experiments/bmi별미달여부_카이제곱.py"""
 from pathlib import Path
 import sys
 
@@ -9,7 +9,7 @@ from statsmodels.stats.multitest import multipletests
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from data.experiments.분석_bmi별 import analyze_bmi, BMI_GROUPS
+from data.experiments.분석_bmi별 import analyze_bmi, BMI_GROUPS, BMI_DESCRIPTION
 from 종목별체력미달자_회차별변화율 import STANDARD_PATH, AREAS
 
 
@@ -67,7 +67,7 @@ def main():
         st.error(str(exc))
         st.stop()
     st.subheader('BMI 구간과 대상 인원')
-    st.info('첫 측정 BMI를 삼분위로 나눈 낮음·중간·높음 그룹입니다. BMI ANOVA와 같은 구간이며, 의학적 저체중·정상·비만 분류는 아닙니다.')
+    st.info(BMI_DESCRIPTION)
     st.dataframe(boundaries, hide_index=True)
     st.caption(f'BMI 결측·0 이하 제외: {excluded:,}명. 장병당 첫 측정 1건만 사용합니다.')
     st.subheader('종목별 검정 결과')

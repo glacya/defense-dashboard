@@ -1,6 +1,6 @@
-"""실행: python -m streamlit run data/experiments/bmi별분석.py
+﻿"""실행: python -m streamlit run data/experiments/bmi별분석.py
 
-장병별 첫 측정을 BMI 삼분위로 나눠 인원과 항목별 기술통계를 비교한다.
+장병별 첫 측정을 BMI 고정 구간으로 나눠 인원과 항목별 기술통계를 비교한다.
 """
 from pathlib import Path
 import sys
@@ -12,7 +12,10 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from 분석_연령별 import analyze_age, METRICS, DATA_PATH
 
-BMI_GROUPS = ['낮음', '중간', '높음']
+BMI_GROUPS = ['낮음', '보통', '높음']
+BMI_BINS = [0, 18.5, 25, np.inf]
+BMI_DESCRIPTION = '대한비만학회 성인 BMI 기준을 통합한 분석용 3그룹: 낮음=저체중(BMI<18.5), 보통=정상·비만전단계(18.5≤BMI<25), 높음=1·2·3단계 비만(BMI≥25). 보통에는 비만전단계가 포함되므로 정상체중만을 뜻하지 않습니다.'
+BMI_SOURCE = 'https://general.kosso.or.kr/html/user/core/view/reaction/main/kosso/inc/data/guideline2022_vol8.pdf'
 
 
 def analyze_bmi():
@@ -22,13 +25,10 @@ def analyze_bmi():
     first = first.loc[first.BMI.notna() & first.BMI.gt(0)].copy()
     if first.empty:
         raise ValueError('분석 가능한 BMI가 없습니다.')
-    low, high = first.BMI.quantile([1/3, 2/3]).to_numpy()
-    if not np.isfinite([low, high]).all() or low >= high:
-        raise ValueError('BMI 삼분위 경계를 만들 수 없습니다.')
-    first['BMI그룹'] = pd.cut(first.BMI, [-np.inf, low, high, np.inf], labels=BMI_GROUPS)
+    first['BMI그룹'] = pd.cut(first.BMI, BMI_BINS, labels=BMI_GROUPS, right=False)
     counts = first.groupby('BMI그룹', observed=False).size().reindex(BMI_GROUPS)
     people = pd.DataFrame({'BMI그룹': BMI_GROUPS,
-                           '구간': [f'BMI ≤ {low:.6g}', f'{low:.6g} < BMI ≤ {high:.6g}', f'BMI > {high:.6g}'],
+                           '구간': ['BMI < 18.5', '18.5 ≤ BMI < 25', 'BMI ≥ 25'],
                            '장병 수': counts.to_numpy()})
     people['구성비(%)'] = people['장병 수']/len(first)*100
     rows = []
@@ -51,7 +51,8 @@ def main():
     except (ValueError, OSError, KeyError) as exc:
         st.error(str(exc))
         st.stop()
-    st.info('첫 측정 BMI의 33.3·66.7 백분위수로 낮음·중간·높음 그룹을 나눕니다. 기존 BMI ANOVA와 같은 기준이며, 저체중·정상·비만의 의학적 분류가 아닙니다. 같은 BMI는 같은 그룹에 배정하므로 인원은 정확히 같지 않을 수 있습니다.')
+    st.info(BMI_DESCRIPTION)
+    st.caption(f'분류 근거: {BMI_SOURCE}')
     st.caption('전처리에서 선정된 대상자 안에서 분석합니다. 같은 날짜는 원본 행 순서로 첫 측정을 정하며, BMI 결측·0 이하 값은 제외합니다.')
     left, right = st.columns(2)
     left.metric('분석 대상 고유 장병', f'{len(first):,}명')

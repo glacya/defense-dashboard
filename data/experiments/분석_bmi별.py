@@ -76,6 +76,35 @@ def main():
         st.download_button(f'{label} CSV 다운로드', frame.to_csv(index=False).encode('utf-8-sig'),
                            file_name=f'bmi별_{name}.csv', mime='text/csv')
 
+    st.subheader('분석결과 요약')
+    st.write(f'장병 {len(first):,}명의 첫 측정값을 BMI 낮음·보통·높음 그룹으로 나누어 '
+             '체력 4종목과 BMI·체지방률, 총 6개 항목을 비교했습니다.')
+    for col, label in METRICS.items():
+        values = stats.loc[stats['컬럼'].eq(col)].dropna(subset=['평균'])
+        if values.empty:
+            st.write(f'- {label}: 유효한 측정값이 없어 평균을 비교할 수 없습니다.')
+            continue
+        low, high = values['평균'].min(), values['평균'].max()
+        low_groups = '·'.join(values.loc[values['평균'].eq(low), 'BMI그룹'].astype(str))
+        high_groups = '·'.join(values.loc[values['평균'].eq(high), 'BMI그룹'].astype(str))
+        if low == high:
+            st.write(f'- {label}: 측정값이 있는 모든 그룹의 평균이 {low:.2f}로 같습니다.')
+        else:
+            st.write(f'- {label}: BMI {high_groups} 그룹의 평균이 가장 높고({high:.2f}), '
+                     f'BMI {low_groups} 그룹의 평균이 가장 낮습니다({low:.2f}).')
+    st.caption('관측 평균을 비교한 결과입니다. 평균이 높다는 것이 모든 항목에서 더 좋은 상태를 뜻하지 않으며, '
+               '그룹별 인원과 표준편차도 함께 확인해야 합니다. BMI 자체의 평균 차이는 그룹 분류 기준에 따른 것입니다. '
+               '체력 평균 차이의 통계적 유의성은 아노바_bmi.py에서 확인하세요.')
+
+    st.subheader('분석의 의미')
+    st.write('이 분석은 BMI 구간에 따라 체력 4종목과 체지방률의 평균이 어떻게 다른지 확인하는 기초 분석입니다. '
+             '어떤 그룹에서 어떤 체력 항목을 더 살펴볼 필요가 있는지 파악하는 데 활용합니다. '
+             'BMI가 높다고 모든 체력 항목이 같은 방향으로 달라지는 것은 아니므로 항목별로 해석해야 합니다.')
+    st.write('그룹 평균만으로 개인의 체력이나 건강 상태를 판단할 수는 없습니다. '
+             '특히 상대악력·체중당 심폐값과 BMI에는 체중이 공통으로 관여하므로, '
+             '평균 차이를 BMI의 영향이나 체중 감량의 효과로 단정하지 않아야 합니다. '
+             '관리 대상은 BMI와 함께 실제 측정값·미달 종목을 확인해 정해야 합니다.')
+
 
 if __name__ == '__main__':
     main()

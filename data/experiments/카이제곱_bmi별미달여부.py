@@ -1,4 +1,4 @@
-﻿"""실행: python -m streamlit run data/experiments/bmi별미달여부_카이제곱.py"""
+"""실행: python -m streamlit run data/experiments/bmi별미달여부_카이제곱.py"""
 from pathlib import Path
 import sys
 

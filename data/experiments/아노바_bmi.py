@@ -112,7 +112,7 @@ def main():
         st.error(str(exc))
         st.stop()
     st.subheader('BMI 구간 및 분석 대상')
-    st.caption(f'첫 측정 BMI의 33.3·66.7 백분위수로 나눕니다. 저체중·정상·비만 같은 의학적 분류가 아닙니다. 같은 BMI는 같은 그룹에 배정하여 인원이 정확히 같지 않을 수 있습니다. BMI 결측·0 이하 제외: {excluded:,}명.')
+    st.caption(f'{BMI_DESCRIPTION} 첫 측정 BMI로 분류하며, BMI 결측·0 이하 제외: {excluded:,}명.')
     st.dataframe(boundaries, hide_index=True)
     st.subheader('종목별 ANOVA 결과')
     st.dataframe(results, hide_index=True, column_config={

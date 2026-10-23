@@ -1,4 +1,4 @@
-"""실행: python -m streamlit run data/experiments/t검정_독립표본_BMI별근력비교.py"""
+﻿"""실행: python -m streamlit run data/experiments/t검정_독립표본_BMI별근력비교.py"""
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -42,7 +42,7 @@ def main():
         st.error(str(exc))
         st.stop()
     st.dataframe(boundaries, hide_index=True)
-    st.caption(f'첫 측정 BMI 삼분위의 낮음·높음만 비교하며 중간 집단은 제외합니다. 의학적 분류가 아닙니다. BMI 결측·0 이하 제외 {excluded}명. 장병별 첫 측정으로 두 집단의 사람이 겹치지 않습니다.')
+    st.caption(f'첫 측정 BMI 낮음(<18.5)·높음(≥25)을 비교하며 보통(18.5 이상~25 미만)은 제외합니다. 대한비만학회 기준을 통합한 분석용 분류입니다. BMI 결측·0 이하 제외 {excluded}명. 장병별 첫 측정으로 두 집단의 사람이 겹치지 않습니다.')
     row = result.iloc[0]
     st.info(f"Levene p={row['Levene_p값']:.3e}: 이 화면의 선택 규칙에 따라 {row['적용검정']}을 적용합니다. p≥0.05이면 등분산 Student, p<0.05이면 Welch입니다. Levene 비유의성이 등분산의 증명은 아닙니다.")
     left, middle, right = st.columns(3)

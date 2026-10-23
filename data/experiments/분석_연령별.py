@@ -13,7 +13,7 @@ METRICS = {
     'STRENGTH': '상대악력(%)', 'ENDURANCE': '교차윗몸일으키기(회)',
     'FLEXIBILITY': '앉아윗몸앞으로굽히기(cm)',
     'CARDIO': '심폐지구력(VO₂max, mL/kg/min)',
-    'HEIGHT': '키(cm)', 'WEIGHT': '체중(kg)', 'BMI': 'BMI', 'BODY_FAT_PERCENTAGE': '체지방률(%)',
+    'BMI': 'BMI', 'BODY_FAT_PERCENTAGE': '체지방률(%)',
 }
 
 
@@ -87,6 +87,31 @@ def main():
                        file_name='연령별_인원.csv', mime='text/csv')
     st.download_button('연령별 평균·표준편차 CSV 다운로드', stats.to_csv(index=False).encode('utf-8-sig'),
                        file_name='연령별_기술통계.csv', mime='text/csv')
+
+    st.subheader('분석결과 요약')
+    st.write(f"첫 측정 당시 19~24세인 장병 {people['장병 수'].sum():,}명을 대상으로 "
+             '체력 4종목과 BMI·체지방률, 총 6개 항목을 비교했습니다.')
+    for col, label in METRICS.items():
+        values = stats.loc[stats['컬럼'].eq(col)].dropna(subset=['평균'])
+        if values.empty:
+            st.write(f'- {label}: 유효한 측정값이 없어 평균을 비교할 수 없습니다.')
+            continue
+        low, high = values['평균'].min(), values['평균'].max()
+        low_ages = '·'.join(values.loc[values['평균'].eq(low), '연령'].astype(str))
+        high_ages = '·'.join(values.loc[values['평균'].eq(high), '연령'].astype(str))
+        if low == high:
+            st.write(f'- {label}: 측정값이 있는 모든 연령의 평균이 {low:.2f}로 같습니다.')
+        else:
+            st.write(f'- {label}: {high_ages}세 평균이 가장 높고({high:.2f}), '
+                     f'{low_ages}세 평균이 가장 낮습니다({low:.2f}).')
+    st.caption('관측 평균을 비교한 결과입니다. 평균이 높다는 것이 모든 항목에서 더 좋은 상태를 뜻하지 않으며, '
+               '연령별 인원과 표준편차도 함께 확인해야 합니다. 차이의 통계적 유의성은 아노바_연령.py에서 확인하세요.')
+
+    st.subheader('분석의 의미')
+    st.write('이 분석은 19~24세 장병의 체력 4종목과 BMI·체지방률이 연령별로 어떤 수준인지 '
+             '확인하는 기초 분석입니다. 연령별 평균과 개인 간 차이를 살펴보고, 추가로 확인할 항목을 찾는 데 활용합니다.')
+    st.write('평균이 높은 연령의 장병이 모두 체력이 좋은 것은 아니며, 나이가 체력 차이의 원인이라는 뜻도 아닙니다. '
+             '연령만으로 관리 대상을 정하기보다 개인별 실제 측정값과 미달 종목을 함께 확인해야 합니다.')
 
 
 if __name__ == '__main__':

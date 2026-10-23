@@ -10,11 +10,12 @@
 | `pipeline.py` | 세 영역이 함께 쓰는 `Step`과 실행기(`run_steps`) |
 | `paths.py` | 입출력 경로 상수. 파이프라인과 각 모듈의 단독 실행이 같은 경로를 씁니다. |
 | `logging_setup.py` | data 영역 전용 로그 설정. dashboard 쪽 로그와 섞이지 않습니다. |
+| `utils.py` | 여러 모듈이 함께 쓰는 CSV 읽기·쓰기, 정의서 컬럼 고르기, 명령줄 인자 타입 |
 | `preprocessing/` | 전처리 단계 모듈. 실행 순서는 `preprocessing/pipeline.py` |
 | `analysis/` | 데이터를 바꾸지 않고 통계·탐색 결과만 내는 분석 스크립트. 실행 목록은 `analysis/pipeline.py` |
-| `synthesis/` | 가상 장병 생성, 체력 연계·부상 확률 계산, 부상 데이터 생성 |
+| `synthesis/` | 가상 장병 명단 생성, 최근 측정 연계·부상 위험 그룹 계산, 부상 기록 생성. 실행 순서는 `synthesis/pipeline.py` |
 | `logs/` | 실행 로그 (`*.log`는 Git 제외) |
-| `soldier_*_sample(100).py` | 이전 구조의 스크립트. 경로가 정리 전 폴더를 가리키므로 그대로는 동작하지 않습니다 (정비 예정). |
+| `create_samples.py` | 최종 데이터에서 독자 참고용 샘플(`data/samples/`)을 만듭니다. 파이프라인과 따로 직접 실행합니다. |
 | `운동기록-이상치-제거.md` | 운동기록 이상치 처리와 셔틀런 잠재능력 지표에 대한 검토 메모 |
 
 ## 실행
@@ -42,7 +43,7 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/main.py analy
 | 3 | `remove_missings_and_outliers` | 결측값이 있는 행을 제거한 뒤, 이상치(횟수 종목인 교차윗몸일으키기의 소수 기록, 80 mL/kg/min을 넘는 심폐지구력)가 있는 행을 제거합니다. 운동 처방은 비어 있어도 제거하지 않습니다. | `intermediate/basic_refinement/` |
 | 4 | `filter_enlistment_candidates` | 키·체중·BMI·체지방률이 입대 후보 범위 안에 있는 행만 남깁니다. | `intermediate/enlistment_filter/` |
 | 5 | `select_three_measures` | 3회 이상 측정한 회원마다 측정 기록 3건을 고릅니다. 측정 간격이 모두 30일 이상(`MIN_INTERVAL_DAYS`)인 3건 조합 중 전체 기간이 가장 길고 두 간격이 가장 고른 조합을 고르고, 고른 3건의 첫·마지막 측정이 3년(`MAX_SPAN_DAYS`)을 넘는 회원은 제외합니다. 같은 날 중복 입력된 기록은 간격이 0일이라 함께 뽑히지 않습니다. | `intermediate/KS_NFA_THREE_MEASURES.csv` |
-| 6 | `apply_final_definition` | 측정일 → 회원식별번호 → 측정일련번호 순으로 정렬해 `MESURE_ID`를 붙이고, 측정 컬럼을 체력 요소 이름(근력·근지구력·심폐지구력·유연성)으로 바꿔 측정 데이터(FINAL 정의서)와 운동 처방 데이터(처방 1개당 1행, PRESCRIPTION 정의서)로 나눠 저장합니다. 운동 처방에는 처방 이름 대신 2단계 상세 테이블의 처방유형번호를 넣습니다(상세 테이블에 없는 이름이 있으면 오류). 같은 측정 안의 중복 처방은 제거합니다. | `processed/KS_NFA_PROCESSED.csv`, `processed/KS_NFA_PRESCRIPTION.csv` |
+| 6 | `apply_final_definition` | 측정일 → 회원식별번호 → 측정일련번호 순으로 정렬해 `MESURE_ID`를 붙이고, 측정 컬럼을 체력 요소 이름(근력·근지구력·심폐지구력·유연성)으로 바꿔 측정 데이터(REFINED 정의서)와 운동 처방 데이터(처방 1개당 1행, PRESCRIPTION 정의서)로 나눠 저장합니다. 운동 처방에는 처방 이름 대신 2단계 상세 테이블의 처방유형번호를 넣습니다(상세 테이블에 없는 이름이 있으면 오류). 같은 측정 안의 중복 처방은 제거합니다. | `intermediate/KS_NFA_REFINED.csv`, `processed/KS_NFA_PRESCRIPTION.csv` |
 
 `remove_3sigma_outliers`(3σ 이상치 제거)는 현재 파이프라인에서 쓰지 않습니다. 필요하면 단독으로 실행할 수 있습니다.
 
@@ -77,29 +78,34 @@ python data/scripts/analysis/summarize_official_cut_ratios.py
 
 ## 가상 장병·부상 데이터 생성 (`synthesis/`)
 
-전처리 완료 후 다음 순서로 가상 장병 데이터를 만듭니다. 가상 장병 수는 기본적으로 처리된 체력 데이터(`data/processed/KS_NFA_PROCESSED.csv`)의 측정 행 수와 같으며, 생성 단계에서는 군번과 이름만 만듭니다.
+전처리가 끝난 뒤 다음 순서로 가상 데이터를 만듭니다. 장병 수는 전처리된 측정 데이터(`data/intermediate/KS_NFA_REFINED.csv`)의 **회원(`M_CODE`) 수**와 같습니다(회원 한 명당 장병 한 명). 저장하는 CSV의 컬럼 이름은 모두 정의서의 영문 이름입니다.
 
 ```powershell
-python data/scripts/synthesis/generate_synthetic_personnel.py
-python data/scripts/synthesis/link_fitness_and_injury_risk.py --injury-rate 10
-python data/scripts/synthesis/generate_synthetic_injuries.py
+python data/scripts/main.py synthesis                                       # 세 단계를 순서대로
+python data/scripts/synthesis/generate_synthetic_personnel.py --seed 42     # 단계 하나만 (기본 경로)
+python data/scripts/synthesis/link_fitness_and_injury_risk.py --injuries-per-person 0.3
+python data/scripts/synthesis/generate_synthetic_injuries.py --seed 42
 ```
 
-또는 전처리 결과가 이미 준비되어 있다면 `python data/scripts/main.py synthesis`로 세 단계를 순서대로 실행할 수 있습니다.
-
-연계 단계는 장병 수와 체력 측정 행 수가 같은지 확인한 뒤, 각 체력 측정 행의 `MESURE_ID`를 기준으로 가상 장병 한 명씩 연결합니다. KMeans 표본 추출 없이 모든 측정 행을 한 번씩 사용하므로 체력값의 경험적 분포와 지표 간 조합을 그대로 보존합니다. 이는 원본 분포를 그대로 유지한다는 뜻이지, 데이터가 반드시 수학적인 정규분포를 따른다는 뜻은 아닙니다. 연결 후 기존 지역·부대·계급 가중치로 장병 속성을 부여합니다.
-
-연계된 BMI·심폐지구력에 이미지의 BMI별·심폐지구력 사분위 등급별 4×3 상대 위험도 표를 적용합니다. 위험도를 해당 장병 집단의 평균 위험도로 나눈 뒤 `INJURY_PROBABILITY = injury_rate / 100 × RELATIVE_INJURY_RISK`를 계산합니다. 이 값은 이름과 달리 부상 생성 단계에서 **장병별 Poisson 분포의 평균 부상 건수(λ)** 로 사용되므로 같은 장병에게 여러 부상 기록이 생길 수 있습니다. 기본 `--injury-rate 10`은 장병 1명당 기대 부상 건수 평균 0.1을 뜻하며, 전체 기대 부상 건수는 확률값의 합과 같지만 실제 건수는 달라집니다. 확률 계산 결과가 1을 넘는 높은 기준 비율은 오류로 처리합니다.
-
-결과는 모두 Git에서 제외되는 `data/intermediate/synthesis/` 아래에 저장됩니다.
-
-| 순서 | 스크립트 | 결과 |
+| 순서 | 모듈 | 결과 |
 |---|---|---|
-| 1 | `generate_synthetic_personnel.py` | `soldier_personal_data.csv` |
-| 2 | `link_fitness_and_injury_risk.py` | BMI·CARDIO·범주·상대 위험도·개인별 부상 확률이 추가된 `soldier_personal_injury_risk.csv` |
-| 3 | `generate_synthetic_injuries.py` | 개인별 `INJURY_PROBABILITY`를 Poisson 평균 건수로 사용해 생성한 `SOLDIER_INJURY.csv` |
+| 1 | `generate_synthetic_personnel` | 가상 장병 명단 `data/synthetic/SOLDIER_PERSONNEL.csv` (`SOLDIER_PERSONNEL_DEFINITION.csv`: 군번·이름·지역·부대·계급·전후방 구분) |
+| 2 | `link_fitness_and_injury_risk` | 부상 위험 그룹 표 `processed/INJURY_RISK_GROUP.csv`, 최종 측정 데이터 `processed/KS_NFA_PROCESSED.csv`(FINAL: REFINED에서 `M_SEQ_NO`·`M_CODE`를 빼고 `SOLDIER_ID`·`INJURY_RISK_GROUP_ID`를 더함), 장병 연계 결과 `intermediate/synthesis/soldier_personal_injury_risk.csv`(3단계의 입력) |
+| 3 | `generate_synthetic_injuries` | 부상 기록 `data/synthetic/SOLDIER_INJURY.csv` (`SOLDIER_INJURY_DEFINITION.csv`, 예방 가능 여부 `PREVENTABILITY`는 Y/N) |
 
-모든 단계의 입력·출력은 `--personnel-csv`, `--fitness-csv`, `--personal-csv`, `--output` 옵션으로 바꿀 수 있습니다. 재현 가능한 연계를 위해 `link_fitness_and_injury_risk.py`와 부상 생성기는 기본 난수 시드 42를 사용합니다. 이 확률은 제공된 상대 위험도 표를 적용한 합성 시뮬레이션 값이며, 실제 개인의 의학적 부상 예측치가 아닙니다.
+**1. 장병 명단**: 군번·이름·지역·부대·계급을 만듭니다. 기본 시드는 42라 실행할 때마다 같은 명단이 나오고, `--seed`로 바꿀 수 있습니다(코드에서는 `seed=None`이면 매번 달라집니다).
+
+**2. 최근 측정 연계와 부상 위험 그룹**: 회원마다 **가장 최근에 한 측정** 한 건(측정일이 가장 늦은 측정, 같은 날이면 `MESURE_ID`가 큰 측정)을 골라 `MESURE_ID` 순서로 장병에게 하나씩 연결합니다. 부상도 이 최근 측정을 바탕으로 생성합니다.
+
+1. 원본 연구처럼 BMI와 심폐지구력을 **각각 백분위로** 하위 25%(`LOW`, 25 백분위수 이하)·중간 50%(`MODERATE`)·상위 25%(`HIGH`, 75 백분위수 이상)로 나눠 3 × 3 = 9개 **부상 위험 그룹**(`INJURY_RISK_GROUP_ID` 1~9)을 만듭니다. 번호는 BMI 구간 순서 × 심폐 구간 순서로 고정되어 1번이 BMI 하위·심폐 하위, 2번이 BMI 하위·심폐 중간, 9번이 BMI 상위·심폐 상위입니다. 백분위 경계는 **전체 측정**(최근 측정이 아닌 측정 포함)으로 정하고, 모든 측정과 장병에게 같은 경계를 씁니다.
+2. 그룹마다 3×3 상대 위험도 표(`link_fitness_and_injury_risk.py`의 `INJURY_RISK[BMI 구간][심폐 구간]`. National Research Council(2006) *Assessing Fitness for Military Enlistment* Table 4-6의 남성 부상 위험(%)으로, 원자료는 Jones·Darakjy·Knapik(2004)의 Fort Jackson 기초군사훈련생 1997~2001. 표의 2마일 달리기 Fast·Medium·Slow를 심폐 HIGH·MODERATE·LOW에 대응)의 값을 장병 평균 위험도로 나눠 평균을 1로 맞춥니다(`RELATIVE_INJURY_RISK`).
+3. 그룹의 기대 부상 건수 `EXPECTED_INJURY_COUNT = 0.3 × 상대 위험도`. 0.3은 선행 연구의 **장병 1명당 연간 부상 건수**(`INJURIES_PER_PERSON_YEAR`)이며 모든 측정이 같은 해에 이루어졌다고 가정합니다. 장병 N명의 기대 부상 건수 합은 0.3N입니다(그룹 표 값을 소수 6자리로 반올림한 만큼의 차이만 있음).
+
+측정 테이블(FINAL)에는 λ 대신 그룹 번호만 두고, 그룹별 λ는 그룹 표에 둡니다. 같은 회원의 측정은 모두 같은 군번을 갖습니다. 최종 측정 데이터에는 국민체력100 식별자(회원식별번호 `M_CODE`, 측정일련번호 `M_SEQ_NO`)를 남기지 않고 군번으로만 장병과 연결합니다(연계 단계 안에서는 `M_CODE`로 회원을 찾습니다).
+
+**3. 부상 기록**: 장병마다 **Poisson(`EXPECTED_INJURY_COUNT`)** 에서 부상 건수를 따로 뽑습니다(0, 1, 2, ...건). 서로 독립인 Poisson 변수의 합도 Poisson이므로 총 부상 건수는 **Poisson(0.3N)** 을 따르며, 정확히 0.3N건이 아니라 시드마다 조금씩 달라집니다(3,582명이면 평균 약 1,075건, 표준편차 약 33건). `EXPECTED_INJURY_COUNT`는 확률이 아니라 Poisson 평균이므로 1을 넘어도 됩니다. 부상 부위와 부위별 예방 가능 비율은 선행 논문 표(Table 4)의 빈도를 따르고, 한 장병이 같은 부위를 두 번 다치지 않게 부위 수(17)로 건수를 자릅니다(λ가 작아 실제로 잘리는 일은 사실상 없음). `--count`를 주면 Poisson 대신 정확히 그 건수를 λ에 비례해 나눕니다. 부대·지역·전후방별 부상 요약은 로그에 남습니다. 테스트(`tests/data/test_synthesis_injury_linkage.py`)가 총 건수의 평균과 분산이 모두 0.3N인지 확인합니다.
+
+기대 부상 건수는 제공된 상대 위험도 표를 적용한 합성 시뮬레이션 값이며, 실제 개인의 의학적 부상 예측치가 아닙니다.
 
 ## 단계 추가·수정
 

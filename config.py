@@ -16,6 +16,7 @@ DEFINITION_DIR = DATA_DIR / "definitions"  # 원본·통합 컬럼 정의서
 INTERMEDIATE_DIR = DATA_DIR / "intermediate"  # 전처리 중간 결과물
 PROCESSED_DIR = DATA_DIR / "processed" # 최종 정제 데이터
 SAMPLE_DIR = DATA_DIR / "samples"  # 가상·샘플 데이터
+SYNTHETIC_DIR = DATA_DIR / "synthetic"  # 합성 단계가 만드는 가상 장병 명단·부상 기록
 DATA_SCRIPTS_DIR = DATA_DIR / "scripts"
 DATA_LOG_DIR = DATA_SCRIPTS_DIR / "logs"
 

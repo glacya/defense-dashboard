@@ -5,18 +5,18 @@
 """
 
 from data.scripts.paths import (
-    DEFINITION_KS_NFA_FINAL,
     DEFINITION_KS_NFA_MERGED,
     DEFINITION_KS_NFA_PRESCRIPTION,
     DEFINITION_KS_NFA_PRESCRIPTION_DETAIL,
     DEFINITION_KS_NFA_RAW,
+    DEFINITION_KS_NFA_REFINED,
     INTERMEDIATE_BASIC_REFINEMENT,
     INTERMEDIATE_ENLISTMENT_FILTER,
     INTERMEDIATE_MERGED,
     INTERMEDIATE_MULTI_CARDIO,
+    INTERMEDIATE_REFINED,
     INTERMEDIATE_THREE_MEASURES,
     PASSED_FILENAME,
-    PROCESSED_FITNESS_PATH,
     PROCESSED_PRESCRIPTION_DETAIL_PATH,
     PROCESSED_PRESCRIPTION_PATH,
     RAW_DIR,
@@ -32,7 +32,6 @@ from data.scripts.preprocessing import (
 )
 
 TITLE = "전처리"
-
 
 def build_steps() -> list[Step]:
     """실행 순서대로 전처리 단계 목록을 만듭니다. 앞 단계의 출력 경로를 다음 단계의 입력으로 연결합니다."""
@@ -79,13 +78,13 @@ def build_steps() -> list[Step]:
             apply_final_definition.run,
             inputs={
                 "input_path": INTERMEDIATE_THREE_MEASURES,
-                "fitness_definition_path": DEFINITION_KS_NFA_FINAL,
+                "fitness_definition_path": DEFINITION_KS_NFA_REFINED,
                 "prescription_definition_path": DEFINITION_KS_NFA_PRESCRIPTION,
                 # 2단계에서 만든 상세 테이블. 입력으로 두어 없으면 실행 전에 멈추게 한다.
                 "prescription_detail_path": PROCESSED_PRESCRIPTION_DETAIL_PATH,
             },
             outputs={
-                "fitness_output_path": PROCESSED_FITNESS_PATH,
+                "fitness_output_path": INTERMEDIATE_REFINED,
                 "prescription_output_path": PROCESSED_PRESCRIPTION_PATH,
             },
         ),

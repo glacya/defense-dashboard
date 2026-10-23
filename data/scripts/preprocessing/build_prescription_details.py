@@ -15,11 +15,10 @@ from data.scripts.paths import (
     INTERMEDIATE_MERGED,
     PROCESSED_PRESCRIPTION_DETAIL_PATH,
 )
-from data.scripts.preprocessing.merge_raw_measurements import load_definition_columns
+from data.scripts.utils import read_text_csv, write_by_definition
 
 logger = logging.getLogger(__name__)
 
-DEFINITION_NAME_COLUMN = "영문속성명"
 # 입력의 운동 처방 목록 컬럼. 예: '앉았다 일어서기,윗몸올리기 ,팔굽혀펴기'
 PRESCRIPTION_LIST_COLUMN = "MVM_PRSCRPTN_CN"
 PRESCRIPTION_SEP = ","
@@ -52,17 +51,12 @@ def run(input_path: Path, definition_path: Path, output_path: Path) -> None:
     Raises:
         ValueError: 정의서에 있는 컬럼을 만들 수 없을 때
     """
-    # 1. 정의서 컬럼 목록과 입력 데이터를 읽는다.
-    columns = load_definition_columns(definition_path, DEFINITION_NAME_COLUMN)
-    df = pd.read_csv(input_path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    # 1. 입력 데이터를 읽는다.
+    df = read_text_csv(input_path)
     # 2. 처방 이름마다 처방유형번호를 붙인다.
     types = build_prescription_types(df[PRESCRIPTION_LIST_COLUMN])
-    missing_columns = [column for column in columns if column not in types.columns]
-    if missing_columns:
-        raise ValueError(f"{definition_path.name}의 컬럼을 만들 수 없습니다: {', '.join(missing_columns)}")
-    # 3. 저장
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    types[columns].to_csv(output_path, index=False, encoding="utf-8-sig")
+    # 3. 정의서 컬럼만 정의서 순서대로 저장
+    write_by_definition(types, definition_path, output_path)
 
     # 4. 요약 로그
     has_prescription = df[PRESCRIPTION_LIST_COLUMN].str.strip().ne("")

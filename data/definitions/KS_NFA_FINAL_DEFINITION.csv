@@ -1,5 +1,5 @@
 ﻿순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,NOT NULL여부,데이터 상품명
-1,MESURE_ID,측정식별번호,INT,10,Y,Y,자동 부여
+1,MESURE_ID,측정식별번호,INT,,Y,Y,자동 부여
 2,SOLDIER_ID,군번,VARCHAR,20,N,Y,장병 개인 인적사항 데이터
 3,AGE,나이,INT,,N,Y,국민체력100 19~24세 남성 측정 데이터
 4,STRENGTH,근력,DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터

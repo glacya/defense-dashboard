@@ -8,7 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-from config import CSV_DATA_DIR
+from config import PROCESSED_DIR as CSV_DATA_DIR
 
 # ==================== [설정 및 매개변수 영역] ====================
 INPUT_PATH = CSV_DATA_DIR / "KS_NFA_FINAL_OUTPUT.csv"                  # 입력 이상치 파일 경로

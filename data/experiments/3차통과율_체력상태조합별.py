@@ -15,7 +15,7 @@ def calculate():
     _, _, detail, _ = analyze()
     cols = [f'{col}_미달' for col in AREAS.values()]
     detail['미달종목수'] = detail[cols].sum(axis=1).astype('Int64').mask(detail[cols].isna().any(axis=1))
-    people = detail.pivot(index='M_CODE', columns='회차', values='미달종목수').reindex(columns=[1, 2, 3])
+    people = detail.pivot(index='SOLDIER_ID', columns='회차', values='미달종목수').reindex(columns=[1, 2, 3])
     people.columns = ['1차미달종목수', '2차미달종목수', '3차미달종목수']
     for r in (1, 2, 3):
         count = people[f'{r}차미달종목수']

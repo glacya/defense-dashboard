@@ -1,14 +1,16 @@
-"""python data/experiments/하위그룹_체력상태조합별_3차통과율.py
+"""python data/experiments/3차통과율_하위그룹_체력상태조합별.py
 
 상위 00/01/10/11 그룹을 실제 1·2차 미달 종목 수(0~4개)로 세분화.
 3차 충족 A(0~1개 미달), 미달 B(2~4개 미달)의 통과율 A/(A+B)를 계산.
 장병별 예측비율 CSV는 소속 세부그룹의 관측 통과비율을 각 장병에게 적용한다.
 """
+import importlib
 from pathlib import Path
 
 import pandas as pd
 
-from 체력상태조합별_3차통과율 import calculate as calculate_parent
+# 숫자로 시작하는 모듈명은 importlib로 불러온다.
+calculate_parent = importlib.import_module('3차통과율_체력상태조합별').calculate
 
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / 'data/experiments/results/성능평가방향성2'
 

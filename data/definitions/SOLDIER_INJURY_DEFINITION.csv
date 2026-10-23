@@ -1,5 +1,5 @@
 순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,NOT NULL여부,데이터 상품명
-1,INJURY_ID,부상식별번호,INT,10,Y,Y,장병 부상 기록 데이터
+1,INJURY_ID,부상식별번호,INT,,Y,Y,장병 부상 기록 데이터
 2,SOLDIER_ID,군번,VARCHAR,20,N,Y,장병 부상 기록 데이터
 3,INJURY_CATEGORY,부상대분류,VARCHAR,10,N,Y,장병 부상 기록 데이터
 4,INJURY_LOCATION,부상세부부위,VARCHAR,20,N,Y,장병 부상 기록 데이터

@@ -15,14 +15,14 @@ AREAS = {'근력': 'STRENGTH', '근지구력': 'ENDURANCE', '심폐지구력': '
 def generate():
     first = analyze_age(return_first=True).copy()
     first['MESURE_ID'] = pd.to_numeric(first['MESURE_ID'], errors='raise').astype('Int64')
-    if first.MESURE_ID.isna().any() or first.MESURE_ID.duplicated().any() or first.M_CODE.duplicated().any():
+    if first.MESURE_ID.isna().any() or first.MESURE_ID.duplicated().any() or first.SOLDIER_ID.duplicated().any():
         raise ValueError('장병별 첫 측정 식별자가 결측 또는 중복입니다.')
     standards = pd.read_csv(ROOT/'data/definitions/grade3_male_19_24.csv')
     standards = standards.loc[standards.sex.eq('M') & standards.age_min.eq(19) & standards.age_max.eq(24)]
     if standards.exercise.duplicated().any():
         raise ValueError('기준표 종목 중복입니다.')
     standards = standards.set_index('exercise')
-    first = first[['M_CODE', 'MESURE_ID', 'AGE', 'MESURE_DE']+list(AREAS.values())].copy()
+    first = first[['SOLDIER_ID', 'MESURE_ID', 'AGE', 'MESURE_DE']+list(AREAS.values())].copy()
     for label, col in AREAS.items():
         if col not in standards.index or standards.loc[col, 'rule'] != 'min_inclusive':
             raise ValueError(f'{col}: 기준표 확인 필요')

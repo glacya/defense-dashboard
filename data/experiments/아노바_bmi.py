@@ -1,4 +1,4 @@
-"""streamlit run data/experiments/아노바_bmi.py"""
+﻿"""streamlit run data/experiments/아노바_bmi.py"""
 from pathlib import Path
 import sys
 
@@ -9,26 +9,17 @@ import streamlit as st
 import altair as alt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from 연령별분석 import analyze_age, METRICS
+from 분석_연령별 import METRICS
+from 분석_bmi별 import analyze_bmi, BMI_GROUPS, BMI_DESCRIPTION
 from statistics_compat import welch_anova, games_howell
 CARDIO_COLS = ['CARDIO']
 
 METRICS = {**METRICS, 'CARDIO': '심폐지구력(VO₂max, mL/kg/min)'}
 EXERCISES = ['STRENGTH', 'ENDURANCE', 'FLEXIBILITY', 'CARDIO']
-BMI_GROUPS = ['낮음', '중간', '높음']
 
 
 def calculate():
-    df = analyze_age(return_first=True)
-    excluded = int((df.BMI.isna() | df.BMI.le(0)).sum())
-    df = df.loc[df.BMI.notna() & df.BMI.gt(0)].copy()
-    low, high = df.BMI.quantile([1 / 3, 2 / 3]).to_numpy()
-    if not np.isfinite([low, high]).all() or low >= high:
-        raise ValueError('BMI 삼분위 경계를 만들 수 없습니다.')
-    df['BMI그룹'] = pd.cut(df.BMI, [-np.inf, low, high, np.inf], labels=BMI_GROUPS)
-    boundaries = pd.DataFrame({'BMI그룹': BMI_GROUPS,
-                               '구간': [f'BMI ≤ {low:.6g}', f'{low:.6g} < BMI ≤ {high:.6g}', f'BMI > {high:.6g}'],
-                               '장병 수': df.groupby('BMI그룹', observed=False).size().reindex(BMI_GROUPS).to_numpy()})
+    boundaries, _, df, excluded = analyze_bmi()
     rows, tables = [], {}
     for col in EXERCISES:
         groups = [df.loc[df['BMI그룹'].eq(group), col].dropna().to_numpy() for group in BMI_GROUPS]
@@ -88,6 +79,7 @@ def posthoc(data, metric, method='Games–Howell'):
 def main():
     st.set_page_config(page_title='아노바 BMI', layout='wide')
     st.title('BMI 그룹별 실제 체력 측정값 평균 · ANOVA')
+    st.info(BMI_DESCRIPTION)
     st.subheader('분산 가정에 따른 ANOVA와 사후검정')
     st.table(pd.DataFrame([
         {'비교 집단 수': '3개 이상', '분산 가정': '등분산 가정',
@@ -110,7 +102,7 @@ def main():
                     '`xᵢⱼ`는 i번째 집단의 j번째 장병 측정값입니다. '
                     '`SSB`는 집단 간 제곱합, `SSW`는 집단 내 제곱합입니다.')
         st.caption('p값은 귀무가설 아래 F분포의 오른쪽 꼬리확률로 계산합니다. 일반 ANOVA는 자유도 k−1, N−k를 사용하며 Welch는 조정된 자유도 ν₁, ν₂를 사용한 근사 검정입니다. 적용 p값 < 0.05이면 귀무가설을 기각합니다.')
-    st.caption('이 화면은 BMI 낮음·중간·높음의 세 집단을 비교합니다. 사후검정은 전체 평균 검정이 유의한 경우 수행하며, 위 표는 이 코드에서 사용하는 방법입니다.')
+    st.caption('이 화면은 BMI 낮음·보통·높음의 세 집단을 비교합니다. 사후검정은 전체 평균 검정이 유의한 경우 수행하며, 위 표는 이 코드에서 사용하는 방법입니다.')
     st.caption('일원분산분석은 BMI 그룹이라는 한 요인에 따라 세 집단의 평균이 같은지 검정합니다. 유의한 경우 사후검정으로 어느 그룹끼리 다른지 확인합니다.')
     st.caption('심폐는 통합 CARDIO(VO₂max) 측정값을 직접 비교합니다.')
     st.write('귀무가설: 세 BMI 그룹의 해당 체력 측정값 평균은 모두 같다. 대립가설: 적어도 한 BMI 그룹의 평균이 다르다.')
@@ -120,7 +112,7 @@ def main():
         st.error(str(exc))
         st.stop()
     st.subheader('BMI 구간 및 분석 대상')
-    st.caption(f'첫 측정 BMI의 33.3·66.7 백분위수로 나눕니다. 저체중·정상·비만 같은 의학적 분류가 아닙니다. 같은 BMI는 같은 그룹에 배정하여 인원이 정확히 같지 않을 수 있습니다. BMI 결측·0 이하 제외: {excluded:,}명.')
+    st.caption(f'{BMI_DESCRIPTION} 첫 측정 BMI로 분류하며, BMI 결측·0 이하 제외: {excluded:,}명.')
     st.dataframe(boundaries, hide_index=True)
     st.subheader('종목별 ANOVA 결과')
     st.dataframe(results, hide_index=True, column_config={
@@ -249,7 +241,7 @@ def main():
 - **보정 p값 ≥ 0.05**: 두 평균의 차이를 확인할 근거가 충분하지 않습니다. 두 그룹이 같다고 확정하지 않습니다.
 - **평균차(A−B)**: 양수이면 A의 평균이 높고, 음수이면 B의 평균이 높습니다.
 - **95% 신뢰구간**: 평균 차이의 불확실성을 나타냅니다. 0을 포함하지 않으면 유의한 차이로 판단합니다. 개인 측정값의 95% 범위가 아닙니다.
-- **보정의 의미**: 낮음–중간, 낮음–높음, 중간–높음 세 비교에서 우연히 유의하다고 판단할 오류를 조절합니다. 이 단계에서는 사후검정의 보정 p값을 사용합니다.
+- **보정의 의미**: 낮음–보통, 낮음–높음, 보통–높음 세 비교에서 우연히 유의하다고 판단할 오류를 조절합니다. 이 단계에서는 사후검정의 보정 p값을 사용합니다.
 - **해석 범위**: 평균 차이는 BMI가 원인이라는 뜻이나 모든 개인에게 같은 차이가 있다는 뜻은 아닙니다.
 ''')
         st.download_button('선택 종목 사후검정 쉬운 해석 CSV', readable.to_csv(index=False).encode('utf-8-sig'),

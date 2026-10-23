@@ -16,14 +16,11 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from sklearn.model_selection import KFold, train_test_split
-
-try:  # 프로젝트 경로 모듈이 있으면 그 폴더를 기준으로 사용
-    from data.scripts.paths import INTERMEDIATE_ENLISTMENT_FILTER as _BASE
-except ImportError:
-    _BASE = Path(".")
-
-IN_PATH = _BASE / "processed_select_personal.csv"
-OUT_DIR = _BASE / "recommend_results"  # 5개 모델 결과를 한 폴더에 저장
+from data.scripts.paths import INTERMEDIATE_ENLISTMENT_FILTER 
+from config import DATA_SCRIPTS_DIR
+DATA_DIR = INTERMEDIATE_ENLISTMENT_FILTER
+IN_PATH = DATA_DIR / "processed_select_personal.csv"
+OUT_DIR = DATA_SCRIPTS_DIR /"analysis/data_model/recommend_results"  # 5개 모델 결과를 한 폴더에 저장
 
 ID_COL = "M_CODE"
 TARGET_COL = "PRESCRIPTION"
@@ -33,7 +30,7 @@ FEATURES = [
 ]
 
 # 달리기 계열 판정 키워드 ("달리기 미포함" 실험에서 제거할 종목)
-RUN_KEYWORDS = ("달리기", "조깅")
+RUN_KEYWORDS = ("달리기")
 EXPERIMENTS = {"with_run": False, "without_run": True}  # 실험명: 달리기 제외 여부
 
 SEED = 42

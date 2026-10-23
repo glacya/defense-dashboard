@@ -5,9 +5,7 @@
 """
 import numpy as np
 import pandas as pd
- 
-from recommend_common import FEATURES, count_items, main, top_k
- 
+from data.scripts.analysis.data_model.recommend_model.recommend_common import FEATURES, count_items, main, top_k
 NAME = "Cross"
 THRESHOLD = 50
 GRID = [{"min_group": m} for m in (10, 30, 50)]

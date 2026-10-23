@@ -12,7 +12,7 @@
 | `logging_setup.py` | data 영역 전용 로그 설정. dashboard 쪽 로그와 섞이지 않습니다. |
 | `preprocessing/` | 전처리 단계 모듈. 실행 순서는 `preprocessing/pipeline.py` |
 | `analysis/` | 데이터를 바꾸지 않고 통계·탐색 결과만 내는 분석 스크립트. 실행 목록은 `analysis/pipeline.py` |
-| `synthesis/` | 가상 장병 데이터 생성 스크립트 (정비 예정, `synthesis/pipeline.py`는 아직 빈 목록) |
+| `synthesis/` | 가상 장병 생성, 체력 연계·부상 확률 계산, 부상 데이터 생성 |
 | `logs/` | 실행 로그 (`*.log`는 Git 제외) |
 | `soldier_*_sample(100).py` | 이전 구조의 스크립트. 경로가 정리 전 폴더를 가리키므로 그대로는 동작하지 않습니다 (정비 예정). |
 | `운동기록-이상치-제거.md` | 운동기록 이상치 처리와 셔틀런 잠재능력 지표에 대한 검토 메모 |
@@ -73,6 +73,32 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/preprocessing
 ```powershell
 python data/scripts/analysis/summarize_official_cut_ratios.py
 ```
+
+## 가상 장병·부상 데이터 생성 (`synthesis/`)
+
+전처리 완료 후 다음 순서로 가상 장병 데이터를 만듭니다. 가상 장병 수는 기본적으로 처리된 체력 데이터(`data/processed/KS_NFA_PROCESSED.csv`)의 측정 행 수와 같으며, 생성 단계에서는 군번과 이름만 만듭니다.
+
+```powershell
+python data/scripts/synthesis/generate_synthetic_personnels.py
+python data/scripts/synthesis/generate_linkage_injury.py --injury-rate 10
+python data/scripts/synthesis/generate_synthetic_injuries.py
+```
+
+또는 전처리 결과가 이미 준비되어 있다면 `python data/scripts/main.py synthesis`로 세 단계를 순서대로 실행할 수 있습니다.
+
+연계 단계는 장병 수와 체력 측정 행 수가 같은지 확인한 뒤, 각 체력 측정 행의 `MESURE_ID`를 기준으로 가상 장병 한 명씩 연결합니다. KMeans 표본 추출 없이 모든 측정 행을 한 번씩 사용하므로 체력값의 경험적 분포와 지표 간 조합을 그대로 보존합니다. 이는 원본 분포를 그대로 유지한다는 뜻이지, 데이터가 반드시 수학적인 정규분포를 따른다는 뜻은 아닙니다. 연결 후 기존 지역·부대·계급 가중치로 장병 속성을 부여합니다.
+
+연계된 BMI·심폐지구력에 이미지의 BMI별·심폐지구력 사분위 등급별 4×3 상대 위험도 표를 적용합니다. 위험도를 해당 장병 집단의 평균 위험도로 나눈 뒤 `INJURY_PROBABILITY = injury_rate / 100 × RELATIVE_INJURY_RISK`를 계산합니다. 이 값은 이름과 달리 부상 생성 단계에서 **장병별 Poisson 분포의 평균 부상 건수(λ)** 로 사용되므로 같은 장병에게 여러 부상 기록이 생길 수 있습니다. 기본 `--injury-rate 10`은 장병 1명당 기대 부상 건수 평균 0.1을 뜻하며, 전체 기대 부상 건수는 확률값의 합과 같지만 실제 건수는 달라집니다. 확률 계산 결과가 1을 넘는 높은 기준 비율은 오류로 처리합니다.
+
+결과는 모두 Git에서 제외되는 `data/intermediate/synthesis/` 아래에 저장됩니다.
+
+| 순서 | 스크립트 | 결과 |
+|---|---|---|
+| 1 | `generate_synthetic_personnels.py` | `soldier_personal_data.csv` |
+| 2 | `generate_linkage_injury.py` | BMI·CARDIO·범주·상대 위험도·개인별 부상 확률이 추가된 `soldier_personal_injury_risk.csv` |
+| 3 | `generate_synthetic_injuries.py` | 개인별 `INJURY_PROBABILITY`를 Poisson 평균 건수로 사용해 생성한 `soldier_injury_data.csv` |
+
+모든 단계의 입력·출력은 `--personnel-csv`, `--fitness-csv`, `--personal-csv`, `--output` 옵션으로 바꿀 수 있습니다. 재현 가능한 연계를 위해 `generate_linkage_injury.py`와 부상 생성기는 기본 난수 시드 42를 사용합니다. 이 확률은 제공된 상대 위험도 표를 적용한 합성 시뮬레이션 값이며, 실제 개인의 의학적 부상 예측치가 아닙니다.
 
 ## 단계 추가·수정
 

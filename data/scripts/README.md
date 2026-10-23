@@ -38,10 +38,11 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/main.py analy
 | 순서 | 모듈 (`preprocessing/`) | 하는 일 | 출력 |
 |---|---|---|---|
 | 1 | `merge_raw_measurements` | 원본 55개에서 19~24세 남성 행을 모으고, 컬럼을 통합 정의서대로 맞춥니다. BMI는 키·체중으로 계산하고 운동 처방은 본운동만 남깁니다. 심폐지구력(`CARDIO`)은 세 종목의 VO₂max 출력 중 기록된 하나를 쓰고, 두 종목 이상이면 오래달리기 값을 쓰되 `KS_NFA_MERGED_MULTI_CARDIO.csv`에 따로 저장합니다. BMI 계산 불가 행과 트레드밀 심박수 기입 오류 행(3분·6분 심박수 < 안정시)을 제거합니다. | `intermediate/KS_NFA_MERGED.csv`, `intermediate/KS_NFA_MERGED_MULTI_CARDIO.csv` |
-| 2 | `remove_missings_and_outliers` | 결측값이 있는 행을 제거한 뒤, 이상치(횟수 종목인 교차윗몸일으키기의 소수 기록, 80 mL/kg/min을 넘는 심폐지구력)가 있는 행을 제거합니다. 운동 처방은 비어 있어도 제거하지 않습니다. | `intermediate/basic_refinement/` |
-| 3 | `filter_enlistment_candidates` | 키·체중·BMI·체지방률이 입대 후보 범위 안에 있는 행만 남깁니다. | `intermediate/enlistment_filter/` |
-| 4 | `select_three_measures` | 3회 이상 측정한 회원마다 측정 기록 3건을 고릅니다. 측정 간격이 모두 30일 이상(`MIN_INTERVAL_DAYS`)인 3건 조합 중 전체 기간이 가장 길고 두 간격이 가장 고른 조합을 고르고, 고른 3건의 첫·마지막 측정이 3년(`MAX_SPAN_DAYS`)을 넘는 회원은 제외합니다. 같은 날 중복 입력된 기록은 간격이 0일이라 함께 뽑히지 않습니다. | `intermediate/KS_NFA_THREE_MEASURES.csv` |
-| 5 | `apply_final_definition` | 측정일 → 회원식별번호 → 측정일련번호 순으로 정렬해 `MESURE_ID`를 붙이고, 측정 컬럼을 체력 요소 이름(근력·근지구력·심폐지구력·유연성)으로 바꿔 측정 데이터(FINAL 정의서)와 운동 처방 데이터(처방 1개당 1행, PRESCRIPTION 정의서), 운동 처방 유형(처방 이름 1개당 1행, PRESCRIPTION_DETAIL 정의서)으로 나눠 저장합니다. 운동 처방에는 처방 이름 대신 처방유형번호를 넣습니다. 같은 측정 안의 중복 처방은 제거합니다. | `processed/KS_NFA_PROCESSED.csv`, `processed/KS_NFA_PRESCRIPTION.csv`, `processed/KS_NFA_PRESCRIPTION_DETAIL.csv` |
+| 2 | `build_prescription_details` | 원본 통합 결과 전체(걸러 내기 전)의 운동 처방 목록을 쉼표로 나눠, 서로 다른 처방 이름마다 처방유형번호를 처음 나온 순서대로 1부터 붙입니다(번호 순서에 의미는 없음). 걸러 내기 전 데이터로 만들므로 최종 측정에 쓰이지 않는 처방 이름도 들어 있습니다. | `processed/KS_NFA_PRESCRIPTION_DETAIL.csv` |
+| 3 | `remove_missings_and_outliers` | 결측값이 있는 행을 제거한 뒤, 이상치(횟수 종목인 교차윗몸일으키기의 소수 기록, 80 mL/kg/min을 넘는 심폐지구력)가 있는 행을 제거합니다. 운동 처방은 비어 있어도 제거하지 않습니다. | `intermediate/basic_refinement/` |
+| 4 | `filter_enlistment_candidates` | 키·체중·BMI·체지방률이 입대 후보 범위 안에 있는 행만 남깁니다. | `intermediate/enlistment_filter/` |
+| 5 | `select_three_measures` | 3회 이상 측정한 회원마다 측정 기록 3건을 고릅니다. 측정 간격이 모두 30일 이상(`MIN_INTERVAL_DAYS`)인 3건 조합 중 전체 기간이 가장 길고 두 간격이 가장 고른 조합을 고르고, 고른 3건의 첫·마지막 측정이 3년(`MAX_SPAN_DAYS`)을 넘는 회원은 제외합니다. 같은 날 중복 입력된 기록은 간격이 0일이라 함께 뽑히지 않습니다. | `intermediate/KS_NFA_THREE_MEASURES.csv` |
+| 6 | `apply_final_definition` | 측정일 → 회원식별번호 → 측정일련번호 순으로 정렬해 `MESURE_ID`를 붙이고, 측정 컬럼을 체력 요소 이름(근력·근지구력·심폐지구력·유연성)으로 바꿔 측정 데이터(FINAL 정의서)와 운동 처방 데이터(처방 1개당 1행, PRESCRIPTION 정의서)로 나눠 저장합니다. 운동 처방에는 처방 이름 대신 2단계 상세 테이블의 처방유형번호를 넣습니다(상세 테이블에 없는 이름이 있으면 오류). 같은 측정 안의 중복 처방은 제거합니다. | `processed/KS_NFA_PROCESSED.csv`, `processed/KS_NFA_PRESCRIPTION.csv` |
 
 `remove_3sigma_outliers`(3σ 이상치 제거)는 현재 파이프라인에서 쓰지 않습니다. 필요하면 단독으로 실행할 수 있습니다.
 
@@ -79,8 +80,8 @@ python data/scripts/analysis/summarize_official_cut_ratios.py
 전처리 완료 후 다음 순서로 가상 장병 데이터를 만듭니다. 가상 장병 수는 기본적으로 처리된 체력 데이터(`data/processed/KS_NFA_PROCESSED.csv`)의 측정 행 수와 같으며, 생성 단계에서는 군번과 이름만 만듭니다.
 
 ```powershell
-python data/scripts/synthesis/generate_synthetic_personnels.py
-python data/scripts/synthesis/generate_linkage_injury.py --injury-rate 10
+python data/scripts/synthesis/generate_synthetic_personnel.py
+python data/scripts/synthesis/link_fitness_and_injury_risk.py --injury-rate 10
 python data/scripts/synthesis/generate_synthetic_injuries.py
 ```
 
@@ -94,11 +95,11 @@ python data/scripts/synthesis/generate_synthetic_injuries.py
 
 | 순서 | 스크립트 | 결과 |
 |---|---|---|
-| 1 | `generate_synthetic_personnels.py` | `soldier_personal_data.csv` |
-| 2 | `generate_linkage_injury.py` | BMI·CARDIO·범주·상대 위험도·개인별 부상 확률이 추가된 `soldier_personal_injury_risk.csv` |
-| 3 | `generate_synthetic_injuries.py` | 개인별 `INJURY_PROBABILITY`를 Poisson 평균 건수로 사용해 생성한 `soldier_injury_data.csv` |
+| 1 | `generate_synthetic_personnel.py` | `soldier_personal_data.csv` |
+| 2 | `link_fitness_and_injury_risk.py` | BMI·CARDIO·범주·상대 위험도·개인별 부상 확률이 추가된 `soldier_personal_injury_risk.csv` |
+| 3 | `generate_synthetic_injuries.py` | 개인별 `INJURY_PROBABILITY`를 Poisson 평균 건수로 사용해 생성한 `SOLDIER_INJURY.csv` |
 
-모든 단계의 입력·출력은 `--personnel-csv`, `--fitness-csv`, `--personal-csv`, `--output` 옵션으로 바꿀 수 있습니다. 재현 가능한 연계를 위해 `generate_linkage_injury.py`와 부상 생성기는 기본 난수 시드 42를 사용합니다. 이 확률은 제공된 상대 위험도 표를 적용한 합성 시뮬레이션 값이며, 실제 개인의 의학적 부상 예측치가 아닙니다.
+모든 단계의 입력·출력은 `--personnel-csv`, `--fitness-csv`, `--personal-csv`, `--output` 옵션으로 바꿀 수 있습니다. 재현 가능한 연계를 위해 `link_fitness_and_injury_risk.py`와 부상 생성기는 기본 난수 시드 42를 사용합니다. 이 확률은 제공된 상대 위험도 표를 적용한 합성 시뮬레이션 값이며, 실제 개인의 의학적 부상 예측치가 아닙니다.
 
 ## 단계 추가·수정
 

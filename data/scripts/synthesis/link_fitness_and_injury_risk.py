@@ -11,7 +11,7 @@ from data.scripts.paths import (
     PROCESSED_FITNESS_PATH,
     SYNTHETIC_PERSONNEL_PATH,
 )
-from data.scripts.synthesis.generate_synthetic_personnels import (
+from data.scripts.synthesis.generate_synthetic_personnel import (
     assign_personnel_attributes,
 )
 

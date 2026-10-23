@@ -2,13 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from data.scripts.synthesis.generate_linkage_injury import (
+from data.scripts.synthesis.link_fitness_and_injury_risk import (
     FITNESS_COLUMNS,
     calculate_injury_risk,
     summarize_linked_categories,
 )
 from data.scripts.synthesis.generate_synthetic_injuries import generate_injury_data
-from data.scripts.synthesis.generate_synthetic_personnels import (
+from data.scripts.synthesis.generate_synthetic_personnel import (
     run as generate_personnel_data,
 )
 

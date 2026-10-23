@@ -10,21 +10,19 @@ from data.scripts.paths import (
     SYNTHETIC_PERSONNEL_PATH,
 )
 from data.scripts.pipeline import Step
-from data.scripts.synthesis.generate_linkage_injury import run as link_injury_risk
+from data.scripts.synthesis.link_fitness_and_injury_risk import run as link_injury_risk
 from data.scripts.synthesis.generate_synthetic_injuries import run as generate_injuries
-from data.scripts.synthesis.generate_synthetic_personnels import run as generate_personnels
+from data.scripts.synthesis.generate_synthetic_personnel import run as generate_personnel
 
 TITLE = "가상 데이터 합성"
 
 
 def build_steps() -> list[Step]:
     """실행 순서대로 합성 단계 목록을 만듭니다."""
-    # TODO: generate_synthetic_personnels·generate_synthetic_injuries는 아직 이전 구조(경로 직접 지정, run(입력, 출력) 없음)라
-    # 단계 형식으로 정비한 뒤 여기에 추가한다.
     return [
         Step(
             name="가상 장병 생성",
-            run=generate_personnels,
+            run=generate_personnel,
             inputs={"fitness_path": PROCESSED_FITNESS_PATH},
             outputs={"output_path": SYNTHETIC_PERSONNEL_PATH},
         ),

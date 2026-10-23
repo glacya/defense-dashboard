@@ -13,6 +13,7 @@ import pandas as pd
 
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import INTERMEDIATE_BASIC_REFINEMENT, INTERMEDIATE_MERGED, PASSED_FILENAME
+from data.scripts.utils import read_text_csv, require_columns, write_csv
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +37,6 @@ CARDIO_MAX = 80.0
 NULLABLE_COLUMNS = [
     "MVM_PRSCRPTN_CN",
 ]
-
-
-def read_input(path: Path) -> pd.DataFrame:
-    """통합 CSV를 모든 값을 문자열로 읽습니다. 빈 칸은 빈 문자열로 유지합니다."""
-    return pd.read_csv(path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
 
 
 def find_missing(df: pd.DataFrame) -> pd.DataFrame:
@@ -121,10 +117,8 @@ def run(input_path: Path, output_dir: Path) -> None:
     missing_removed_path = output_dir / REMOVED_MISSING_FILENAME
     outlier_removed_path = output_dir / REMOVED_OUTLIER_FILENAME
     # 2. 입력 로드 및 필수 컬럼 검사
-    df = read_input(input_path)
-    missing_columns = [column for column in [*INTEGER_SCORE_COLUMNS, CARDIO_COLUMN] if column not in df.columns]
-    if missing_columns:
-        raise ValueError(f"필수 측정 컬럼이 없습니다: {', '.join(missing_columns)}")
+    df = read_text_csv(input_path)
+    require_columns(df, [*INTEGER_SCORE_COLUMNS, CARDIO_COLUMN])
 
     # 3. 결측치를 먼저 제거하고, 남은 행에서 이상치를 제거한다.
     #    두 조건에 모두 걸린 행은 결측 파일에만 들어간다.
@@ -132,9 +126,9 @@ def run(input_path: Path, output_dir: Path) -> None:
     passed, outlier_removed, outlier_counts = remove_outliers(without_missing)
 
     # 4. 저장 후, 통과 + 제거 행 수가 입력 행 수와 같은지 검증한다.
-    passed.to_csv(output_path, index=False, encoding="utf-8-sig")
-    missing_removed.to_csv(missing_removed_path, index=False, encoding="utf-8-sig")
-    outlier_removed.to_csv(outlier_removed_path, index=False, encoding="utf-8-sig")
+    write_csv(passed, output_path)
+    write_csv(missing_removed, missing_removed_path)
+    write_csv(outlier_removed, outlier_removed_path)
     if len(passed) + len(missing_removed) + len(outlier_removed) != len(df):
         raise RuntimeError("통과/결측 제거/이상치 제거 행 수가 입력 행 수와 일치하지 않습니다.")
 

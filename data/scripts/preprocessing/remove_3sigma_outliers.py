@@ -15,6 +15,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from dashboard.py.loader import load_csv_data
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import INTERMEDIATE_3SIGMA, INTERMEDIATE_BASIC_REFINEMENT, PASSED_FILENAME
+from data.scripts.utils import write_csv
 
 logger = logging.getLogger(__name__)
 
@@ -230,13 +231,13 @@ def run(input_path: Path, output_dir: Path) -> None:
     clean_df = df.loc[~outlier_rows].copy()
     applied_rule = f"{FILTER_RULE}: {', '.join(selected_columns)}"
     clean_df["OUTLIER_FILTER_RULE"] = applied_rule
-    clean_df.to_csv(clean_path, index=False, encoding="utf-8-sig")
+    write_csv(clean_df, clean_path)
 
     outlier_df = df.loc[outlier_rows].copy()
     outlier_df["OUTLIER_REASON"] = outlier_rows[outlier_rows].index.map(
         lambda index: "; ".join(outlier_reasons[index])
     )
-    outlier_df.to_csv(outlier_path, index=False, encoding="utf-8-sig")
+    write_csv(outlier_df, outlier_path)
 
     # 8. 요약 로그
     logger.info("3-sigma 적용 컬럼: %s", ", ".join(selected_columns))

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 REPORT_FILENAME = "KS_NFA_PROCESSED_profile.html"
 REPORT_TITLE = "체력 측정 데이터 프로파일링 보고서"
 # 숫자처럼 보이지만 값의 크기가 의미 없는 컬럼. 문자열로 읽어야 평균·히스토그램 같은 숫자 통계가 붙지 않는다.
-IDENTIFIER_COLUMNS = ["MESURE_ID", "M_SEQ_NO", "M_CODE", "MESURE_DE"]
+IDENTIFIER_COLUMNS = ["MESURE_ID", "SOLDIER_ID", "MESURE_DE", "INJURY_RISK_GROUP_ID"]
 
 # 보고서의 영어 문구와 한국어 번역. 긴 문구부터 바꿔야 짧은 문구가 긴 문구 일부를 먼저 바꾸지 않는다.
 _TRANSLATIONS = {

@@ -13,6 +13,7 @@ import pandas as pd
 
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import INTERMEDIATE_ENLISTMENT_FILTER, INTERMEDIATE_OFFICIAL_CUT_RATIOS, PASSED_FILENAME
+from data.scripts.utils import read_text_csv, require_columns, write_csv
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +34,8 @@ def read_cardio(path: Path) -> pd.Series:
     Raises:
         ValueError: CARDIO 컬럼이 없거나, 빈 값·숫자가 아닌 값이 있을 때. 결측치는 전처리 2단계에서 이미 제거된다.
     """
-    data = pd.read_csv(path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
-    if CARDIO_COLUMN not in data.columns:
-        raise ValueError(f"{CARDIO_COLUMN} 컬럼이 없습니다.")
+    data = read_text_csv(path)
+    require_columns(data, [CARDIO_COLUMN])
     cardio = pd.to_numeric(data[CARDIO_COLUMN].str.strip(), errors="coerce")
     if cardio.isna().any():
         raise ValueError(f"{CARDIO_COLUMN}이 비어 있거나 숫자가 아닌 행이 {int(cardio.isna().sum()):,}개 있습니다.")
@@ -70,7 +70,7 @@ def run(input_path: Path, output_dir: Path) -> None:
     # 2. 입력 로드 후 등급 비율 표를 만들어 저장한다.
     cardio = read_cardio(input_path)
     ratios = build_grade_ratios(cardio)
-    ratios.round(DECIMALS).to_csv(ratios_path, index=False, encoding="utf-8-sig")
+    write_csv(ratios.round(DECIMALS), ratios_path)
 
     # 3. 요약 로그
     logger.info(

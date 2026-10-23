@@ -18,12 +18,12 @@ METRICS = {
 
 
 def analyze_age(return_first=False):
-    df = pd.read_csv(DATA_PATH, dtype={'M_CODE': 'string'}, low_memory=False)
-    required = {'M_CODE', 'AGE', 'MESURE_DE'} | set(METRICS)
+    df = pd.read_csv(DATA_PATH, dtype={'SOLDIER_ID': 'string'}, low_memory=False)
+    required = {'SOLDIER_ID', 'AGE', 'MESURE_DE'} | set(METRICS)
     if required - set(df.columns):
         raise ValueError(f'필수 컬럼 없음: {sorted(required - set(df.columns))}')
     source_rows = len(df)
-    df = df.loc[df.M_CODE.notna() & df.M_CODE.str.strip().ne('')].copy()
+    df = df.loc[df.SOLDIER_ID.notna() & df.SOLDIER_ID.str.strip().ne('')].copy()
     df['_date'] = pd.to_datetime(
         df.MESURE_DE.astype('string').str.replace(r'\.0$', '', regex=True),
         format='%Y%m%d', errors='coerce')
@@ -31,7 +31,7 @@ def analyze_age(return_first=False):
         raise ValueError('측정일이 없거나 날짜 형식이 잘못된 기록이 있습니다. 첫 측정 순서를 확인해주세요.')
     df['_order'] = range(len(df))
     # 전체 기록 중 첫 측정을 먼저 선택하고, 그 당시 나이가 19~24세인지 확인한다.
-    first = df.sort_values(['M_CODE', '_date', '_order']).drop_duplicates('M_CODE').copy()
+    first = df.sort_values(['SOLDIER_ID', '_date', '_order']).drop_duplicates('SOLDIER_ID').copy()
     for col in ['AGE'] + list(METRICS):
         first[col] = pd.to_numeric(first[col], errors='coerce').replace([np.inf, -np.inf], np.nan)
     first = first.loc[first.AGE.isin(range(19, 25))].copy()

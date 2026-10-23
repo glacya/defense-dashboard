@@ -27,7 +27,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # 장병을 구분하는 고유번호
-PERSON_COL = 'M_CODE'
+PERSON_COL = 'SOLDIER_ID'
 
 # 나이 컬럼
 AGE_COL = 'AGE'
@@ -55,7 +55,7 @@ AREA_COLS = [
 # ============================================================
 
 # 체력측정 데이터 읽기
-# M_CODE는 숫자가 아닌 문자열로 읽어서 고유번호를 유지
+# SOLDIER_ID는 숫자가 아닌 문자열로 읽어서 고유번호를 유지
 df = pd.read_csv(DATA_PATH, dtype={PERSON_COL: 'string'})
 
 # 체력 3등급 기준표 읽기
@@ -265,7 +265,7 @@ three.loc[
 # 한 장병의 1차·2차·3차 미달 개수를 한 행으로 정리
 #
 # 예:
-# M_CODE   weak_1   weak_2   weak_3
+# SOLDIER_ID   weak_1   weak_2   weak_3
 # A001        3        2        1
 
 summary = three.pivot(

@@ -8,7 +8,7 @@ from scipy.stats import f_oneway, levene, tukey_hsd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from 연령별분석 import analyze_age, METRICS
+from 분석_연령별 import analyze_age, METRICS
 from statistics_compat import welch_anova, games_howell
 
 EXERCISES = ['STRENGTH', 'ENDURANCE', 'FLEXIBILITY', 'CARDIO']

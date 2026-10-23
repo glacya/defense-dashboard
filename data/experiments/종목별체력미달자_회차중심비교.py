@@ -22,8 +22,8 @@ MEASURES = list(AREAS.values())
 
 def analyze(complete_only=True):
     """날짜순 첫 3회를 사용하고, 종목별로 같은 장병 집단을 비교한다."""
-    df = pd.read_csv(DATA_PATH, dtype={'M_CODE': 'string'}, low_memory=False)
-    required = ['M_CODE', 'AGE', 'MESURE_DE'] + MEASURES
+    df = pd.read_csv(DATA_PATH, dtype={'SOLDIER_ID': 'string'}, low_memory=False)
+    required = ['SOLDIER_ID', 'AGE', 'MESURE_DE'] + MEASURES
     missing = set(required) - set(df.columns)
     if missing:
         raise ValueError(f'필수 컬럼 없음: {sorted(missing)}')
@@ -42,8 +42,8 @@ def analyze(complete_only=True):
             raise ValueError(f'{col}: 기준값이 없습니다.')
     for col in ['AGE'] + MEASURES:
         df[col] = pd.to_numeric(df[col], errors='coerce').replace([np.inf, -np.inf], np.nan)
-    df = df.loc[df.AGE.between(19, 24) & df.M_CODE.notna()
-                & df.M_CODE.str.strip().ne('')].copy()
+    df = df.loc[df.AGE.between(19, 24) & df.SOLDIER_ID.notna()
+                & df.SOLDIER_ID.str.strip().ne('')].copy()
     # 날짜를 모르는 행을 제거하면 이후 측정이 앞 회차로 바뀌므로 오류로 안내한다.
     df['_date'] = pd.to_datetime(
         df.MESURE_DE.astype('string').str.replace(r'\.0$', '', regex=True),
@@ -51,9 +51,9 @@ def analyze(complete_only=True):
     if df['_date'].isna().any():
         raise ValueError('MESURE_DE에 해석할 수 없는 날짜가 있습니다.')
     df['_order'] = range(len(df))
-    df = df.sort_values(['M_CODE', '_date', '_order'])
-    df = df.loc[df.groupby('M_CODE').M_CODE.transform('size').ge(3)].copy()
-    df['회차'] = df.groupby('M_CODE').cumcount() + 1
+    df = df.sort_values(['SOLDIER_ID', '_date', '_order'])
+    df = df.loc[df.groupby('SOLDIER_ID').SOLDIER_ID.transform('size').ge(3)].copy()
+    df['회차'] = df.groupby('SOLDIER_ID').cumcount() + 1
     df = df.loc[df['회차'].le(3)].copy()
     if df.empty:
         raise ValueError('19~24세 중 3회 이상 측정한 대상자가 없습니다.')
@@ -62,8 +62,8 @@ def analyze(complete_only=True):
     rows, changes = [], []
     for label, col in AREAS.items():
         risk = f'{col}_미달'
-        complete = df.groupby('M_CODE')[risk].count().eq(3)
-        target = df.loc[df.M_CODE.isin(complete[complete].index)] if complete_only else df
+        complete = df.groupby('SOLDIER_ID')[risk].count().eq(3)
+        target = df.loc[df.SOLDIER_ID.isin(complete[complete].index)] if complete_only else df
         counts = []
         for round_no in (1, 2, 3):
             values = target.loc[target['회차'].eq(round_no), risk]
@@ -92,7 +92,7 @@ def main():
     except (ValueError, OSError, KeyError) as exc:
         st.error(str(exc))
         st.stop()
-    st.metric('3회 이상 측정 장병', f'{detail.M_CODE.nunique():,}명')
+    st.metric('3회 이상 측정 장병', f'{detail.SOLDIER_ID.nunique():,}명')
     st.caption('미달 = 측정값 < 3등급 최소값. 기준값과 같으면 충족. 심폐는 통합 CARDIO(VO₂max) 기준 42를 적용합니다. 결측값은 판정불가입니다.')
     with st.expander('적용 기준표'):
         st.dataframe(standards.loc[standards.exercise.isin(MEASURES)], hide_index=True)

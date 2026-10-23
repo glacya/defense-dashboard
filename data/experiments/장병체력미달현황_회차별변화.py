@@ -43,7 +43,7 @@ except Exception as e:
     st.error(f"CSV 읽기 오류: {e}")
     st.stop()
 
-required = ["M_CODE", "weak_1", "weak_2", "weak_3"]
+required = ["SOLDIER_ID", "weak_1", "weak_2", "weak_3"]
 
 missing = [c for c in required if c not in df.columns]
 
@@ -51,8 +51,8 @@ if missing:
     st.error(f"필수 컬럼이 없습니다: {missing}")
     st.stop()
 
-if df["M_CODE"].duplicated().any():
-    st.error("M_CODE가 중복되어 있습니다. 장병별 1행이어야 합니다.")
+if df["SOLDIER_ID"].duplicated().any():
+    st.error("SOLDIER_ID가 중복되어 있습니다. 장병별 1행이어야 합니다.")
     st.stop()
 
 for i in [1, 2, 3]:
@@ -287,7 +287,7 @@ else:
 
     st.dataframe(
         target[
-            ["M_CODE",
+            ["SOLDIER_ID",
              f"weak_{before_round}",
              f"weak_{after_round}",
              "변화"]

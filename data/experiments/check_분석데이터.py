@@ -2,12 +2,12 @@ import pandas as pd
 
 from pathlib import Path
 
-df = pd.read_csv(Path(__file__).resolve().parents[2] / "data/processed/KS_NFA_PROCESSED.csv", dtype={"M_CODE": "string"})
+df = pd.read_csv(Path(__file__).resolve().parents[2] / "data/processed/KS_NFA_PROCESSED.csv", dtype={"SOLDIER_ID": "string"})
 print( df.shape)
 
  
-# M_CODE별 측정 횟수
-counts = df.groupby("M_CODE").size()
+# SOLDIER_ID별 측정 횟수
+counts = df.groupby("SOLDIER_ID").size()
 
 print("전체 장병 수:", counts.size)
 print("전체 측정 기록 수:", len(df))
@@ -25,16 +25,16 @@ print(counts.eq(3).sum())
 
 
 
-# M_CODE별 데이터 개수
-counts = df.groupby("M_CODE").size()
+# SOLDIER_ID별 데이터 개수
+counts = df.groupby("SOLDIER_ID").size()
 
-# 3개 이상인 M_CODE
+# 3개 이상인 SOLDIER_ID
 # codes = counts[counts >= 3].index
 
-# # 해당 M_CODE의 전체 데이터 추출
-# df_3 = df[df["M_CODE"].isin(codes)]
+# # 해당 SOLDIER_ID의 전체 데이터 추출
+# df_3 = df[df["SOLDIER_ID"].isin(codes)]
 
-# print("3개 이상인 M_CODE 수:", len(codes))
+# print("3개 이상인 SOLDIER_ID 수:", len(codes))
 # print("3개 이상인 데이터 행 수:", len(df_3))
 # print("추출 데이터 크기:", df_3.shape)
 

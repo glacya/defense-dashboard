@@ -4,4 +4,4 @@
 3,REGION_NAME,지역,VARCHAR,20,N,Y,장병 개인 인적사항 샘플 데이터
 4,UNIT_NAME,부대,VARCHAR,20,N,Y,장병 개인 인적사항 샘플 데이터
 5,RANK_NAME,계급,VARCHAR,8,N,Y,장병 개인 인적사항 샘플 데이터
-6,FRONT_REAR_CLASSIFICATION,전후방구분,VARCHAR,6,N,Y,장병 개인 인적사항 샘플 
+6,FRONT_REAR_CLASSIFICATION,전후방구분,VARCHAR,6,N,Y,장병 개인 인적사항 샘플 데이터

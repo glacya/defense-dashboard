@@ -1,4 +1,4 @@
 순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,NOT NULL여부,데이터 상품명
-1,PRESCRIPTION_ID,처방식별번호,INT,10,Y,Y,자동 부여
-2,MESURE_ID,측정식별번호,INT,10,N,Y,자동 부여
-3,PRESCRIPTION_TYPE_ID,처방유형번호,INT,10,N,Y,자동 부여
+1,PRESCRIPTION_ID,처방식별번호,INT,,Y,Y,자동 부여
+2,MESURE_ID,측정식별번호,INT,,N,Y,자동 부여
+3,PRESCRIPTION_TYPE_ID,처방유형번호,INT,,N,Y,자동 부여

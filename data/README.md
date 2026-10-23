@@ -13,14 +13,14 @@
    .\run_data_pipeline.ps1                  # 전체 (kdt-project-1 환경이 아니면 스스로 활성화)
    .\run_data_pipeline.ps1 preprocessing    # 전처리만
    ```
-4. 최종 결과는 `data/processed/`의 세 파일입니다. 측정 데이터 `KS_NFA_PROCESSED.csv`, 운동 처방 데이터 `KS_NFA_PRESCRIPTION.csv`, 운동 처방 유형 `KS_NFA_PRESCRIPTION_DETAIL.csv`입니다. 측정 데이터와 운동 처방은 측정식별번호 `MESURE_ID`로, 운동 처방과 처방 유형은 처방유형번호 `PRESCRIPTION_TYPE_ID`로 연결됩니다(처방 이름은 유형 파일에만 있습니다). 컬럼 구성은 `definitions/`의 `KS_NFA_FINAL_DEFINITION.csv`, `KS_NFA_PRESCRIPTION_DEFINITION.csv`, `KS_NFA_PRESCRIPTION_DETAIL_DEFINITION.csv`를 따르고, 통계 작업은 이 정의서를 기준으로 합니다. 실행 로그는 `data/scripts/logs/`에 남습니다.
+4. 최종 결과는 `data/processed/`의 세 파일입니다. 측정 데이터 `KS_NFA_PROCESSED.csv`, 운동 처방 데이터 `KS_NFA_PRESCRIPTION.csv`, 운동 처방 상세 `KS_NFA_PRESCRIPTION_DETAIL.csv`입니다(상세 테이블은 전처리 2단계에서 걸러 내기 전 전체 데이터로 만듭니다). 측정 데이터와 운동 처방은 측정식별번호 `MESURE_ID`로, 운동 처방과 처방 유형은 처방유형번호 `PRESCRIPTION_TYPE_ID`로 연결됩니다(처방 이름은 유형 파일에만 있습니다). 컬럼 구성은 `definitions/`의 `KS_NFA_FINAL_DEFINITION.csv`, `KS_NFA_PRESCRIPTION_DEFINITION.csv`, `KS_NFA_PRESCRIPTION_DETAIL_DEFINITION.csv`를 따르고, 통계 작업은 이 정의서를 기준으로 합니다. 실행 로그는 `data/scripts/logs/`에 남습니다.
 
 ## 폴더 구성
 
 | 폴더 | 내용 | Git |
 |---|---|---|
 | `raw/` | 원본 데이터 (`KS_NFA_FTNESS_MESURE_*.csv` 55개만) | 제외 |
-| `definitions/` | 컬럼 정의서 (원본: `KS_NFA_RAW_DEFINITION.csv`, 통합: `KS_NFA_MERGED_DEFINITION.csv`, 최종: `KS_NFA_FINAL_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DETAIL_DEFINITION.csv`) | 추적 |
+| `definitions/` | 컬럼 정의서 (원본: `KS_NFA_RAW_DEFINITION.csv`, 통합: `KS_NFA_MERGED_DEFINITION.csv`, 최종: `KS_NFA_FINAL_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DETAIL_DEFINITION.csv`, 가상 장병 연계: `SOLDIER_PERSONAL_INJURY_RISK_DEFINITION.csv`) | 추적 |
 | `intermediate/` | 전처리 중간 결과물과 단계별 제거 행 | 제외 |
 | `processed/` | 전처리 최종 결과물 | 제외 |
 | `samples/` | 샘플 데이터 (100행 내외). 데이터 형태를 예시로 볼 때 사용 | 추적 |
@@ -42,11 +42,11 @@
 | 단계 | 결과 | 행 수 (2026-10-20 기준, 원본 55개, 심폐지구력 VO₂max 통일) |
 |---|---|---|
 | 원본 통합 (19~24세 남성) | `intermediate/KS_NFA_MERGED.csv` | 126,097 |
+| 운동 처방 상세 (원본 통합 전체의 처방 이름 1개당 1행) | `processed/KS_NFA_PRESCRIPTION_DETAIL.csv` | 521 |
 | 결측치·이상치 제거 | `intermediate/basic_refinement/passed.csv` | 124,113 |
 | 입대 후보 조건 필터 | `intermediate/enlistment_filter/passed.csv` | 123,634 |
 | 3회 이상 측정 회원의 기록 3건 (간격 30일 이상, 3년 이내) | `intermediate/KS_NFA_THREE_MEASURES.csv` | 10,746 (3,582명 × 3건) |
 | 최종: 측정 데이터 (`MESURE_ID` 부여) | `processed/KS_NFA_PROCESSED.csv` | 10,746 |
-| 최종: 운동 처방 데이터 (처방 1개당 1행, 처방유형번호) | `processed/KS_NFA_PRESCRIPTION.csv` | 51,729 |
-| 최종: 운동 처방 유형 (처방 이름 1개당 1행) | `processed/KS_NFA_PRESCRIPTION_DETAIL.csv` | 381 |
+| 최종: 운동 처방 데이터 (처방 1개당 1행, 처방유형번호) | `processed/KS_NFA_PRESCRIPTION.csv` | 51,729 |
 
 각 단계가 하는 일은 [scripts/README.md](scripts/README.md)를 참고하세요.

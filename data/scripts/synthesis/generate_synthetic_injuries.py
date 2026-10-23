@@ -5,6 +5,11 @@ import numpy as np
 import pandas as pd
 from tabulate import tabulate
 
+from data.scripts.paths import (
+    LINKED_INJURY_RISK_PATH,
+    SYNTHETIC_INJURY_PATH,
+)
+
 # ==========================================
 # 1. 전역 상수 (Global Constants)
 # ==========================================
@@ -96,22 +101,49 @@ def generate_injury_data(
 ) -> pd.DataFrame:
     """
     기존 장병 데이터(df_personal)를 바탕으로 부상 기록 데이터프레임 생성
-    - injury_rate: 전체 인원 중 부상을 입은 장병의 비율
+    - INJURY_PROBABILITY 컬럼이 있으면 개인별 기대 부상 건수(lambda)로 Poisson 추출합니다.
+    - injury_rate는 개인별 lambda가 없을 때 사용할 전체 인원 비율입니다.
     """
     np.random.seed(seed)
     random.seed(seed)
 
     # 1. 부상 대상 장병 추출
     n_total = len(df_personal)
-    n_injured = (
-        injury_count if injury_count is not None else int(n_total * injury_rate)
-    )
+    probability_column = 'INJURY_PROBABILITY'
+    soldier_probabilities = None
+    selected_soldiers = None
+    if probability_column in df_personal.columns:
+        soldier_probabilities = pd.to_numeric(
+            df_personal[probability_column], errors='coerce'
+        ).to_numpy(dtype=float)
+        if (
+            not np.isfinite(soldier_probabilities).all()
+            or (soldier_probabilities < 0).any()
+            or (soldier_probabilities > 1).any()
+        ):
+            raise ValueError(
+                'INJURY_PROBABILITY(Poisson lambda)는 0과 1 사이의 유효한 숫자여야 합니다.'
+            )
+
+    locations_per_soldier = len(INJURY_LOCATION_DATA)
+    if soldier_probabilities is not None and injury_count is None:
+        # Lambda를 기존 개인별 기대 부상 건수로 사용해 반복 부상도 허용한다.
+        injury_counts = np.minimum(
+            np.random.poisson(soldier_probabilities),
+            locations_per_soldier,
+        )
+        selected_soldiers = np.repeat(np.arange(n_total), injury_counts)
+        np.random.shuffle(selected_soldiers)
+        n_injured = len(selected_soldiers)
+    else:
+        n_injured = (
+            injury_count if injury_count is not None else int(n_total * injury_rate)
+        )
     if n_injured < 0:
         raise ValueError('부상 건수는 0 이상이어야 합니다.')
     if n_injured and n_total == 0:
         raise ValueError('장병 데이터가 비어 있으면 부상 기록을 생성할 수 없습니다.')
 
-    locations_per_soldier = len(INJURY_LOCATION_DATA)
     if n_injured > n_total * locations_per_soldier:
         raise ValueError(
             f'부상 건수는 장병 수와 부상 위치 수의 곱({n_total * locations_per_soldier})을 '
@@ -121,10 +153,25 @@ def generate_injury_data(
     soldier_indices = []
     location_indices = []
     used_locations = {}
-    injury_counts = np.zeros(n_total, dtype=int)
-    for _ in range(n_injured):
-        eligible_soldiers = np.flatnonzero(injury_counts < locations_per_soldier)
-        soldier_index = int(np.random.choice(eligible_soldiers))
+    assigned_injury_counts = np.zeros(n_total, dtype=int)
+    for injury_index in range(n_injured):
+        if selected_soldiers is not None:
+            soldier_index = int(selected_soldiers[injury_index])
+        else:
+            eligible_soldiers = np.flatnonzero(
+                assigned_injury_counts < locations_per_soldier
+            )
+            if soldier_probabilities is not None:
+                eligible_weights = soldier_probabilities[eligible_soldiers]
+                if eligible_weights.sum() == 0:
+                    raise ValueError(
+                        '부상 확률이 0인 장병만 남아 지정한 부상 건수를 채울 수 없습니다.'
+                    )
+                soldier_index = int(np.random.choice(
+                    eligible_soldiers, p=eligible_weights / eligible_weights.sum()
+                ))
+            else:
+                soldier_index = int(np.random.choice(eligible_soldiers))
         used_for_soldier = used_locations.setdefault(soldier_index, set())
         available_locations = np.array([
             index for index in range(locations_per_soldier)
@@ -139,7 +186,7 @@ def generate_injury_data(
         soldier_indices.append(soldier_index)
         location_indices.append(location_index)
         used_for_soldier.add(location_index)
-        injury_counts[soldier_index] += 1
+        assigned_injury_counts[soldier_index] += 1
 
     injured_soldiers = df_personal.iloc[soldier_indices].copy()
     
@@ -294,14 +341,36 @@ def probability(value: str) -> float:
     return parsed
 
 
-def main():
-    default_dir = (
-        Path(__file__).resolve().parents[2]
-        / 'data'
-        / 'csv_file'
-        / 'csv_data'
+def run(
+    personal_csv_path: Path,
+    output_path: Path,
+    injury_rate: float = 0.3,
+    seed: int = 42,
+    injury_count: int | None = None,
+) -> None:
+    """장병 CSV의 개인별 확률을 이용해 부상 기록을 생성합니다."""
+    df_personal = pd.read_csv(personal_csv_path, encoding='utf-8-sig')
+    df_personal = df_personal.rename(columns={
+        'SOLDIER_ID': '군번',
+        'SOLDIER_NAME': '이름',
+        'REGION_NAME': '지역',
+        'UNIT_NAME': '부대',
+        'RANK_NAME': '계급',
+        'FRONT_REAR_CLASSIFICATION': '전후방구분',
+    })
+    df_injury = generate_injury_data(
+        df_personal,
+        injury_rate=injury_rate,
+        seed=seed,
+        injury_count=injury_count,
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    prepare_injury_csv_data(df_injury).to_csv(
+        output_path, index=False, encoding='utf-8-sig'
     )
 
+
+def main():
     parser = argparse.ArgumentParser(
         description='장병 인적사항 데이터를 바탕으로 부상 데이터를 생성합니다.'
     )
@@ -311,46 +380,44 @@ def main():
     )
     parser.add_argument(
         '--injury-rate', type=probability, default=0.3,
-        help='전체 인원 대비 부상 기록 건수 비율 (기본값: 0.3, --count 지정 시 무시)',
+        help=(
+            '개인별 확률 컬럼이 없을 때 사용할 부상 비율 '
+            '(기본값: 0.3, --count 지정 시 무시)'
+        ),
     )
     parser.add_argument('--seed', type=int, default=42, help='난수 시드 (기본값: 42)')
     parser.add_argument(
         '-p', '--personal-csv', type=Path,
-        default=default_dir / 'soldier_personal_data.csv',
-        help='인적사항 입력 CSV 경로',
+        default=LINKED_INJURY_RISK_PATH,
+        help='부상 확률을 포함한 장병 입력 CSV 경로',
     )
     parser.add_argument(
         '-o', '--output', type=Path, default=None,
         help='CSV 저장 경로 전체 (선택 사항)',
     )
     parser.add_argument(
-        '-f', '--filename', type=str, default='soldier_injury_data.csv',
+        '-f', '--filename', type=str, default=SYNTHETIC_INJURY_PATH.name,
         help='기본 폴더에 저장할 CSV 파일 이름',
     )
     args = parser.parse_args()
 
     personal_csv_path = args.personal_csv
-    injury_csv_path = args.output or (default_dir / args.filename)
+    injury_csv_path = args.output or (
+        SYNTHETIC_INJURY_PATH
+        if args.filename == SYNTHETIC_INJURY_PATH.name
+        else SYNTHETIC_INJURY_PATH.parent / args.filename
+    )
     
     # 개인 인적사항 데이터 로드
-    try:
-        df_personal = pd.read_csv(personal_csv_path, encoding='utf-8-sig')
-        df_personal = df_personal.rename(columns={
-            'SOLDIER_ID': '군번',
-            'SOLDIER_NAME': '이름',
-            'REGION_NAME': '지역',
-            'UNIT_NAME': '부대',
-            'RANK_NAME': '계급',
-            'FRONT_REAR_CLASSIFICATION': '전후방구분',
-        })
-    except FileNotFoundError:
-        print(f"{personal_csv_path} 파일이 없어 임시 장병 데이터를 생성합니다.")
-        df_personal = pd.DataFrame({
-            '군번': [f'24-{i:09d}' for i in range(1000)],
-            '이름': [f'장병_{i}' for i in range(1000)],
-            '부대': [f'부대_{i % 10 + 1}' for i in range(1000)],
-            '계급': ['일병'] * 1000,
-        })
+    df_personal = pd.read_csv(personal_csv_path, encoding='utf-8-sig')
+    df_personal = df_personal.rename(columns={
+        'SOLDIER_ID': '군번',
+        'SOLDIER_NAME': '이름',
+        'REGION_NAME': '지역',
+        'UNIT_NAME': '부대',
+        'RANK_NAME': '계급',
+        'FRONT_REAR_CLASSIFICATION': '전후방구분',
+    })
 
     df_injury = generate_injury_data(
         df_personal,

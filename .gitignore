@@ -232,4 +232,7 @@ data/intermediate/*
 !data/intermediate/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+# 합성 단계 결과물 (가상 데이터도 저장소에 올리지 않음)
+data/synthetic/*
+!data/synthetic/.gitkeep
 !data/scripts/logs/.gitkeep

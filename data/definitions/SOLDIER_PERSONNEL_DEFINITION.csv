@@ -1,7 +1,7 @@
 순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,NOT NULL여부,데이터 상품명
-1,SOLDIER_ID,군번,VARCHAR,20,Y,Y,장병 개인 인적사항 샘플 데이터
-2,SOLDIER_NAME,이름,VARCHAR,10,N,Y,장병 개인 인적사항 샘플 데이터
-3,REGION_NAME,지역,VARCHAR,20,N,Y,장병 개인 인적사항 샘플 데이터
-4,UNIT_NAME,부대,VARCHAR,20,N,Y,장병 개인 인적사항 샘플 데이터
-5,RANK_NAME,계급,VARCHAR,8,N,Y,장병 개인 인적사항 샘플 데이터
-6,FRONT_REAR_CLASSIFICATION,전후방구분,VARCHAR,6,N,Y,장병 개인 인적사항 샘플 
+1,SOLDIER_ID,군번,VARCHAR,20,Y,Y,장병 개인 인적사항 데이터
+2,SOLDIER_NAME,이름,VARCHAR,10,N,Y,장병 개인 인적사항 데이터
+3,REGION_NAME,지역,VARCHAR,20,N,Y,장병 개인 인적사항 데이터
+4,UNIT_NAME,부대,VARCHAR,20,N,Y,장병 개인 인적사항 데이터
+5,RANK_NAME,계급,VARCHAR,8,N,Y,장병 개인 인적사항 데이터
+6,FRONT_REAR_CLASSIFICATION,전후방구분,VARCHAR,6,N,Y,장병 개인 인적사항 데이터

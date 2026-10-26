@@ -10,12 +10,13 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from data.experiments.분석_bmi별 import analyze_bmi, BMI_GROUPS, BMI_DESCRIPTION
-from 종목별체력미달자_회차별변화율 import STANDARD_PATH, AREAS
+from 종목별체력미달자_회차별변화율 import AREAS
+from data.scripts.fitness_standards import grade3_standards
 
 
 def calculate():
     boundaries, _, data, excluded = analyze_bmi()
-    standards = pd.read_csv(STANDARD_PATH)
+    standards = grade3_standards()
     standards = standards.loc[standards.sex.eq('M') & standards.age_min.eq(19)
                               & standards.age_max.eq(24)]
     if standards.exercise.duplicated().any():

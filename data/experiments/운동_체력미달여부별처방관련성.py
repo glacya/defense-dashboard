@@ -19,7 +19,7 @@ STANDARD = Path(__file__).resolve().parents[2]/'data/definitions/grade3_male_19_
 def calculate():
     # 원자료와 기준표로 별도 파일을 갱신한 후, 저장된 미달정보를 읽어 분석한다.
     generate()
-    first = pd.read_csv(DEFICIT_PATH, dtype={'M_CODE': 'string', 'MESURE_ID': 'Int64',
+    first = pd.read_csv(DEFICIT_PATH, dtype={'SOLDIER_ID': 'string', 'MESURE_ID': 'Int64',
                        **{f'{label}_미달여부': 'boolean' for label in AREAS}})
     first['MESURE_ID'] = pd.to_numeric(first['MESURE_ID'], errors='raise').astype('Int64')
     if first.MESURE_ID.isna().any() or first.MESURE_ID.duplicated().any():
@@ -97,15 +97,15 @@ def main():
     b.metric('첫 측정 처방 기록 없음 제외', f'{excluded:,}명')
     st.caption('실행 시 별도 미달정보 CSV를 갱신한 뒤 해당 파일을 읽어 처방과 연결합니다. 결과는 data/experiments/results/운동_체력미달별처방관련성/에 저장합니다.')
     with st.expander('별도 생성한 미달정보와 처방 연결 자료'):
-        deficit = pd.read_csv(DEFICIT_PATH, dtype={'M_CODE': 'string'})
+        deficit = pd.read_csv(DEFICIT_PATH, dtype={'SOLDIER_ID': 'string'})
         st.dataframe(deficit, hide_index=True)
         st.download_button('첫 측정 미달정보 CSV', DEFICIT_PATH.read_bytes(), file_name=DEFICIT_PATH.name, mime='text/csv')
         linked_path = OUTPUT_DIR/'장병별_미달정보_운동처방연결.csv'
-        st.dataframe(pd.read_csv(linked_path, dtype={'M_CODE': 'string'}), hide_index=True)
+        st.dataframe(pd.read_csv(linked_path, dtype={'SOLDIER_ID': 'string'}), hide_index=True)
         st.download_button('미달정보·운동처방 연결 CSV', linked_path.read_bytes(), file_name=linked_path.name, mime='text/csv')
     with st.expander('분석에 사용한 데이터·변수·방법', expanded=False):
         st.table(pd.DataFrame([
-            {'구분': '측정 자료', '내용': 'KS_NFA_PROCESSED.csv: M_CODE, MESURE_ID, AGE, MESURE_DE, 체력 4종목'},
+            {'구분': '측정 자료', '내용': 'KS_NFA_PROCESSED.csv: SOLDIER_ID, MESURE_ID, AGE, MESURE_DE, 체력 4종목'},
             {'구분': '별도 미달정보', '내용': '장병별_첫측정_체력미달정보.csv: 측정값·종목별 기준값·미달 여부를 저장한 후 재입력'},
             {'구분': '처방 자료', '내용': 'KS_NFA_PRESCRIPTION.csv: MESURE_ID, PRESCRIPTION_TYPE_ID, PRESCRIPTION_ID'},
             {'구분': '운동명 자료', '내용': 'KS_NFA_PRESCRIPTION_DETAIL.csv: PRESCRIPTION_TYPE_ID, PRESCRIPTION'},

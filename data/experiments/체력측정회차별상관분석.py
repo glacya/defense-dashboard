@@ -15,7 +15,7 @@ INPUT = ROOT / 'data/experiments/results/fitness_risk_by_round.csv'
 OUT = ROOT / 'data/experiments/results/round_correlations'
 OUT.mkdir(parents=True, exist_ok=True)
 
-ID, ROUND = 'M_CODE', 'round'
+ID, ROUND = 'SOLDIER_ID', 'round'
 MEASURES = {'STRENGTH':'근력(상대악력)', 'ENDURANCE':'근지구력(교차윗몸일으키기)', 'FLEXIBILITY':'유연성(앉아윗몸앞으로굽히기)'}
 CARDIO = {'CARDIO': '심폐지구력(VO₂max)'}
 PAIRS = [(1,2),(2,3),(1,3)]

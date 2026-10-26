@@ -23,8 +23,8 @@ def aggregate_risk(detail, complete_only=True):
     detail['미달종목'] = detail.apply(
         lambda row: ', '.join(label for label, col in AREAS.items()
                               if pd.notna(row[f'{col}_미달']) and row[f'{col}_미달']), axis=1)
-    complete = detail.groupby('M_CODE')['판정가능종목수'].agg(lambda v: v.eq(4).all())
-    target = detail.loc[detail.M_CODE.isin(complete[complete].index)] if complete_only else detail
+    complete = detail.groupby('SOLDIER_ID')['판정가능종목수'].agg(lambda v: v.eq(4).all())
+    target = detail.loc[detail.SOLDIER_ID.isin(complete[complete].index)] if complete_only else detail
     rows = []
     for round_no in (1, 2, 3):
         values = target.loc[target['회차'].eq(round_no), '미달종목수']
@@ -49,9 +49,9 @@ def main():
     except (ValueError, OSError, KeyError) as exc:
         st.error(str(exc))
         st.stop()
-    st.metric('3회 이상 측정 장병', f'{detail.M_CODE.nunique():,}명')
+    st.metric('3회 이상 측정 장병', f'{detail.SOLDIER_ID.nunique():,}명')
     if complete_only:
-        st.caption(f'비교 대상 {target.M_CODE.nunique():,}명 · 판정불가 회차가 있어 제외한 장병 {excluded:,}명')
+        st.caption(f'비교 대상 {target.SOLDIER_ID.nunique():,}명 · 판정불가 회차가 있어 제외한 장병 {excluded:,}명')
     else:
         st.warning('회차별 판정가능 인원이 다를 수 있습니다. 판정불가는 미달 개수 집계에서 제외합니다.')
     st.caption('심폐는 통합 CARDIO(VO₂max) 값이 42 미만이면 미달로 판정합니다. 기준값과 같으면 충족입니다.')
@@ -90,7 +90,7 @@ def main():
         fail_count = int(selected[0]['미달 종목 개수'].split('개')[0])
         soldiers = target.loc[target['회차'].eq(round_no) & target['미달종목수'].eq(fail_count)].copy()
         soldiers = soldiers.drop(columns=['MVM_PRSCRPTN_CN'], errors='ignore')
-        first = ['M_CODE', 'AGE', 'MESURE_DE', '회차', '미달종목수', '미달종목']
+        first = ['SOLDIER_ID', 'AGE', 'MESURE_DE', '회차', '미달종목수', '미달종목']
         soldiers = soldiers[first + [c for c in soldiers.columns if c not in first]]
         st.write(f'{round_no}차 · 정확히 {fail_count}개 미달 장병 {len(soldiers):,}명')
         st.dataframe(soldiers, hide_index=True)

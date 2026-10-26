@@ -17,7 +17,7 @@ SUMMARY_PATH = RESULT_DIR / 'fitness_risk_summary.csv'
 HTML_PATH = RESULT_DIR / 'fitness_risk_dashboard.html'
 PERSISTENT_PATH = RESULT_DIR / 'fitness_persistent_by_area.csv'
 
-PERSON_COL = 'M_CODE'
+PERSON_COL = 'SOLDIER_ID'
 AREAS = {
     'strength_risk': '근력',
     'endurance_risk': '근지구력',
@@ -188,7 +188,7 @@ def main(show_ui=False):
         soldier_event = st.dataframe(soldiers, hide_index=True, width='stretch',
                                      key=f'persistent_soldiers_{selected}', on_select='rerun',
                                      selection_mode='single-row')
-        st.caption('장병 목록에서 행을 선택하면 해당 장병의 회차별 측정정보를 확인할 수 있습니다. 장병 식별자는 M_CODE입니다.')
+        st.caption('장병 목록에서 행을 선택하면 해당 장병의 회차별 측정정보를 확인할 수 있습니다. 장병 식별자는 SOLDIER_ID입니다.')
         rows = soldier_event.selection.get('rows', [])
         if rows and rows[0] < len(soldiers):
             person_id = soldiers.iloc[rows[0]][PERSON_COL]

@@ -27,7 +27,7 @@
 | `synthetic/` | 합성 단계가 만드는 가상 장병 명단·부상 기록 | 제외 |
 | `samples/` | 샘플 데이터. 데이터 형태를 예시로 볼 때 사용. 샘플은 `python data/scripts/create_samples.py`로 만듭니다(파이프라인에는 넣지 않음). 최종 체력 측정에서 장병 100명을 무작위로 골라(시드 42) 그 장병의 측정 300행(`KS_NFA_PROCESSED_SAMPLE.csv`), 장병 명단(`SOLDIER_PERSONNEL_SAMPLE.csv`), 부상 기록(`SOLDIER_INJURY_SAMPLE.csv`)을 원본 값 그대로 뽑습니다. 샘플은 독자 참고용이므로 다른 코드의 입력으로 쓰지 않습니다(테스트가 확인). | 추적 |
 | `scripts/` | 전처리·가상 데이터 생성 스크립트. [scripts/README.md](scripts/README.md) 참고 | 추적 |
-| `experiments/` | 이전 실험 코드 (현재 파이프라인에서 쓰지 않음, 정리 예정) | 추적 |
+| `experiments/` | 데이터 분석 실험 스크립트(실험용이며 최종 코드가 아님, 코드 규칙을 엄격히 적용하지 않음). 전처리된 체력 측정 데이터로 3차 통과율 예측, 체력 미달자 회차별 변화, 위험 장병 식별, 연령·BMI 집단별 검정(분산분석·t검정·카이제곱), 운동 처방 관련성 등을 분석합니다. 파이프라인에 들어 있지 않아 하나씩 직접 실행하며(대부분 Streamlit 화면), 결과는 `experiments/results/`에 저장합니다. 파일별 내용은 [experiments/README.md](experiments/README.md) 참고 | 추적 |
 
 폴더 경로는 루트의 `config.py`에 상수(`RAW_DATA_DIR`, `INTERMEDIATE_DIR`, `PROCESSED_DIR` 등)로 정의되어 있습니다. 코드에서는 경로를 직접 쓰지 말고 이 상수를 import해서 씁니다.
 

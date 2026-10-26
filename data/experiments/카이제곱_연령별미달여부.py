@@ -10,7 +10,7 @@ import streamlit as st
 import altair as alt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from 연령별분석 import analyze_age
+from 분석_연령별 import analyze_age
 from 종목별체력미달자_회차별변화율 import STANDARD_PATH, AREAS, CARDIO_COLS
 
 

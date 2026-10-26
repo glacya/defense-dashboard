@@ -1,0 +1,149 @@
+[
+  {
+    "file": "identify_fitness_risk_4_rounds3.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "예측성능평가..py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "예측성능평가2.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "예측성능평가3.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "예측성능평가4.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "성능평가방향성.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "성능평가방향성2.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "성능평가방향성3.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "성능평가방향성4.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "로지스틱회귀예측.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "check_missing.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "analyze_round_correlations.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "analyze_round_correlations_commented.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "visualize_fitness_risk.py",
+    "ok": true,
+    "error": ""
+  },
+  {
+    "file": "아노바_bmi.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "아노바_연령.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "연령별분석.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "위험장병식별.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "위험장병식별with변동률.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "위험장병식별with변동률basic.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "위험장병식별with변동률누적막대.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "종목별체력미달자변화률.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "종목별체력미달자변화률2.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "종목별체력미달자변화률2with장병.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "종목별체력미달자변화률2누적막대.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "종목별체력미달자변화률3.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "카이제곱.py",
+    "ok": true,
+    "error": []
+  },
+  {
+    "file": "미달 경계값·결측·정의서 컬럼 검사",
+    "ok": true
+  },
+  {
+    "file": "아노바_bmi CARDIO 선택·Games–Howell",
+    "ok": true
+  },
+  {
+    "file": "app.py 최종 정의서 로드",
+    "ok": true
+  }
+]

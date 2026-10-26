@@ -1,14 +1,14 @@
 ﻿순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,NOT NULL여부,데이터 상품명
-1,MESURE_ID,측정식별번호,INT,10,Y,Y,자동 부여
-2,M_SEQ_NO,측정일련번호,DECIMAL,30,N,Y,국민체력100 19~24세 남성 측정 데이터
-3,M_CODE,회원식별번호,VARCHAR,200,N,Y,국민체력100 19~24세 남성 측정 데이터
-4,AGE,나이,INT,,N,Y,국민체력100 19~24세 남성 측정 데이터
-5,STRENGTH,근력,DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
-6,ENDURANCE,근지구력,INT,,N,Y,국민체력100 19~24세 남성 측정 데이터
-7,CARDIO,심폐지구력,DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
-8,FLEXIBILITY,유연성,DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
-9,HEIGHT,키(cm),DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
-10,WEIGHT,체중(kg),DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
-11,BMI,BMI,DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
-12,BODY_FAT_PERCENTAGE,체지방률,DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
-13,MESURE_DE,측정일,VARCHAR,8,N,Y,국민체력100 19~24세 남성 측정 데이터
+1,MESURE_ID,측정식별번호,INT,,Y,Y,자동 부여
+2,SOLDIER_ID,군번,VARCHAR,20,N,Y,장병 개인 인적사항 데이터
+3,AGE,나이,INT,,N,Y,국민체력100 19~24세 남성 측정 데이터
+4,STRENGTH,근력,DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
+5,ENDURANCE,근지구력,INT,,N,Y,국민체력100 19~24세 남성 측정 데이터
+6,CARDIO,심폐지구력,DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
+7,FLEXIBILITY,유연성,DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
+8,HEIGHT,키(cm),DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
+9,WEIGHT,체중(kg),DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
+10,BMI,BMI,DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
+11,BODY_FAT_PERCENTAGE,체지방률,DECIMAL,"5,2",N,Y,국민체력100 19~24세 남성 측정 데이터
+12,MESURE_DE,측정일,VARCHAR,8,N,Y,국민체력100 19~24세 남성 측정 데이터
+13,INJURY_RISK_GROUP_ID,부상위험그룹번호,INT,,N,Y,장병 부상 위험 그룹 데이터

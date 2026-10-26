@@ -21,6 +21,7 @@ from data.scripts.paths import (
     INTERMEDIATE_MULTI_CARDIO,
     RAW_DIR,
 )
+from data.scripts.utils import load_definition_columns, write_csv
 
 logger = logging.getLogger(__name__)
 
@@ -86,23 +87,6 @@ OUTPUT_SOURCE_COLUMNS = {
 _PRESCRIPTION_SEP = " / "
 _PRESCRIPTION_STAGES = ("준비운동", "본운동", "정리운동", "마무리운동")
 _MAIN_STAGE = "본운동"
-
-
-def load_definition_columns(path: Path, name_column: str) -> list[str]:
-    """정의서에서 컬럼명을 읽고 비어 있거나 중복된 이름을 거부합니다."""
-    definition = pd.read_csv(path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
-    if name_column not in definition.columns:
-        raise ValueError(f"{path.name}에 '{name_column}' 컬럼이 없습니다.")
-
-    names = definition[name_column].str.strip()
-    if names.empty or names.eq("").any():
-        raise ValueError(f"{path.name}의 '{name_column}' 값은 비워둘 수 없습니다.")
-    duplicates = names[names.duplicated()].unique().tolist()
-    if duplicates:
-        raise ValueError(
-            f"{path.name}의 '{name_column}' 값이 중복되었습니다: {', '.join(duplicates)}"
-        )
-    return names.tolist()
 
 
 def read_csv(path: Path) -> pd.DataFrame:
@@ -370,9 +354,7 @@ def run(
     treadmill_error = find_treadmill_hr_errors(candidate)
     kept = ~no_bmi & ~treadmill_error
     merged = merged.loc[kept, output_columns]
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    # Excel에서 한글이 깨지지 않도록 BOM을 붙여 저장
-    merged.to_csv(output_path, index=False, encoding="utf-8-sig")
+    write_csv(merged, output_path)
 
     # 8. 심폐 종목이 두 개 이상 기록된 행은 통합 결과에 남기되, 확인할 수 있도록 세 종목 값과 고른 종목을 붙여 따로 저장한다.
     multi_cardio_rows = kept & cardio_count.gt(1)
@@ -381,8 +363,7 @@ def run(
         multi_cardio[event] = candidate.loc[multi_cardio.index, source_column]
     multi_cardio[CARDIO_COUNT_COLUMN] = cardio_count.loc[multi_cardio.index]
     multi_cardio[CARDIO_SELECTED_COLUMN] = cardio_selected.loc[multi_cardio.index]
-    multi_cardio_path.parent.mkdir(parents=True, exist_ok=True)
-    multi_cardio.to_csv(multi_cardio_path, index=False, encoding="utf-8-sig")
+    write_csv(multi_cardio, multi_cardio_path)
 
     # 9. 요약 로그
     logger.info("파일: %d개, 전체: %s행", len(files), f"{total:,}")

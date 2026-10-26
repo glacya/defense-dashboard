@@ -1,6 +1,6 @@
-"""전처리 결과를 최종 정의서 두 개(FINAL, PRESCRIPTION)의 구성으로 나눠 저장합니다.
+"""전처리 결과를 측정 데이터(REFINED 정의서)와 운동 처방 데이터(PRESCRIPTION 정의서)로 나눠 저장합니다.
 
-- 측정 데이터: 측정 컬럼 이름을 체력 요소 이름(근력·근지구력·유연성)으로 바꾼 뒤 KS_NFA_FINAL_DEFINITION.csv의 컬럼만 정의서 순서대로 남깁니다.
+- 측정 데이터: 측정 컬럼 이름을 체력 요소 이름(근력·근지구력·유연성)으로 바꾼 뒤 KS_NFA_REFINED_DEFINITION.csv의 컬럼만 정의서 순서대로 남깁니다.
 - 운동 처방: 쉼표로 이어진 처방 목록을 처방 하나당 한 행으로 나누고, 처방 이름 대신 운동 처방 상세 테이블
   (build_prescription_details 단계에서 미리 만든 KS_NFA_PRESCRIPTION_DETAIL.csv)의 처방유형번호를 넣어
   KS_NFA_PRESCRIPTION_DEFINITION.csv 구성으로 저장합니다. 같은 처방 이름이 수만 번 반복되므로 이름은 상세 테이블에만 둡니다.
@@ -14,10 +14,10 @@ import pandas as pd
 
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import (
-    DEFINITION_KS_NFA_FINAL,
     DEFINITION_KS_NFA_PRESCRIPTION,
+    DEFINITION_KS_NFA_REFINED,
+    INTERMEDIATE_REFINED,
     INTERMEDIATE_THREE_MEASURES,
-    PROCESSED_FITNESS_PATH,
     PROCESSED_PRESCRIPTION_DETAIL_PATH,
     PROCESSED_PRESCRIPTION_PATH,
 )
@@ -27,11 +27,9 @@ from data.scripts.preprocessing.build_prescription_details import (
     PRESCRIPTION_SEP,
     PRESCRIPTION_TYPE_ID_COLUMN,
 )
-from data.scripts.preprocessing.merge_raw_measurements import load_definition_columns
+from data.scripts.utils import load_definition_columns, read_text_csv, select_definition_columns, write_csv
 
 logger = logging.getLogger(__name__)
-
-DEFINITION_NAME_COLUMN = "영문속성명"
 
 # 입력 컬럼
 MESURE_DE_COLUMN = "MESURE_DE"
@@ -123,18 +121,6 @@ def map_prescription_types(items: pd.DataFrame, types: pd.DataFrame) -> pd.DataF
     return items.drop(columns=PRESCRIPTION_COLUMN).assign(**{PRESCRIPTION_TYPE_ID_COLUMN: type_ids})
 
 
-def select_definition_columns(df: pd.DataFrame, columns: list[str], definition_name: str) -> pd.DataFrame:
-    """정의서의 컬럼만 정의서 순서대로 남깁니다.
-
-    Raises:
-        ValueError: 정의서에 있는 컬럼이 df에 없을 때
-    """
-    missing_columns = [column for column in columns if column not in df.columns]
-    if missing_columns:
-        raise ValueError(f"{definition_name}의 컬럼이 데이터에 없습니다: {', '.join(missing_columns)}")
-    return df[columns]
-
-
 def run(
     input_path: Path,
     fitness_definition_path: Path,
@@ -147,20 +133,20 @@ def run(
 
     Args:
         input_path: 3회 이상 측정 회원 추출 단계의 결과
-        fitness_definition_path: 측정 데이터 정의서 (KS_NFA_FINAL_DEFINITION.csv)
+        fitness_definition_path: 측정 데이터 정의서 (KS_NFA_REFINED_DEFINITION.csv)
         prescription_definition_path: 운동 처방 정의서 (KS_NFA_PRESCRIPTION_DEFINITION.csv)
         prescription_detail_path: 운동 처방 상세 테이블 (build_prescription_details 단계의 결과). 처방유형번호를 여기서 찾는다
-        fitness_output_path: 측정 데이터 저장 경로
+        fitness_output_path: 측정 데이터 저장 경로 (가상 장병 합성 단계의 입력)
         prescription_output_path: 운동 처방 데이터 저장 경로
 
     Raises:
         ValueError: 정의서 컬럼을 만들 수 없을 때, 측정일련번호가 정수가 아닐 때, 상세 테이블에 없는 처방 이름이 있을 때
     """
     # 1. 정의서 두 개의 컬럼 목록, 운동 처방 상세 테이블, 입력 데이터를 읽는다.
-    fitness_columns = load_definition_columns(fitness_definition_path, DEFINITION_NAME_COLUMN)
-    prescription_columns = load_definition_columns(prescription_definition_path, DEFINITION_NAME_COLUMN)
-    prescription_types = pd.read_csv(prescription_detail_path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
-    df = pd.read_csv(input_path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    fitness_columns = load_definition_columns(fitness_definition_path)
+    prescription_columns = load_definition_columns(prescription_definition_path)
+    prescription_types = read_text_csv(prescription_detail_path)
+    df = read_text_csv(input_path)
 
     # 2. 측정일 -> 회원식별번호 -> 측정일련번호 순으로 정렬하고 새 PK인 MESURE_ID를 붙인 뒤, 측정 컬럼을 최종 이름으로 바꾼다.
     df = assign_mesure_id(df).rename(columns=FINAL_COLUMN_NAMES)
@@ -168,9 +154,7 @@ def run(
     # 3. 측정 데이터: 정의서 컬럼만 정의서 순서대로 남겨 저장한다.
     fitness = select_definition_columns(df, fitness_columns, fitness_definition_path.name)
     dropped_columns = [column for column in df.columns if column not in fitness_columns]
-    add_columns = [MESURE_ID_COLUMN, MESURE_DE_COLUMN, MEMBER_ID_COLUMN, MESURE_SEQ_NO_COLUMN]
-    fitness_output_path.parent.mkdir(parents=True, exist_ok=True)
-    fitness.to_csv(fitness_output_path, index=False, encoding="utf-8-sig")
+    write_csv(fitness, fitness_output_path)
 
     # 4. 운동 처방: 처방 목록을 처방 하나당 한 행으로 나누고(같은 측정 안의 중복 제거),
     #    처방 이름을 상세 테이블의 처방유형번호로 바꿔 정의서 순서대로 저장한다.
@@ -179,8 +163,7 @@ def run(
     prescriptions = select_definition_columns(
         typed_items, prescription_columns, prescription_definition_path.name
     )
-    prescription_output_path.parent.mkdir(parents=True, exist_ok=True)
-    prescriptions.to_csv(prescription_output_path, index=False, encoding="utf-8-sig")
+    write_csv(prescriptions, prescription_output_path)
 
     # 5. 요약 로그
     no_prescription = int(df[PRESCRIPTION_LIST_COLUMN].str.strip().eq("").sum())
@@ -214,10 +197,10 @@ def main() -> None:
     setup_logging(caller_name(__file__))
     run(
         INTERMEDIATE_THREE_MEASURES,
-        DEFINITION_KS_NFA_FINAL,
+        DEFINITION_KS_NFA_REFINED,
         DEFINITION_KS_NFA_PRESCRIPTION,
         PROCESSED_PRESCRIPTION_DETAIL_PATH,
-        PROCESSED_FITNESS_PATH,
+        INTERMEDIATE_REFINED,
         PROCESSED_PRESCRIPTION_PATH,
     )
 

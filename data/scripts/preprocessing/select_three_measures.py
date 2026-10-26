@@ -16,6 +16,7 @@ import pandas as pd
 
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import INTERMEDIATE_ENLISTMENT_FILTER, INTERMEDIATE_THREE_MEASURES, PASSED_FILENAME
+from data.scripts.utils import read_text_csv, require_columns, write_csv
 
 logger = logging.getLogger(__name__)
 
@@ -27,24 +28,11 @@ MAX_SPAN_DAYS = 365 * 3  # 고른 3건의 첫 측정과 마지막 측정 사이 
 _REQUIRED_COLUMNS = (ID_COL, DATE_COL)
 
 
-def load_total(path: Path) -> pd.DataFrame:
-    """병합 데이터를 문자열 그대로 읽고 필수 컬럼을 검증합니다."""
-    df = pd.read_csv(path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
-    _validate_required_columns(df)
-    return df
-
-
-def _validate_required_columns(df: pd.DataFrame) -> None:
-    missing = [column for column in _REQUIRED_COLUMNS if column not in df.columns]
-    if missing:
-        raise ValueError(f"필수 컬럼이 없습니다: {', '.join(missing)}")
-
-
 def filter_frequent_members(
     df: pd.DataFrame, min_count: int = MIN_MEASURES
 ) -> pd.DataFrame:
     """유효한 회원 식별자가 있고 측정 건수가 min_count 이상인 행만 남깁니다."""
-    _validate_required_columns(df)
+    require_columns(df, _REQUIRED_COLUMNS)
     if min_count < 1:
         raise ValueError("min_count는 1 이상이어야 합니다.")
     member_ids = df[ID_COL].astype("string").str.strip()
@@ -85,7 +73,7 @@ def pick_first_middle_last(df: pd.DataFrame) -> pd.DataFrame:
     Raises:
         ValueError: 회원 식별자가 비어 있거나 측정일이 YYYYMMDD 형식이 아닌 행이 있을 때
     """
-    _validate_required_columns(df)
+    require_columns(df, _REQUIRED_COLUMNS)
     if df.empty:
         return df.copy()
     member_ids = df[ID_COL].astype("string").str.strip()
@@ -130,12 +118,11 @@ def pick_first_middle_last(df: pd.DataFrame) -> pd.DataFrame:
 
 def run(input_path: Path, output_path: Path) -> None:
     """input_path에서 3회 이상 측정한 회원마다 측정 기록 3건을 골라 output_path에 저장합니다."""
-    total = load_total(input_path)
+    total = read_text_csv(input_path)
+    require_columns(total, _REQUIRED_COLUMNS)
     frequent = filter_frequent_members(total)
     result = pick_first_middle_last(frequent)
-    # 새 환경에서 출력 폴더가 없어도 저장할 수 있도록 먼저 만든다.
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    result.to_csv(output_path, index=False, encoding="utf-8-sig")
+    write_csv(result, output_path)
 
     total_member_ids = total[ID_COL].astype("string").str.strip().replace("", pd.NA)
     logger.info(

@@ -12,6 +12,7 @@ import pandas as pd
 
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import INTERMEDIATE_AGE_TIME_FILTER, INTERMEDIATE_THREE_MEASURES, PASSED_FILENAME
+from data.scripts.utils import read_text_csv, require_columns, write_csv
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +25,6 @@ AGE_COL = "AGE"
 MEASURES_PER_MEMBER = 3
 REASON_COL = "제거 사유"
 _REQUIRED_COLUMNS = (ID_COL, DATE_COL, AGE_COL)
-
-
-def read_input(path: Path) -> pd.DataFrame:
-    """3회분 CSV를 모든 값을 문자열로 읽습니다."""
-    return pd.read_csv(path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
-
-
-def _validate_required_columns(df: pd.DataFrame) -> None:
-    missing = [column for column in _REQUIRED_COLUMNS if column not in df.columns]
-    if missing:
-        raise ValueError(f"필수 컬럼이 없습니다: {', '.join(missing)}")
 
 
 def find_age_time_inconsistency(group_df: pd.DataFrame) -> str | None:
@@ -98,7 +88,7 @@ def filter_outliers(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     제거 행에는 회원별 제거 사유를 REASON_COL 컬럼으로 붙입니다.
     """
-    _validate_required_columns(df)
+    require_columns(df, _REQUIRED_COLUMNS)
     if df.empty:
         return df.copy(), df.assign(**{REASON_COL: pd.Series(dtype=str)})
 
@@ -125,15 +115,15 @@ def run(input_path: Path, output_dir: Path) -> None:
     output_path = output_dir / PASSED_FILENAME
     removed_path = output_dir / REMOVED_INCONSISTENT_FILENAME
     # 2. 입력 로드 및 필수 컬럼 검사
-    data = read_input(input_path)
-    _validate_required_columns(data)
+    data = read_text_csv(input_path)
+    require_columns(data, _REQUIRED_COLUMNS)
 
     # 3. 회원 단위로 검사해 나눈다.
     passed, removed = filter_outliers(data)
 
     # 4. 저장 후, 통과 + 제거 행 수가 입력 행 수와 같은지 검증한다.
-    passed.to_csv(output_path, index=False, encoding="utf-8-sig")
-    removed.to_csv(removed_path, index=False, encoding="utf-8-sig")
+    write_csv(passed, output_path)
+    write_csv(removed, removed_path)
     if len(passed) + len(removed) != len(data):
         raise RuntimeError("통과/제거 행 수가 입력 행 수와 일치하지 않습니다.")
 

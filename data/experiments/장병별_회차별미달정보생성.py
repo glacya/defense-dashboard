@@ -5,6 +5,7 @@
 """
 from pathlib import Path
 import pandas as pd
+from data.scripts.fitness_standards import grade3_standards
 
 # ============================================================
 # 1. 파일 위치 설정
@@ -17,7 +18,6 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = ROOT / 'data/processed/KS_NFA_PROCESSED.csv'
 
 # 남성 19~24세의 체력 3등급 기준표
-STANDARD_PATH = ROOT / 'data/definitions/grade3_male_19_24.csv'
 
 # 분석 결과를 저장할 폴더
 OUTPUT_DIR = ROOT / 'data/experiments/results'
@@ -59,7 +59,7 @@ AREA_COLS = [
 df = pd.read_csv(DATA_PATH, dtype={PERSON_COL: 'string'})
 
 # 체력 3등급 기준표 읽기
-standards = pd.read_csv(STANDARD_PATH)
+standards = grade3_standards()
 
 
 # 분석에 필요한 컬럼이 모두 있는지 확인

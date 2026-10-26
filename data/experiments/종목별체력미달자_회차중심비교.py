@@ -9,10 +9,10 @@ import sys
 import numpy as np
 import pandas as pd
 import streamlit as st
+from data.scripts.fitness_standards import grade3_standards
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = ROOT / 'data/processed/KS_NFA_PROCESSED.csv'
-STANDARD_PATH = ROOT / 'data/definitions/grade3_male_19_24.csv'
 OUTPUT_DIR = ROOT / 'data/experiments/results/종목별체력미달자변화률3'
 CARDIO_COLS = ['CARDIO']
 AREAS = {'근력': 'STRENGTH', '근지구력': 'ENDURANCE',
@@ -27,7 +27,7 @@ def analyze(complete_only=True):
     missing = set(required) - set(df.columns)
     if missing:
         raise ValueError(f'필수 컬럼 없음: {sorted(missing)}')
-    standards = pd.read_csv(STANDARD_PATH)
+    standards = grade3_standards()
     standards = standards.loc[
         standards.sex.eq('M') & standards.age_min.eq(19) & standards.age_max.eq(24)
         & standards.exercise.isin(MEASURES)

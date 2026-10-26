@@ -11,6 +11,7 @@
 | `paths.py` | 입출력 경로 상수. 파이프라인과 각 모듈의 단독 실행이 같은 경로를 씁니다. |
 | `logging_setup.py` | data 영역 전용 로그 설정. dashboard 쪽 로그와 섞이지 않습니다. |
 | `utils.py` | 여러 모듈이 함께 쓰는 CSV 읽기·쓰기, 정의서 컬럼 고르기, 명령줄 인자 타입 |
+| `fitness_standards.py` | 19~24세 남성 체력 등급 기준(국민체력100). 종목별 등급 하한 `GRADE_CUTS`, 체격 정상 범위 `RANGE_STANDARDS`, 3등급 기준표 `grade3_standards()`, 등급 하한 표 `grade_cut_table()`. 실험 스크립트와 `analysis/`가 같은 기준을 씁니다. 비어 있는 등급 하한(None)은 값을 알게 되면 채웁니다. |
 | `preprocessing/` | 전처리 단계 모듈. 실행 순서는 `preprocessing/pipeline.py` |
 | `analysis/` | 데이터를 바꾸지 않고 통계·탐색 결과만 내는 분석 스크립트. 실행 목록은 `analysis/pipeline.py` |
 | `synthesis/` | 가상 장병 명단 생성, 최근 측정 연계·부상 위험 그룹 계산, 부상 기록 생성. 실행 순서는 `synthesis/pipeline.py` |

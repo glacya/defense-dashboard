@@ -11,12 +11,13 @@ import altair as alt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from 분석_연령별 import analyze_age
-from 종목별체력미달자_회차별변화율 import STANDARD_PATH, AREAS, CARDIO_COLS
+from 종목별체력미달자_회차별변화율 import AREAS, CARDIO_COLS
+from data.scripts.fitness_standards import grade3_standards
 
 
 def calculate():
     df = analyze_age(return_first=True)
-    std = pd.read_csv(STANDARD_PATH)
+    std = grade3_standards()
     std = std.loc[std.sex.eq('M') & std.age_min.eq(19) & std.age_max.eq(24)].set_index('exercise')
     risks = {}
     for col in ['STRENGTH', 'ENDURANCE', 'FLEXIBILITY'] + CARDIO_COLS:

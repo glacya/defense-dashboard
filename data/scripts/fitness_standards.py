@@ -17,10 +17,10 @@ AGE_MIN, AGE_MAX = 19, 24
 # 3등급 하한(미달 여부의 기준)은 이전 grade3_male_19_24.csv 값이다.
 # 심폐지구력(VO₂max)은 2018 한국스포츠개발원 보고서 표 39의 공식 컷 42.0 / 44.8 / 47.6이다.
 GRADE_CUTS: dict[str, dict[int, float | None]] = {
-    "STRENGTH": {3: 51.8, 2: None},      # 근력(상대악력, %)
-    "ENDURANCE": {3: 42.0, 2: None},     # 근지구력(교차윗몸일으키기, 회)
+    "STRENGTH": {3: 51.8, 2: 57.2, 1: 62.6},      # 근력(상대악력, %)
+    "ENDURANCE": {3: 42.0, 2: 48.0, 1: 55.0},     # 근지구력(교차윗몸일으키기, 회)
     "CARDIO": {3: 42.0, 2: 44.8, 1: 47.6},  # 심폐지구력(VO₂max, ml/kg/min)
-    "FLEXIBILITY": {3: 6.1, 2: None},    # 유연성(앉아윗몸앞으로굽히기, cm)
+    "FLEXIBILITY": {3: 6.1, 2: 11.1, 1: 16.1},    # 유연성(앉아윗몸앞으로굽히기, cm)
 }
 FITNESS_EXERCISES = tuple(GRADE_CUTS)
 

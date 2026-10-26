@@ -152,6 +152,7 @@ def run(
     df = assign_mesure_id(df).rename(columns=FINAL_COLUMN_NAMES)
 
     # 3. 측정 데이터: 정의서 컬럼만 정의서 순서대로 남겨 저장한다.
+    add_columns = [MESURE_ID_COLUMN, MESURE_DE_COLUMN, MEMBER_ID_COLUMN, MESURE_SEQ_NO_COLUMN]
     fitness = select_definition_columns(df, fitness_columns, fitness_definition_path.name)
     dropped_columns = [column for column in df.columns if column not in fitness_columns]
     write_csv(fitness, fitness_output_path)

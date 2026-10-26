@@ -7,8 +7,12 @@ from scipy.stats import ttest_1samp, t
 
 from 분석_연령별 import analyze_age
 
+DEFAULT_REFERENCE = 44.8
 
-def calculate(reference=42.0):
+
+def calculate(reference=DEFAULT_REFERENCE):
+    if not np.isfinite(reference):
+        raise ValueError('비교 기준평균은 유한한 숫자여야 합니다.')
     data = analyze_age(return_first=True)
     values = data.CARDIO.replace([np.inf, -np.inf], np.nan).dropna()
     n = len(values)
@@ -29,7 +33,7 @@ def main():
     st.set_page_config(page_title='단일표본 t검정', layout='wide')
     st.title('단일표본 t검정 · 심폐 평균과 기준값 비교')
     st.caption('첫 측정 당시 19~24세 · 장병별 날짜순 첫 측정 · CARDIO(VO₂max, mL/kg/min)')
-    reference = st.number_input('비교할 기준평균', value=42.0, step=0.1)
+    reference = st.number_input('비교할 기준평균', value=DEFAULT_REFERENCE, step=0.1)
     st.write(f'H₀: 모집단 심폐 평균 = {reference:g} / H₁: 모집단 심폐 평균 ≠ {reference:g} (양측검정)')
     try:
         result, values = calculate(reference)
@@ -54,7 +58,7 @@ def main():
     st.write('양측 p<0.05이므로 귀무가설을 기각합니다. 모집단 평균이 기준과 다르다는 근거가 있습니다.' if row['양측p값'] < .05
              else '귀무가설을 기각하지 못합니다. 평균이 기준과 다르다는 근거가 충분하지 않으며 같다고 증명한 것은 아닙니다.')
     st.latex(r't=\frac{\bar{x}-\mu_0}{s/\sqrt{n}},\qquad df=n-1')
-    st.info('42는 개인 심폐 미달 판정의 경계값을 평균 비교의 기준으로 사용한 것입니다. 평균이 42보다 높아도 모든 장병이 충족한다는 뜻은 아닙니다. 독립 관측과 평균의 표본분포 가정을 전제로 하며, 전처리로 선정한 표본의 대표성은 별도 검토가 필요합니다.')
+    st.info(f'현재 평균 비교 기준은 {reference:g} mL/kg/min입니다. 기본값 44.8은 심폐 2등급 하한을 평균 비교의 기준으로 사용한 것이며 알려진 모집단 평균은 아닙니다. 개인별 3등급 미달 판정 기준 42.0과 구분합니다. 평균 비교로 개인별 등급을 판정하지 않습니다. 독립 관측과 평균의 표본분포 가정을 전제로 하며, 전처리로 선정한 표본의 대표성은 별도 검토가 필요합니다.')
     st.caption('유의수준 0.05, 양측검정입니다. 기준값을 여러 번 바꿔 유의한 결과만 고르면 탐색적 분석이 되므로 보고 시 명시하세요.')
     st.download_button('단일표본 t검정 CSV', result.to_csv(index=False).encode('utf-8-sig'), file_name='단일표본_t검정_심폐.csv', mime='text/csv')
 

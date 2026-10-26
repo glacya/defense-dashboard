@@ -6,17 +6,16 @@ from pathlib import Path
 
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import (
-    DEFINITION_GRADE,
     INTERMEDIATE_ENLISTMENT_FILTER,
     PASSED_FILENAME,
 )
 from data.scripts.preprocessing.merge_raw_measurements import load_definition_columns
+from data.scripts.fitness_standards import grade_cut_table
 
 logger = logging.getLogger(__name__)
 DATA_DIR = INTERMEDIATE_ENLISTMENT_FILTER
 DATA_NAME = PASSED_FILENAME
 DATA_PATH = DATA_DIR / DATA_NAME
-GRADE_PATH = DEFINITION_GRADE
 OUT_PATH =  DATA_DIR / "personal_selected.csv"
 
 ID_COL = "M_CODE"  # 개인 식별번호
@@ -36,10 +35,11 @@ MEASURE_COL = {
 EXCLUDE_MODE = "any"
 
 
-def load_data(data_path=DATA_PATH, grade_path=GRADE_PATH):
+def load_data(data_path=DATA_PATH):
     # utf-8-sig: 헤더 앞의 BOM(﻿M_CODE) 제거
     df = pd.read_csv(data_path, encoding="utf-8-sig")
-    grade = pd.read_csv(grade_path, encoding="utf-8-sig")
+    # 등급 하한은 data/scripts/fitness_standards.py에서 가져온다(1·2등급 제외에 2등급 하한이 필요).
+    grade = grade_cut_table(grades=(3, 2))
     return df, grade
 
 
@@ -67,10 +67,9 @@ def select(df, grade, mode=EXCLUDE_MODE):
 
 if __name__ == "__main__":
     data_path = sys.argv[1] if len(sys.argv) > 1 else DATA_PATH
-    grade_path = sys.argv[2] if len(sys.argv) > 2 else GRADE_PATH
-    out_path = sys.argv[3] if len(sys.argv) > 3 else OUT_PATH
+    out_path = sys.argv[2] if len(sys.argv) > 2 else OUT_PATH
 
-    raw, grade = load_data(data_path, grade_path)
+    raw, grade = load_data(data_path)
     result = select(raw, grade)
 
     print(f"원본 행 수          : {len(raw):,}")

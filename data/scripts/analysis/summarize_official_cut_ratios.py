@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from data.scripts.fitness_standards import grade_cut
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import INTERMEDIATE_ENLISTMENT_FILTER, INTERMEDIATE_OFFICIAL_CUT_RATIOS, PASSED_FILENAME
 from data.scripts.utils import read_text_csv, require_columns, write_csv
@@ -21,8 +22,8 @@ logger = logging.getLogger(__name__)
 RATIOS_FILENAME = "cardio_grade_ratios.csv"
 
 CARDIO_COLUMN = "CARDIO"
-# (3등급, 2등급, 1등급) 공식 컷. 설계상 30·50·70 백분위다.
-OFFICIAL_VO2_CUTS = (42.0, 44.8, 47.6)
+# (3등급, 2등급, 1등급) 공식 컷(data/scripts/fitness_standards.py). 설계상 30·50·70 백분위다.
+OFFICIAL_VO2_CUTS = tuple(grade_cut(CARDIO_COLUMN, grade) for grade in (3, 2, 1))
 DESIGN_BELOW_PCT = (30.0, 50.0, 70.0)
 GRADE_LABELS = ["등외", "3등급", "2등급", "1등급"]
 DECIMALS = 4

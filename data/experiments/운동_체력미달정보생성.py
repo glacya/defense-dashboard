@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from 분석_연령별 import analyze_age
+from data.scripts.fitness_standards import grade3_standards
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT/'data/experiments/results/운동_체력미달별처방관련성'
@@ -17,7 +18,7 @@ def generate():
     first['MESURE_ID'] = pd.to_numeric(first['MESURE_ID'], errors='raise').astype('Int64')
     if first.MESURE_ID.isna().any() or first.MESURE_ID.duplicated().any() or first.SOLDIER_ID.duplicated().any():
         raise ValueError('장병별 첫 측정 식별자가 결측 또는 중복입니다.')
-    standards = pd.read_csv(ROOT/'data/definitions/grade3_male_19_24.csv')
+    standards = grade3_standards()
     standards = standards.loc[standards.sex.eq('M') & standards.age_min.eq(19) & standards.age_max.eq(24)]
     if standards.exercise.duplicated().any():
         raise ValueError('기준표 종목 중복입니다.')

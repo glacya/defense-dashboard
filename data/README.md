@@ -21,7 +21,7 @@
 | 폴더 | 내용 | Git |
 |---|---|---|
 | `raw/` | 원본 데이터 (`KS_NFA_FTNESS_MESURE_*.csv` 55개만) | 제외 |
-| `definitions/` | 컬럼 정의서 (원본: `KS_NFA_RAW_DEFINITION.csv`, 통합: `KS_NFA_MERGED_DEFINITION.csv`, 전처리 결과: `KS_NFA_REFINED_DEFINITION.csv`, 최종: `KS_NFA_FINAL_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DETAIL_DEFINITION.csv`·`INJURY_RISK_GROUP_DEFINITION.csv`, 가상 장병 명단·부상 기록: `SOLDIER_PERSONNEL_DEFINITION.csv`·`SOLDIER_INJURY_DEFINITION.csv`, 가상 장병 연계: `TEMP_SOLDIER_PERSONAL_INJURY_RISK_DEFINITION.csv`(참고용, 코드에서 읽지 않음)) | 추적 |
+| `definitions/` | 컬럼 정의서 (원본: `KS_NFA_RAW_DEFINITION.csv`, 통합: `KS_NFA_MERGED_DEFINITION.csv`, 전처리 결과: `KS_NFA_REFINED_DEFINITION.csv`, 최종: `KS_NFA_FINAL_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DEFINITION.csv`·`KS_NFA_PRESCRIPTION_DETAIL_DEFINITION.csv`·`INJURY_RISK_GROUP_DEFINITION.csv`, 가상 장병 명단·부상 기록: `SOLDIER_PERSONNEL_DEFINITION.csv`·`SOLDIER_INJURY_DEFINITION.csv`, 가상 장병 연계: `TEMP_SOLDIER_PERSONAL_INJURY_RISK_DEFINITION.csv`(참고용, 코드에서 읽지 않음)) 파일별 내용은 [definitions/README.md](definitions/README.md) 참고 | 추적 |
 | `intermediate/` | 전처리 중간 결과물과 단계별 제거 행 | 제외 |
 | `processed/` | 최종 결과물 (측정·운동 처방·부상 위험 그룹) | 제외 |
 | `synthetic/` | 합성 단계가 만드는 가상 장병 명단·부상 기록 | 제외 |

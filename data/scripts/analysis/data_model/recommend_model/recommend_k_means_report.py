@@ -37,6 +37,7 @@ from sklearn.preprocessing import StandardScaler
 from data.scripts.analysis.data_model.recommend_model.recommend_common import (
     FEATURES, ID_COL, SEED, count_items, load_data, top_k,
 )
+from data.scripts.fitness_standards import grade_cut_table
 
 FINAL_K = 4              # 논문: K=3,4,5 비교 후 K=4 선정
 K_COMPARE = (3, 4, 5)
@@ -47,7 +48,7 @@ SCATTER_N = 3000
 TOP_N_PRESC = 5
 
 KO = dict(zip(FEATURES, ["근력", "근지구력", "심폐지구력", "유연성", "BMI", "체지방률"]))
-# GRADE_DEFINITION의 영문속성명 -> 원자료 컬럼
+# 등급 하한 표(fitness_standards.grade_cut_table)의 영문속성명 -> 원자료 컬럼
 RAW_COL = {"STRENGTH": "REL_GRIP", "ENDURANCE": "CROSS_UP",
            "CARDIO": "CARDIO", "FLEXIBILITY": "SIT_REACH"}
 KOREAN_FONTS = ("Malgun Gothic", "AppleGothic", "NanumGothic", "Noto Sans CJK KR",
@@ -56,11 +57,11 @@ COLORS = ["#1f4e8c", "#d9822b", "#3a9d6f", "#9b59b6", "#c0392b", "#7f8c8d"]
 
 
 def default_paths():
-    from data.scripts.paths import DEFINITION_GRADE, INTERMEDIATE_ENLISTMENT_FILTER
+    from data.scripts.paths import INTERMEDIATE_ENLISTMENT_FILTER
     from data.scripts.analysis.data_model.recommend_model.recommend_common import (
         IN_PATH, OUT_DIR,
     )
-    return IN_PATH, INTERMEDIATE_ENLISTMENT_FILTER / "personal_selected.csv", DEFINITION_GRADE, OUT_DIR
+    return IN_PATH, INTERMEDIATE_ENLISTMENT_FILTER / "personal_selected.csv", OUT_DIR
 
 
 # ---------- 계산 ----------
@@ -230,15 +231,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("processed", nargs="?", default=None, help="processed_select_personal.csv")
     ap.add_argument("raw", nargs="?", default=None, help="personal_selected.csv (원자료, 3등급 기준군 계산용)")
-    ap.add_argument("grade", nargs="?", default=None, help="GRADE_DEFINITION.csv")
     ap.add_argument("out_dir", nargs="?", default=None)
     a = ap.parse_args()
-    if None in (a.processed, a.raw, a.grade, a.out_dir):
+    if None in (a.processed, a.raw, a.out_dir):
         d = default_paths()
     processed = Path(a.processed or d[0])
     raw_path = Path(a.raw or d[1])
-    grade_path = Path(a.grade or d[2])
-    out_dir = Path(a.out_dir or d[3]) / "kmeans_paper"
+    out_dir = Path(a.out_dir or d[2]) / "kmeans_paper"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     df = load_data(processed)
@@ -283,10 +282,11 @@ def main():
 
     # 3등급 기준군과의 거리 (근사)
     dist, ref_profile, n_ref = None, None, 0
-    if raw_path.exists() and grade_path.exists():
+    if raw_path.exists():
         raw = pd.read_csv(raw_path, encoding="utf-8-sig",
                           usecols=lambda c: c in {ID_COL, *RAW_COL.values()})
-        grade = pd.read_csv(grade_path, encoding="utf-8-sig")
+        # 3등급 기준군 판정에는 3등급 하한만 쓴다(data/scripts/fitness_standards.py).
+        grade = grade_cut_table(grades=(3,))
         ref = reference_mask(df, raw, grade)
         n_ref = int(ref.sum())
         if n_ref >= MIN_REF:

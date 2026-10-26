@@ -13,7 +13,6 @@ from 운동_처방현황분석 import DATA_DIR, load_catalog
 from 운동_체력미달정보생성 import generate, DEFICIT_PATH, OUTPUT_DIR
 
 AREAS = {'근력': 'STRENGTH', '근지구력': 'ENDURANCE', '심폐지구력': 'CARDIO', '유연성': 'FLEXIBILITY'}
-STANDARD = Path(__file__).resolve().parents[2]/'data/definitions/grade3_male_19_24.csv'
 
 
 def calculate():

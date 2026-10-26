@@ -1,6 +1,6 @@
 """전처리 단계의 실행 순서와 입출력 연결을 정합니다.
 
-흐름: 원본 통합 -> 운동 처방 상세 테이블 생성 -> 결측치·이상치 제거 -> 입대 후보 조건 필터 -> 3회 이상 측정 회원 추출 -> 최종 정의서 적용(측정·운동 처방 분리)
+흐름: 원본 통합 -> 운동 처방 상세 테이블 생성 -> 결측치·이상치 제거 -> 입대 후보 조건 필터 -> 3회 이상 측정 회원 추출(측정일·나이 흐름 모순 회원 제외) -> 최종 정의서 적용(측정·운동 처방 분리)
 경로 상수는 data/scripts/paths.py에 있으며, 각 단계 모듈을 단독 실행할 때도 같은 경로를 씁니다.
 """
 
@@ -16,6 +16,7 @@ from data.scripts.paths import (
     INTERMEDIATE_MULTI_CARDIO,
     INTERMEDIATE_REFINED,
     INTERMEDIATE_THREE_MEASURES,
+    INTERMEDIATE_THREE_MEASURES_REMOVED,
     PASSED_FILENAME,
     PROCESSED_PRESCRIPTION_DETAIL_PATH,
     PROCESSED_PRESCRIPTION_PATH,
@@ -68,10 +69,13 @@ def build_steps() -> list[Step]:
             outputs={"output_dir": INTERMEDIATE_ENLISTMENT_FILTER},
         ),
         Step(
-            "3회 이상 측정한 회원의 측정 데이터 추출",
+            "3회 이상 측정한 회원의 측정 데이터 추출 (측정일·나이 흐름 검사)",
             select_three_measures.run,
             inputs={"input_path": INTERMEDIATE_ENLISTMENT_FILTER / PASSED_FILENAME},
-            outputs={"output_path": INTERMEDIATE_THREE_MEASURES},
+            outputs={
+                "output_path": INTERMEDIATE_THREE_MEASURES,
+                "removed_path": INTERMEDIATE_THREE_MEASURES_REMOVED,
+            },
         ),
         Step(
             "최종 정의서 적용 (MESURE_ID 부여, 측정·운동 처방 분리)",

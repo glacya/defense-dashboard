@@ -39,11 +39,11 @@ COLORS = ["#1f4e8c", "#d9822b", "#3a9d6f", "#9b59b6", "#c0392b", "#7f8c8d", "#d3
 
 
 def default_paths():
-    from data.scripts.paths import DEFINITION_GRADE, INTERMEDIATE_ENLISTMENT_FILTER
+    from data.scripts.paths import INTERMEDIATE_ENLISTMENT_FILTER
     from data.scripts.analysis.data_model.recommend_model.recommend_common import (
         IN_PATH, OUT_DIR,
     )
-    return IN_PATH, INTERMEDIATE_ENLISTMENT_FILTER / "personal_selected.csv", DEFINITION_GRADE, OUT_DIR
+    return IN_PATH, INTERMEDIATE_ENLISTMENT_FILTER / "personal_selected.csv", OUT_DIR
 
 
 # ---------- 계산 ----------
@@ -150,13 +150,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("processed", nargs="?", default=None, help="processed_select_personal.csv")
     ap.add_argument("raw", nargs="?", default=None, help="personal_selected.csv")
-    ap.add_argument("grade", nargs="?", default=None, help="GRADE_DEFINITION.csv")
     ap.add_argument("out_dir", nargs="?", default=None)
     a = ap.parse_args()
-    if None in (a.processed, a.raw, a.grade, a.out_dir):
+    if None in (a.processed, a.raw, a.out_dir):
         d = default_paths()
     processed = Path(a.processed or d[0])
-    out_dir = Path(a.out_dir or d[3]) / "kmeans_paper"
+    out_dir = Path(a.out_dir or d[2]) / "kmeans_paper"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. 이미 3등급 이하 등으로 필터링된 전체 데이터 로드

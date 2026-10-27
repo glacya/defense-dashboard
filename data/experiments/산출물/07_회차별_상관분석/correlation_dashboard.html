@@ -1,0 +1,155 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>장병 체력 회차별 상관분석</title>
+<style>body{font-family:Arial,'Malgun Gothic',sans-serif;max-width:1250px;margin:32px auto;padding:0 18px;background:#f5f7f9;color:#17212b}h1{margin-bottom:8px}.note{color:#52606d}.panel{background:white;border-radius:12px;padding:14px;margin:20px 0;box-shadow:0 1px 8px #ddd}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}th{background:#edf1f4}</style></head><body>
+<h1>장병 체력측정 1·2·3차 상관분석</h1><p class="note">동일 장병의 회차 간 체력측정 원점수 비교. Pearson·Spearman, p값 및 분석 표본 수 확인.</p>
+<div class="panel"><div>                        <script>window.PlotlyConfig = {MathJaxConfig: 'local'};</script>
+        <script charset="utf-8" src="https://cdn.plot.ly/plotly-3.5.0.min.js" integrity="sha256-fHbNLP+GlIXN+efbQec78UkemUz3NJp7UmfGxC1tNxs=" crossorigin="anonymous"></script>                <div id="9a228e62-f8f7-4fe3-9975-4f87f2ceb812" class="plotly-graph-div" style="height:480px; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("9a228e62-f8f7-4fe3-9975-4f87f2ceb812")) {                    Plotly.newPlot(                        "9a228e62-f8f7-4fe3-9975-4f87f2ceb812",                        [{"colorscale":[[0.0,"rgb(103,0,31)"],[0.1,"rgb(178,24,43)"],[0.2,"rgb(214,96,77)"],[0.3,"rgb(244,165,130)"],[0.4,"rgb(253,219,199)"],[0.5,"rgb(247,247,247)"],[0.6,"rgb(209,229,240)"],[0.7,"rgb(146,197,222)"],[0.8,"rgb(67,147,195)"],[0.9,"rgb(33,102,172)"],[1.0,"rgb(5,48,97)"]],"hovertemplate":"%{y}\u003cbr\u003e%{x}\u003cbr\u003er=%{z:.3f}\u003cextra\u003e\u003c\u002fextra\u003e","reversescale":true,"text":[["0.786","0.8","0.75"],["0.72","0.696","0.623"],["0.627","0.613","0.547"],["0.828","0.843","0.773"]],"texttemplate":"%{text}","x":["1\ucc28\u21942\ucc28","2\ucc28\u21943\ucc28","1\ucc28\u21943\ucc28"],"y":["\uadfc\ub825(\uc0c1\ub300\uc545\ub825)","\uadfc\uc9c0\uad6c\ub825(\uad50\ucc28\uc717\ubab8\uc77c\uc73c\ud0a4\uae30)","\uc2ec\ud3d0\uc9c0\uad6c\ub825(VO\u2082max)","\uc720\uc5f0\uc131(\uc549\uc544\uc717\ubab8\uc55e\uc73c\ub85c\uad7d\ud788\uae30)"],"z":{"dtype":"f8","bdata":"GE0kE34q6T8Q2REL3pnpP8iojbHOAug\u002fduSp6sYL5z\u002f0uhhAz0bmPwZOwHdf7+M\u002fi4lxN0ES5D9YO72GPpzjPwBPWTVegeE\u002fwwBI5jl96j8sGyhzcfzqP770atK1u+g\u002f","shape":"4, 3"},"zmax":1,"zmid":0,"zmin":-1,"type":"heatmap"}],                        {"template":{"data":{"candlestick":[{"decreasing":{"line":{"color":"#000033"}},"increasing":{"line":{"color":"#000032"}},"type":"candlestick"}],"contourcarpet":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contourcarpet"}],"contour":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contour"}],"heatmap":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"heatmap"}],"histogram2d":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"histogram2d"}],"icicle":[{"textfont":{"color":"white"},"type":"icicle"}],"sankey":[{"textfont":{"color":"#000036"},"type":"sankey"}],"scatter":[{"marker":{"line":{"width":0}},"type":"scatter"}],"table":[{"cells":{"fill":{"color":"#000038"},"font":{"color":"#000037"},"line":{"color":"#000039"}},"header":{"fill":{"color":"#000040"},"font":{"color":"#000036"},"line":{"color":"#000039"}},"type":"table"}],"waterfall":[{"connector":{"line":{"color":"#000036","width":2}},"decreasing":{"marker":{"color":"#000033"}},"increasing":{"marker":{"color":"#000032"}},"totals":{"marker":{"color":"#000034"}},"type":"waterfall"}]},"layout":{"coloraxis":{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorscale":{"diverging":[[0.0,"#000021"],[0.1111111111111111,"#000022"],[0.2222222222222222,"#000023"],[0.3333333333333333,"#000024"],[0.4444444444444444,"#000025"],[0.5555555555555556,"#000026"],[0.6666666666666666,"#000027"],[0.7777777777777778,"#000028"],[0.8888888888888888,"#000029"],[1.0,"#000030"]],"sequential":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"sequentialminus":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorway":["#000001","#000002","#000003","#000004","#000005","#000006","#000007","#000008","#000009","#000010"]}},"title":{"text":"\uccb4\ub825\uc885\ubaa9\ubcc4 \ud68c\ucc28 \uac04 Pearson \uc0c1\uad00\uacc4\uc218"},"height":480},                        {"responsive": true}                    )                };            </script>        </div></div><div class="panel"><div>                        <script>window.PlotlyConfig = {MathJaxConfig: 'local'};</script>
+        <script charset="utf-8" src="https://cdn.plot.ly/plotly-3.5.0.min.js" integrity="sha256-fHbNLP+GlIXN+efbQec78UkemUz3NJp7UmfGxC1tNxs=" crossorigin="anonymous"></script>                <div id="a4f3b353-1391-439a-9dee-6314aebf7124" class="plotly-graph-div" style="height:480px; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("a4f3b353-1391-439a-9dee-6314aebf7124")) {                    Plotly.newPlot(                        "a4f3b353-1391-439a-9dee-6314aebf7124",                        [{"alignmentgroup":"True","customdata":{"dtype":"f8","bdata":"AAAAAAD8q0AAAAAAAAAAAAAAAAAA\u002fKtAAAAAAAAAAAAAAAAAAPyrQAAAAAAAAAAAAAAAAAD8q0AAAAAAAAAAAA==","shape":"4, 2"},"hovertemplate":"\ud68c\ucc28\ube44\uad50=1\ucc28\u21942\ucc28\u003cbr\u003e\uccb4\ub825\uc885\ubaa9=%{x}\u003cbr\u003ePearson r=%{y}\u003cbr\u003e\ud45c\ubcf8\uc218=%{customdata[0]}\u003cbr\u003ePearson_p=%{customdata[1]}\u003cextra\u003e\u003c\u002fextra\u003e","legendgroup":"1\ucc28\u21942\ucc28","marker":{"color":"#000001","pattern":{"shape":""}},"name":"1\ucc28\u21942\ucc28","offsetgroup":"1\ucc28\u21942\ucc28","orientation":"v","showlegend":true,"textposition":"auto","x":["\uadfc\ub825(\uc0c1\ub300\uc545\ub825)","\uadfc\uc9c0\uad6c\ub825(\uad50\ucc28\uc717\ubab8\uc77c\uc73c\ud0a4\uae30)","\uc720\uc5f0\uc131(\uc549\uc544\uc717\ubab8\uc55e\uc73c\ub85c\uad7d\ud788\uae30)","\uc2ec\ud3d0\uc9c0\uad6c\ub825(VO\u2082max)"],"xaxis":"x","y":{"dtype":"f8","bdata":"GE0kE34q6T925KnqxgvnP8MASOY5feo\u002fi4lxN0ES5D8="},"yaxis":"y","type":"bar"},{"alignmentgroup":"True","customdata":{"dtype":"f8","bdata":"AAAAAAD8q0AAAAAAAAAAAAAAAAAA\u002fKtAAAAAAAAAAAAAAAAAAPyrQAAAAAAAAAAAAAAAAAD8q0AAAAAAAAAAAA==","shape":"4, 2"},"hovertemplate":"\ud68c\ucc28\ube44\uad50=2\ucc28\u21943\ucc28\u003cbr\u003e\uccb4\ub825\uc885\ubaa9=%{x}\u003cbr\u003ePearson r=%{y}\u003cbr\u003e\ud45c\ubcf8\uc218=%{customdata[0]}\u003cbr\u003ePearson_p=%{customdata[1]}\u003cextra\u003e\u003c\u002fextra\u003e","legendgroup":"2\ucc28\u21943\ucc28","marker":{"color":"#000002","pattern":{"shape":""}},"name":"2\ucc28\u21943\ucc28","offsetgroup":"2\ucc28\u21943\ucc28","orientation":"v","showlegend":true,"textposition":"auto","x":["\uadfc\ub825(\uc0c1\ub300\uc545\ub825)","\uadfc\uc9c0\uad6c\ub825(\uad50\ucc28\uc717\ubab8\uc77c\uc73c\ud0a4\uae30)","\uc720\uc5f0\uc131(\uc549\uc544\uc717\ubab8\uc55e\uc73c\ub85c\uad7d\ud788\uae30)","\uc2ec\ud3d0\uc9c0\uad6c\ub825(VO\u2082max)"],"xaxis":"x","y":{"dtype":"f8","bdata":"ENkRC96Z6T\u002f0uhhAz0bmPywbKHNx\u002fOo\u002fWDu9hj6c4z8="},"yaxis":"y","type":"bar"},{"alignmentgroup":"True","customdata":{"dtype":"f8","bdata":"AAAAAAD8q0AAAAAAAAAAAAAAAAAA\u002fKtAAAAAAAAAAAAAAAAAAPyrQAAAAAAAAAAAAAAAAAD8q0ASgauxJ7kzBg==","shape":"4, 2"},"hovertemplate":"\ud68c\ucc28\ube44\uad50=1\ucc28\u21943\ucc28\u003cbr\u003e\uccb4\ub825\uc885\ubaa9=%{x}\u003cbr\u003ePearson r=%{y}\u003cbr\u003e\ud45c\ubcf8\uc218=%{customdata[0]}\u003cbr\u003ePearson_p=%{customdata[1]}\u003cextra\u003e\u003c\u002fextra\u003e","legendgroup":"1\ucc28\u21943\ucc28","marker":{"color":"#000003","pattern":{"shape":""}},"name":"1\ucc28\u21943\ucc28","offsetgroup":"1\ucc28\u21943\ucc28","orientation":"v","showlegend":true,"textposition":"auto","x":["\uadfc\ub825(\uc0c1\ub300\uc545\ub825)","\uadfc\uc9c0\uad6c\ub825(\uad50\ucc28\uc717\ubab8\uc77c\uc73c\ud0a4\uae30)","\uc720\uc5f0\uc131(\uc549\uc544\uc717\ubab8\uc55e\uc73c\ub85c\uad7d\ud788\uae30)","\uc2ec\ud3d0\uc9c0\uad6c\ub825(VO\u2082max)"],"xaxis":"x","y":{"dtype":"f8","bdata":"yKiNsc4C6D8GTsB3X+\u002fjP770atK1u+g\u002fAE9ZNV6B4T8="},"yaxis":"y","type":"bar"}],                        {"template":{"data":{"candlestick":[{"decreasing":{"line":{"color":"#000033"}},"increasing":{"line":{"color":"#000032"}},"type":"candlestick"}],"contourcarpet":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contourcarpet"}],"contour":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contour"}],"heatmap":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"heatmap"}],"histogram2d":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"histogram2d"}],"icicle":[{"textfont":{"color":"white"},"type":"icicle"}],"sankey":[{"textfont":{"color":"#000036"},"type":"sankey"}],"scatter":[{"marker":{"line":{"width":0}},"type":"scatter"}],"table":[{"cells":{"fill":{"color":"#000038"},"font":{"color":"#000037"},"line":{"color":"#000039"}},"header":{"fill":{"color":"#000040"},"font":{"color":"#000036"},"line":{"color":"#000039"}},"type":"table"}],"waterfall":[{"connector":{"line":{"color":"#000036","width":2}},"decreasing":{"marker":{"color":"#000033"}},"increasing":{"marker":{"color":"#000032"}},"totals":{"marker":{"color":"#000034"}},"type":"waterfall"}]},"layout":{"coloraxis":{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorscale":{"diverging":[[0.0,"#000021"],[0.1111111111111111,"#000022"],[0.2222222222222222,"#000023"],[0.3333333333333333,"#000024"],[0.4444444444444444,"#000025"],[0.5555555555555556,"#000026"],[0.6666666666666666,"#000027"],[0.7777777777777778,"#000028"],[0.8888888888888888,"#000029"],[1.0,"#000030"]],"sequential":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"sequentialminus":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorway":["#000001","#000002","#000003","#000004","#000005","#000006","#000007","#000008","#000009","#000010"]}},"xaxis":{"anchor":"y","domain":[0.0,1.0],"title":{"text":"\uccb4\ub825\uc885\ubaa9"}},"yaxis":{"anchor":"x","domain":[0.0,1.0],"title":{"text":"Pearson r"},"range":[-1,1]},"legend":{"title":{"text":"\ud68c\ucc28\ube44\uad50"},"tracegroupgap":0},"title":{"text":"\uccb4\ub825\uc885\ubaa9\ubcc4 \ud68c\ucc28 \uac04 \uc0c1\uad00\uacc4\uc218 \ube44\uad50"},"barmode":"group","height":480},                        {"responsive": true}                    )                };            </script>        </div></div><div class="panel"><div>                        <script>window.PlotlyConfig = {MathJaxConfig: 'local'};</script>
+        <script charset="utf-8" src="https://cdn.plot.ly/plotly-3.5.0.min.js" integrity="sha256-fHbNLP+GlIXN+efbQec78UkemUz3NJp7UmfGxC1tNxs=" crossorigin="anonymous"></script>                <div id="9c58142e-3b39-4b29-8444-de5236dbe9d1" class="plotly-graph-div" style="height:430px; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("9c58142e-3b39-4b29-8444-de5236dbe9d1")) {                    Plotly.newPlot(                        "9c58142e-3b39-4b29-8444-de5236dbe9d1",                        [{"alignmentgroup":"True","hovertemplate":"\ud68c\ucc28\ube44\uad50=1\ucc28\u21942\ucc28\u003cbr\u003e\uccb4\ub825\uc885\ubaa9=%{x}\u003cbr\u003e\ud45c\ubcf8\uc218=%{y}\u003cextra\u003e\u003c\u002fextra\u003e","legendgroup":"1\ucc28\u21942\ucc28","marker":{"color":"#000001","pattern":{"shape":""}},"name":"1\ucc28\u21942\ucc28","offsetgroup":"1\ucc28\u21942\ucc28","orientation":"v","showlegend":true,"textposition":"auto","x":["\uadfc\ub825(\uc0c1\ub300\uc545\ub825)","\uadfc\uc9c0\uad6c\ub825(\uad50\ucc28\uc717\ubab8\uc77c\uc73c\ud0a4\uae30)","\uc720\uc5f0\uc131(\uc549\uc544\uc717\ubab8\uc55e\uc73c\ub85c\uad7d\ud788\uae30)","\uc2ec\ud3d0\uc9c0\uad6c\ub825(VO\u2082max)"],"xaxis":"x","y":{"dtype":"i2","bdata":"\u002fg3+Df4N\u002fg0="},"yaxis":"y","type":"bar"},{"alignmentgroup":"True","hovertemplate":"\ud68c\ucc28\ube44\uad50=2\ucc28\u21943\ucc28\u003cbr\u003e\uccb4\ub825\uc885\ubaa9=%{x}\u003cbr\u003e\ud45c\ubcf8\uc218=%{y}\u003cextra\u003e\u003c\u002fextra\u003e","legendgroup":"2\ucc28\u21943\ucc28","marker":{"color":"#000002","pattern":{"shape":""}},"name":"2\ucc28\u21943\ucc28","offsetgroup":"2\ucc28\u21943\ucc28","orientation":"v","showlegend":true,"textposition":"auto","x":["\uadfc\ub825(\uc0c1\ub300\uc545\ub825)","\uadfc\uc9c0\uad6c\ub825(\uad50\ucc28\uc717\ubab8\uc77c\uc73c\ud0a4\uae30)","\uc720\uc5f0\uc131(\uc549\uc544\uc717\ubab8\uc55e\uc73c\ub85c\uad7d\ud788\uae30)","\uc2ec\ud3d0\uc9c0\uad6c\ub825(VO\u2082max)"],"xaxis":"x","y":{"dtype":"i2","bdata":"\u002fg3+Df4N\u002fg0="},"yaxis":"y","type":"bar"},{"alignmentgroup":"True","hovertemplate":"\ud68c\ucc28\ube44\uad50=1\ucc28\u21943\ucc28\u003cbr\u003e\uccb4\ub825\uc885\ubaa9=%{x}\u003cbr\u003e\ud45c\ubcf8\uc218=%{y}\u003cextra\u003e\u003c\u002fextra\u003e","legendgroup":"1\ucc28\u21943\ucc28","marker":{"color":"#000003","pattern":{"shape":""}},"name":"1\ucc28\u21943\ucc28","offsetgroup":"1\ucc28\u21943\ucc28","orientation":"v","showlegend":true,"textposition":"auto","x":["\uadfc\ub825(\uc0c1\ub300\uc545\ub825)","\uadfc\uc9c0\uad6c\ub825(\uad50\ucc28\uc717\ubab8\uc77c\uc73c\ud0a4\uae30)","\uc720\uc5f0\uc131(\uc549\uc544\uc717\ubab8\uc55e\uc73c\ub85c\uad7d\ud788\uae30)","\uc2ec\ud3d0\uc9c0\uad6c\ub825(VO\u2082max)"],"xaxis":"x","y":{"dtype":"i2","bdata":"\u002fg3+Df4N\u002fg0="},"yaxis":"y","type":"bar"}],                        {"template":{"data":{"candlestick":[{"decreasing":{"line":{"color":"#000033"}},"increasing":{"line":{"color":"#000032"}},"type":"candlestick"}],"contourcarpet":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contourcarpet"}],"contour":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contour"}],"heatmap":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"heatmap"}],"histogram2d":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"histogram2d"}],"icicle":[{"textfont":{"color":"white"},"type":"icicle"}],"sankey":[{"textfont":{"color":"#000036"},"type":"sankey"}],"scatter":[{"marker":{"line":{"width":0}},"type":"scatter"}],"table":[{"cells":{"fill":{"color":"#000038"},"font":{"color":"#000037"},"line":{"color":"#000039"}},"header":{"fill":{"color":"#000040"},"font":{"color":"#000036"},"line":{"color":"#000039"}},"type":"table"}],"waterfall":[{"connector":{"line":{"color":"#000036","width":2}},"decreasing":{"marker":{"color":"#000033"}},"increasing":{"marker":{"color":"#000032"}},"totals":{"marker":{"color":"#000034"}},"type":"waterfall"}]},"layout":{"coloraxis":{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorscale":{"diverging":[[0.0,"#000021"],[0.1111111111111111,"#000022"],[0.2222222222222222,"#000023"],[0.3333333333333333,"#000024"],[0.4444444444444444,"#000025"],[0.5555555555555556,"#000026"],[0.6666666666666666,"#000027"],[0.7777777777777778,"#000028"],[0.8888888888888888,"#000029"],[1.0,"#000030"]],"sequential":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"sequentialminus":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorway":["#000001","#000002","#000003","#000004","#000005","#000006","#000007","#000008","#000009","#000010"]}},"xaxis":{"anchor":"y","domain":[0.0,1.0],"title":{"text":"\uccb4\ub825\uc885\ubaa9"}},"yaxis":{"anchor":"x","domain":[0.0,1.0],"title":{"text":"\ud45c\ubcf8\uc218"}},"legend":{"title":{"text":"\ud68c\ucc28\ube44\uad50"},"tracegroupgap":0},"title":{"text":"\uccb4\ub825\uc885\ubaa9\ubcc4 \uc0c1\uad00\ubd84\uc11d\uc5d0 \uc0ac\uc6a9\ub41c \uc7a5\ubcd1 \uc218"},"barmode":"group","height":430},                        {"responsive": true}                    )                };            </script>        </div></div><div class="panel"><h2>상관분석 결과표</h2><table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>체력종목</th>
+      <th>변수</th>
+      <th>회차비교</th>
+      <th>표본수</th>
+      <th>Pearson_r</th>
+      <th>Pearson_p</th>
+      <th>Spearman_rho</th>
+      <th>Spearman_p</th>
+      <th>해석</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>근력(상대악력)</td>
+      <td>STRENGTH</td>
+      <td>1차↔2차</td>
+      <td>3582</td>
+      <td>0.7864</td>
+      <td>0.0</td>
+      <td>0.7778</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+    <tr>
+      <td>근력(상대악력)</td>
+      <td>STRENGTH</td>
+      <td>2차↔3차</td>
+      <td>3582</td>
+      <td>0.8000</td>
+      <td>0.0</td>
+      <td>0.7882</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+    <tr>
+      <td>근력(상대악력)</td>
+      <td>STRENGTH</td>
+      <td>1차↔3차</td>
+      <td>3582</td>
+      <td>0.7503</td>
+      <td>0.0</td>
+      <td>0.7380</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+    <tr>
+      <td>근지구력(교차윗몸일으키기)</td>
+      <td>ENDURANCE</td>
+      <td>1차↔2차</td>
+      <td>3582</td>
+      <td>0.7202</td>
+      <td>0.0</td>
+      <td>0.7382</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+    <tr>
+      <td>근지구력(교차윗몸일으키기)</td>
+      <td>ENDURANCE</td>
+      <td>2차↔3차</td>
+      <td>3582</td>
+      <td>0.6961</td>
+      <td>0.0</td>
+      <td>0.7148</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+    <tr>
+      <td>근지구력(교차윗몸일으키기)</td>
+      <td>ENDURANCE</td>
+      <td>1차↔3차</td>
+      <td>3582</td>
+      <td>0.6230</td>
+      <td>0.0</td>
+      <td>0.6345</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+    <tr>
+      <td>유연성(앉아윗몸앞으로굽히기)</td>
+      <td>FLEXIBILITY</td>
+      <td>1차↔2차</td>
+      <td>3582</td>
+      <td>0.8278</td>
+      <td>0.0</td>
+      <td>0.8329</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+    <tr>
+      <td>유연성(앉아윗몸앞으로굽히기)</td>
+      <td>FLEXIBILITY</td>
+      <td>2차↔3차</td>
+      <td>3582</td>
+      <td>0.8433</td>
+      <td>0.0</td>
+      <td>0.8356</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+    <tr>
+      <td>유연성(앉아윗몸앞으로굽히기)</td>
+      <td>FLEXIBILITY</td>
+      <td>1차↔3차</td>
+      <td>3582</td>
+      <td>0.7729</td>
+      <td>0.0</td>
+      <td>0.7760</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+    <tr>
+      <td>심폐지구력(VO₂max)</td>
+      <td>CARDIO</td>
+      <td>1차↔2차</td>
+      <td>3582</td>
+      <td>0.6272</td>
+      <td>0.0</td>
+      <td>0.6141</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+    <tr>
+      <td>심폐지구력(VO₂max)</td>
+      <td>CARDIO</td>
+      <td>2차↔3차</td>
+      <td>3582</td>
+      <td>0.6128</td>
+      <td>0.0</td>
+      <td>0.6033</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+    <tr>
+      <td>심폐지구력(VO₂max)</td>
+      <td>CARDIO</td>
+      <td>1차↔3차</td>
+      <td>3582</td>
+      <td>0.5470</td>
+      <td>0.0</td>
+      <td>0.5351</td>
+      <td>0.0</td>
+      <td>양의 상관</td>
+    </tr>
+  </tbody>
+</table></div><p class="note">주의: 상관관계는 체력 개선 또는 운동처방의 인과적 효과를 의미하지 않습니다. 측정 회차가 실제 시간순인지 확인하세요. 심폐지구력은 통합 CARDIO(VO₂max)를 비교했습니다.</p></body></html>

@@ -1,4 +1,4 @@
-"""컬럼 정의서로 PostgreSQL 테이블 생성 SQL을 만들고 DB에 실행합니다.
+"""컬럼 정의서로 PostgreSQL 테이블을 만들고, 저장된 CSV를 COPY로 넣습니다.
 
 올릴 데이터(저장 CSV, 정의서)는 paths.DB_SOURCES, CSV 파일 이름과 SQL 테이블 이름의 짝은 이 모듈의 DB_TABLE_NAMES에 있습니다.
 정의서의 데이터타입·길이·PK여부·NOT NULL여부·FK참조로 CREATE TABLE 문을 만들고,
@@ -8,11 +8,15 @@ FK의 삭제 시 동작은 기본값(NO ACTION: 참조되는 행은 지울 수 �
 
 접속 정보는 data/.env(형식은 data/.env.example)에서 읽고, 같은 이름의 환경 변수가 있으면 그 값을 우선합니다.
 CI·배포처럼 .env 파일 없이 환경 변수만 주는 경우에도 같은 코드로 접속할 수 있게 하기 위해서입니다.
+기본 실행은 기존 테이블을 지우고(DROP ... CASCADE) 정의서대로 다시 만든 뒤 CSV를 넣습니다. 재업로드할 때는 컬럼도 바뀌는
+경우가 많기 때문입니다. --schema-only는 테이블만, --load는 있는 테이블을 비우고 데이터만 넣습니다.
+넣기 전에 모든 CSV의 헤더가 정의서 컬럼과 같은지 확인하고, 넣은 뒤 테이블마다 행 수를 CSV와 대조합니다.
 모든 문을 트랜잭션 하나로 실행하므로, 중간에 실패하면 아무것도 바뀌지 않습니다.
 파이프라인(main.py)에는 넣지 않고 직접 실행합니다. --dry-run이면 DB에 접속하지 않고 SQL만 출력합니다.
 """
 
 import argparse
+import csv
 import logging
 import os
 import re
@@ -23,17 +27,20 @@ import pandas as pd
 import psycopg
 from dotenv import dotenv_values
 
-from data.scripts.logging_setup import caller_name, setup_logging
+from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import (
     DB_ENV_PATH,
     DB_SOURCES,
     PROCESSED_FITNESS_PATH,
+    PROCESSED_FITNESS_TYPE_PATH,
+    PROCESSED_MEASUREMENT_CLASSIFICATION_PATH,
     PROCESSED_PRESCRIPTION_DETAIL_PATH,
     PROCESSED_PRESCRIPTION_PATH,
+    PROCESSED_SOLDIER_FAILURE_PROBABILITY_PATH,
     SYNTHETIC_INJURY_PATH,
     SYNTHETIC_PERSONNEL_PATH,
 )
-from data.scripts.utils import read_text_csv, require_columns
+from data.scripts.utils import CSV_ENCODING, load_definition_columns, read_text_csv, require_columns
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +58,9 @@ DB_TABLE_NAMES = {
     PROCESSED_PRESCRIPTION_DETAIL_PATH.stem: "exercise_prescription_details",
     PROCESSED_PRESCRIPTION_PATH.stem: "exercise_prescriptions",
     SYNTHETIC_INJURY_PATH.stem: "injuries",
+    PROCESSED_MEASUREMENT_CLASSIFICATION_PATH.stem: "measurement_classifications",
+    PROCESSED_FITNESS_TYPE_PATH.stem: "fitness_types",
+    PROCESSED_SOLDIER_FAILURE_PROBABILITY_PATH.stem: "soldier_failure_probabilities",
 }
 
 # 정의서에서 쓰는 열
@@ -66,6 +76,12 @@ DEFINITION_COLUMNS = (NAME_COLUMN, TYPE_COLUMN, LENGTH_COLUMN, PK_COLUMN, FK_COL
 _DECIMAL_LENGTH = re.compile(r"^\s*(\d+)\s*,\s*(\d+)\s*$")
 
 Source = tuple[Path, Path]
+
+# 실행 범위: 기본은 테이블을 지우고 다시 만든 뒤 적재한다(재업로드할 때는 컬럼도 바뀌는 경우가 많아서, 사용자 결정).
+MODE_ALL, MODE_SCHEMA, MODE_LOAD = "all", "schema", "load"
+MODES = (MODE_ALL, MODE_SCHEMA, MODE_LOAD)
+# COPY로 한 번에 보내는 글자 수
+COPY_CHUNK_SIZE = 1 << 20
 
 
 def column_type(data_type: str, length: str) -> str:
@@ -117,36 +133,80 @@ def resolve_reference(reference: str, table_names: dict[str, str], tables: set[s
     return target, column.lower()
 
 
+def primary_key_columns(definition: pd.DataFrame) -> list[str]:
+    """정의서에서 PK여부가 Y인 컬럼 이름(소문자)을 정의서 순서대로 반환합니다."""
+    return [
+        name.strip().lower()
+        for name, is_pk in zip(definition[NAME_COLUMN], definition[PK_COLUMN])
+        if is_pk.strip().upper() == "Y"
+    ]
+
+
+def build_foreign_keys(
+    table: str,
+    definition: pd.DataFrame,
+    table_names: dict[str, str],
+    primary_keys: dict[str, list[str]],
+) -> list[tuple[str, list[str], list[str]]]:
+    """정의서의 FK참조로 (대상 테이블, 이 테이블의 컬럼들, 대상 컬럼들) 목록을 만듭니다.
+
+    FK참조는 컬럼마다 `CSV이름.컬럼` 하나씩 적고, 묶음은 대상 테이블의 PK로 정한다.
+    - 대상 PK가 한 컬럼이면 참조마다 FK 하나(같은 테이블을 여러 컬럼이 따로 가리킬 수 있음).
+    - 대상 PK가 여러 컬럼이면 그 PK 컬럼들을 가리키는 참조를 FK 하나로 묶는다(대상 PK 순서).
+
+    Raises:
+        ValueError: 대상 컬럼이 대상 테이블의 PK가 아니거나, 여러 컬럼 PK를 정확히 한 번씩 덮지 않을 때
+    """
+    references: dict[str, list[tuple[str, str]]] = {}
+    for name, reference in zip(definition[NAME_COLUMN], definition[FK_COLUMN]):
+        if not reference.strip():
+            continue
+        target, target_column = resolve_reference(reference, table_names, set(primary_keys))
+        if target_column not in primary_keys[target]:
+            raise ValueError(f"FK참조는 대상 테이블의 PK 컬럼을 가리켜야 합니다: {table}.{name.strip().lower()} -> {reference!r}")
+        references.setdefault(target, []).append((name.strip().lower(), target_column))
+
+    foreign_keys = []
+    for target, pairs in references.items():
+        target_pk = primary_keys[target]
+        if len(target_pk) == 1:
+            foreign_keys.extend((target, [column], [target_column]) for column, target_column in pairs)
+            continue
+        targets = [target_column for _, target_column in pairs]
+        if sorted(targets) != sorted(target_pk):
+            raise ValueError(
+                f"{table}가 {target}의 여러 컬럼 PK({', '.join(target_pk)})를 참조하려면 "
+                f"PK 컬럼을 모두 한 번씩 가리켜야 합니다: {', '.join(targets)}"
+            )
+        column_by_target = {target_column: column for column, target_column in pairs}
+        foreign_keys.append((target, [column_by_target[column] for column in target_pk], list(target_pk)))
+    return foreign_keys
+
+
 def build_create_table(
     table: str,
     definition: pd.DataFrame,
     table_names: dict[str, str],
-    tables: set[str],
+    primary_keys: dict[str, list[str]],
 ) -> tuple[str, set[str]]:
     """CREATE TABLE 문과, 이 테이블이 FK로 참조하는 다른 테이블 이름들을 반환합니다.
 
-    tables는 함께 만드는 테이블 이름들이고, FK는 그중 하나를 가리켜야 합니다.
+    primary_keys는 함께 만드는 테이블마다의 PK 컬럼들이고, FK는 그중 하나를 가리켜야 합니다.
     PostgreSQL은 따옴표 없는 이름을 소문자로 바꾸므로 컬럼 이름도 소문자로 적는다.
     """
-    lines, primary_keys, dependencies = [], [], set()
+    lines = []
     for row in definition.itertuples(index=False):
         values = dict(zip(definition.columns, row))
         column = values[NAME_COLUMN].strip().lower()
         not_null = " NOT NULL" if values[NOT_NULL_COLUMN].strip().upper() == "Y" else ""
         lines.append(f"    {column} {column_type(values[TYPE_COLUMN], values[LENGTH_COLUMN])}{not_null}")
-        if values[PK_COLUMN].strip().upper() == "Y":
-            primary_keys.append(column)
-    if primary_keys:
-        lines.append(f"    PRIMARY KEY ({', '.join(primary_keys)})")
-    for row in definition.itertuples(index=False):
-        values = dict(zip(definition.columns, row))
-        if not values[FK_COLUMN].strip():
-            continue
-        target_table, target_column = resolve_reference(values[FK_COLUMN], table_names, tables)
-        column = values[NAME_COLUMN].strip().lower()
-        lines.append(f"    FOREIGN KEY ({column}) REFERENCES {target_table} ({target_column})")
-        if target_table != table:
-            dependencies.add(target_table)
+    if primary_keys[table]:
+        lines.append(f"    PRIMARY KEY ({', '.join(primary_keys[table])})")
+    dependencies = set()
+    for target, columns, target_columns in build_foreign_keys(table, definition, table_names, primary_keys):
+        lines.append(f"    FOREIGN KEY ({', '.join(columns)}) REFERENCES {target} ({', '.join(target_columns)})")
+        if target != table:
+            dependencies.add(target)
     statement = f"CREATE TABLE IF NOT EXISTS {table} (\n" + ",\n".join(lines) + "\n);"
     return statement, dependencies
 
@@ -167,11 +227,12 @@ def build_schema(
     duplicated = sorted({table for table in names if names.count(table) > 1})
     if duplicated:
         raise ValueError(f"여러 CSV가 같은 테이블 이름을 씁니다: {', '.join(duplicated)}. setup_database.py의 DB_TABLE_NAMES를 확인하세요.")
+    definitions = {table: load_table_definition(definition_path) for table, definition_path in tables}
+    # FK를 묶으려면 대상 테이블의 PK를 알아야 하므로 PK부터 모두 모은다.
+    primary_keys = {table: primary_key_columns(definition) for table, definition in definitions.items()}
     statements, graph = {}, {}
-    for table, definition_path in tables:
-        statements[table], graph[table] = build_create_table(
-            table, load_table_definition(definition_path), table_names, set(names)
-        )
+    for table, definition in definitions.items():
+        statements[table], graph[table] = build_create_table(table, definition, table_names, primary_keys)
     try:
         # FK가 가리키는 테이블이 먼저 만들어지도록 순서를 정한다.
         sorter = TopologicalSorter(graph)
@@ -225,26 +286,97 @@ def drop_statements(table_names: list[str]) -> list[str]:
     return [f"DROP TABLE IF EXISTS {table} CASCADE;" for table in reversed(table_names)]
 
 
+def build_load_plan(
+    sources: tuple[Source, ...] = DB_SOURCES,
+    table_names: dict[str, str] = DB_TABLE_NAMES,
+) -> dict[str, tuple[Path, list[str]]]:
+    """테이블 이름 -> (저장 CSV, 정의서 컬럼 이름) 표를 만듭니다."""
+    return {
+        table_name(csv_path.stem, table_names): (csv_path, load_definition_columns(definition_path))
+        for csv_path, definition_path in sources
+    }
+
+
+def check_csv_header(csv_path: Path, columns: list[str]) -> None:
+    """CSV 헤더가 정의서 컬럼과 같은 순서로 같은지 확인합니다. COPY는 컬럼을 순서대로 넣기 때문입니다.
+
+    Raises:
+        FileNotFoundError: CSV가 없을 때
+        ValueError: 헤더가 정의서와 다를 때
+    """
+    if not csv_path.exists():
+        raise FileNotFoundError(f"DB에 올릴 CSV가 없습니다. 전처리·합성·분석을 먼저 실행하세요: {csv_path}")
+    # utf-8-sig로 읽어 BOM을 뗀다. BOM이 남으면 첫 컬럼 이름이 정의서와 달라 보인다.
+    with csv_path.open(encoding=CSV_ENCODING, newline="") as file:
+        header = next(csv.reader(file), [])
+    if header != columns:
+        raise ValueError(
+            f"{csv_path.name}의 헤더가 정의서 컬럼과 다릅니다.\n  CSV: {', '.join(header)}\n  정의서: {', '.join(columns)}"
+        )
+
+
+def count_csv_rows(csv_path: Path) -> int:
+    """헤더를 뺀 CSV 행 수입니다(따옴표 안 줄바꿈도 한 행으로 셈)."""
+    with csv_path.open(encoding=CSV_ENCODING, newline="") as file:
+        return sum(1 for _ in csv.reader(file)) - 1
+
+
+def copy_statement(table: str, columns: list[str]) -> str:
+    """CSV를 테이블에 넣는 COPY 문입니다. 헤더 줄은 건너뛰고, 따옴표 없는 빈 칸은 NULL로 넣습니다."""
+    column_list = ", ".join(column.lower() for column in columns)
+    return f"COPY {table} ({column_list}) FROM STDIN WITH (FORMAT csv, HEADER true)"
+
+
+def copy_csv(conn: psycopg.Connection, table: str, csv_path: Path, columns: list[str]) -> None:
+    """CSV 파일을 COPY로 테이블에 넣습니다. 파일은 BOM을 떼고(utf-8-sig) 나눠서 보냅니다."""
+    with conn.cursor() as cursor, cursor.copy(copy_statement(table, columns)) as copy:
+        with csv_path.open(encoding=CSV_ENCODING, newline="") as file:
+            while chunk := file.read(COPY_CHUNK_SIZE):
+                copy.write(chunk)
+
+
 def run(
     env_path: Path,
-    reset: bool = False,
+    mode: str = MODE_ALL,
     dry_run: bool = False,
     sources: tuple[Source, ...] = DB_SOURCES,
     table_names: dict[str, str] = DB_TABLE_NAMES,
 ) -> None:
-    """정의서로 만든 테이블 생성 SQL을 DB에 실행합니다.
+    """정의서로 테이블을 만들고 CSV를 COPY로 넣습니다. 모든 작업은 트랜잭션 하나입니다.
 
     Args:
         env_path: 접속 정보 파일 (data/.env)
-        reset: True면 만들 테이블을 먼저 지우고 새로 만든다(데이터도 지워짐)
+        mode: MODE_ALL(기본: 테이블을 지우고 다시 만든 뒤 데이터 적재),
+              MODE_SCHEMA(테이블만 지우고 다시 만듦), MODE_LOAD(있는 테이블을 비우고 데이터만 적재)
         dry_run: True면 DB에 접속하지 않고 실행할 SQL만 로그에 남긴다
         sources: DB에 올릴 (저장 CSV, 정의서) 목록
         table_names: CSV 파일 이름(확장자 제외) -> SQL 테이블 이름
+
+    Raises:
+        ValueError: mode가 잘못되었거나 CSV 헤더가 정의서와 다를 때, 넣은 행 수가 CSV와 다를 때
+        FileNotFoundError: 적재할 CSV가 없을 때
     """
+    if mode not in MODES:
+        raise ValueError(f"mode는 {', '.join(MODES)} 중 하나여야 합니다: {mode}")
     schema = build_schema(sources, table_names)
-    statements = (drop_statements([table for table, _ in schema]) if reset else []) + [sql for _, sql in schema]
+    tables = [table for table, _ in schema]
+    load_plan = build_load_plan(sources, table_names)
+    create_schema = mode in (MODE_ALL, MODE_SCHEMA)
+    load_data = mode in (MODE_ALL, MODE_LOAD)
+
+    statements = drop_statements(tables) + [sql for _, sql in schema] if create_schema else []
+    if load_data:
+        # 테이블을 지우기 전에 모든 CSV를 먼저 확인해, 문제가 있으면 DB를 건드리지 않는다.
+        for table in tables:
+            check_csv_header(*load_plan[table])
+        if not create_schema:
+            # 테이블을 새로 만들지 않으면 기존 행과 PK가 겹치므로 먼저 비운다.
+            statements.append(f"TRUNCATE {', '.join(tables)};")
+    copies = [(table, *load_plan[table]) for table in tables] if load_data else []
+
     if dry_run:
-        logger.info("실행하지 않음(--dry-run). 실행할 SQL:\n%s", "\n\n".join(statements))
+        planned = statements + [f"{copy_statement(table, columns)}  -- {csv_path.name}" for table, csv_path, columns in copies]
+        logger.info("실행하지 않음(--dry-run). 실행할 SQL:\n%s", "\n\n".join(planned))
         return
 
     settings = load_db_settings(env_path)
@@ -254,20 +386,34 @@ def run(
     with connect(settings) as conn:
         for statement in statements:
             conn.execute(statement)
-    if reset:
-        logger.info("삭제 후 다시 만듦: %s", ", ".join(table for table, _ in schema))
-    logger.info("테이블 생성(이미 있으면 그대로 둠): %s", ", ".join(table for table, _ in schema))
+        # FK가 가리키는 테이블부터 넣는다(schema 순서).
+        for table, csv_path, columns in copies:
+            copy_csv(conn, table, csv_path, columns)
+            loaded = conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            expected = count_csv_rows(csv_path)
+            if loaded != expected:
+                raise ValueError(f"{table}에 넣은 행 수({loaded:,})가 CSV({expected:,})와 다릅니다. 전체를 되돌립니다.")
+            logger.info("적재: %s <- %s (%s행)", table, display_path(csv_path), f"{loaded:,}")
+    if create_schema:
+        logger.info("테이블을 지우고 다시 만듦: %s", ", ".join(tables))
+    if load_data:
+        logger.info("데이터 적재 완료: 테이블 %d개", len(tables))
 
 
 def main() -> None:
-    """data/.env의 접속 정보로 paths.DB_SOURCES의 테이블을 만듭니다."""
-    parser = argparse.ArgumentParser(description="컬럼 정의서로 PostgreSQL 테이블을 만듭니다.")
-    parser.add_argument("--reset", action="store_true", help="테이블을 먼저 지우고 새로 만듭니다(데이터 삭제).")
+    """data/.env의 접속 정보로 paths.DB_SOURCES의 테이블을 만들고 데이터를 넣습니다."""
+    parser = argparse.ArgumentParser(
+        description="컬럼 정의서로 PostgreSQL 테이블을 다시 만들고 CSV를 넣습니다(기본: 기존 테이블 삭제 후 생성 + 적재)."
+    )
+    only = parser.add_mutually_exclusive_group()
+    only.add_argument("--schema-only", action="store_true", help="테이블만 지우고 다시 만듭니다(데이터는 넣지 않음).")
+    only.add_argument("--load", action="store_true", help="있는 테이블을 비우고 데이터만 넣습니다(테이블은 다시 만들지 않음).")
     parser.add_argument("--dry-run", action="store_true", help="DB에 접속하지 않고 실행할 SQL만 출력합니다.")
     args = parser.parse_args()
 
+    mode = MODE_SCHEMA if args.schema_only else MODE_LOAD if args.load else MODE_ALL
     setup_logging(caller_name(__file__))
-    run(DB_ENV_PATH, args.reset, args.dry_run)
+    run(DB_ENV_PATH, mode, args.dry_run)
 
 
 if __name__ == "__main__":

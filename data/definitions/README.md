@@ -35,6 +35,14 @@
 | `SOLDIER_PERSONNEL_DEFINITION.csv` | 6 | 가상 장병 명단 `synthetic/SOLDIER_PERSONNEL.csv`: 군번, 이름, 지역, 부대, 계급, 전후방 구분. | 합성 1단계 출력 |
 | `SOLDIER_INJURY_DEFINITION.csv` | 6 | 가상 부상 기록 `synthetic/SOLDIER_INJURY.csv`: 부상식별번호, 군번, 부상 대분류·세부 부위, 예방 가능 여부(Y/N), 심각도. | 합성 3단계 출력 |
 
+### 체력 유형·미달 예측 (분석 단계)
+
+| 파일 | 컬럼 수 | 내용 | 쓰는 곳 |
+|---|---|---|---|
+| `MEASUREMENT_CLASSIFICATION_DEFINITION.csv` | 3 | 측정별 평균 백분위 등급·군집 `processed/MEASUREMENT_CLASSIFICATION.csv`: 측정식별번호(PK, 측정 FK), 평균백분위등급, 군집번호(둘을 묶어 유형명 표 FK). | 분석 2단계 출력 |
+| `FITNESS_TYPE_DEFINITION.csv` | 3 | 등급·군집별 유형명 `processed/FITNESS_TYPE.csv`: 평균백분위등급·군집번호(둘을 묶어 PK), 유형명. | 분석 2단계 출력 |
+| `SOLDIER_FAILURE_PROBABILITY_DEFINITION.csv` | 2 | 장병별 다음 회차 미달 확률 `processed/SOLDIER_FAILURE_PROBABILITY.csv`: 군번(PK, 장병 FK), 미달 확률(0~1). | 분석 3단계 출력 |
+
 ## 컬럼 정의서가 아닌 파일
 
 ### `grade3_male_19_24.csv` (추후 제거 예정)

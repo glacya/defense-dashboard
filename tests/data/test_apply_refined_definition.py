@@ -1,9 +1,9 @@
-"""운동 처방 상세 테이블을 만들고(build_prescription_details), 처방 행에 처방유형번호를 붙이는(apply_final_definition) 함수를 확인합니다."""
+"""운동 처방 상세 테이블을 만들고(build_prescription_details), 처방 행에 처방유형번호를 붙이는(apply_refined_definition) 함수를 확인합니다."""
 
 import pandas as pd
 import pytest
 
-from data.scripts.preprocessing.apply_final_definition import (
+from data.scripts.preprocessing.apply_refined_definition import (
     MESURE_ID_COLUMN,
     PRESCRIPTION_ID_COLUMN,
     map_prescription_types,

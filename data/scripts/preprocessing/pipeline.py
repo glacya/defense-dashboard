@@ -24,7 +24,7 @@ from data.scripts.paths import (
 )
 from data.scripts.pipeline import Step
 from data.scripts.preprocessing import (
-    apply_final_definition,
+    apply_refined_definition,
     build_prescription_details,
     filter_enlistment_candidates,
     merge_raw_measurements,
@@ -79,7 +79,7 @@ def build_steps() -> list[Step]:
         ),
         Step(
             "최종 정의서 적용 (MESURE_ID 부여, 측정·운동 처방 분리)",
-            apply_final_definition.run,
+            apply_refined_definition.run,
             inputs={
                 "input_path": INTERMEDIATE_THREE_MEASURES,
                 "fitness_definition_path": DEFINITION_KS_NFA_REFINED,

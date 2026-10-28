@@ -25,7 +25,6 @@ PRESCRIPTION_COL = "MVM_PRSCRPTN_CN"  # 운동처방 내용
 MEASURE_COL = {
     "STRENGTH": "REL_GRIP",     # 근력 (상대악력, %)
     "ENDURANCE": "CROSS_UP",    # 근지구력 (회)
-    "ENDURANCE": "CROSS_UP",    # 근지구력 (회)
     "CARDIO": "CARDIO",         # 심폐지구력
     "FLEXIBILITY": "SIT_REACH", # 유연성
 }
@@ -76,4 +75,4 @@ if __name__ == "__main__":
     print(f"개인별(중복 제거) 후: {raw[ID_COL].nunique():,}")
     print(f"최종 선별 행 수     : {len(result):,}")
     result.to_csv(out_path, index=False, encoding="utf-8-sig")
-    print(f"저장: {out_path}")
+    print(f"저장: {DATA_PATH,out_path}")

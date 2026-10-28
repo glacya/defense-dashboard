@@ -234,5 +234,6 @@ data/processed/*
 !data/processed/.gitkeep
 # 합성 단계 결과물 (가상 데이터도 저장소에 올리지 않음)
 data/synthetic/*
+data/processed/analysis2/management/
 !data/synthetic/.gitkeep
 !data/scripts/logs/.gitkeep

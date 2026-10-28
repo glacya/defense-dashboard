@@ -25,15 +25,16 @@ MANAGEMENT_DIR = PROCESSED_DIR / "analysis2" / "management"
 # ============================================================================
 # dashboard 영역
 # ============================================================================
+DASHBOARD_DIR = ROOT_DIR / "dashboard"
 DB_DIR = DATA_DIR / "database"
-CSV_FINAL_DIR = DB_DIR / "db_final"
+DB_FINAL_DIR = DB_DIR / "db_final"
 BASE64_DIR = ROOT_DIR / "dashboard" / "img" / "base64.json"
-CSS_PATH = ROOT_DIR / "dashboard" / "style.css"
+CSS_PATH = ROOT_DIR / "dashboard" / "style_sample.css"
 JS_PATH = ROOT_DIR / "dashboard" / "test.js"
 DIR_DICT = {
     "ROOT_DIR": ROOT_DIR,
     "DB_DIR": DB_DIR,
-    "CSV_FINAL_DIR": CSV_FINAL_DIR,
+    "CSV_FINAL_DIR": DB_FINAL_DIR,
     "BASE64_DIR": BASE64_DIR,
     "CSS_PATH": CSS_PATH,
     "JS_PATH": JS_PATH,

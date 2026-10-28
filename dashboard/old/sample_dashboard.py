@@ -13,8 +13,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from config import PROCESSED_DIR, SYNTHETIC_DIR
+from config import DASHBOARD_DIR ,PROCESSED_DIR, SYNTHETIC_DIR,CSS_PATH,JS_PATH
 from data.scripts.fitness_standards import GRADE_CUTS, RANGE_STANDARDS
+from streamlit.components.v1 import html as components_html
+
+
 
 PERSONNEL_PATH = SYNTHETIC_DIR / "SOLDIER_PERSONNEL.csv"
 FITNESS_PATH = PROCESSED_DIR / "KS_NFA_PROCESSED.csv"
@@ -82,6 +85,26 @@ NAVIGATION_ITEMS = (
 
 
 @st.cache_data(show_spinner=False)
+
+
+
+
+def load_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+
+def inject_assets() -> None:
+    """style1.css와 test1.js를 페이지에 적용합니다."""
+    # st.markdown은 빈 줄을 만나면 HTML 블록이 끊기므로 빈 줄은 제거합니다.
+    css = "\n".join(line for line in load_text(CSS_PATH).splitlines() if line.strip())
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+
+    js = load_text(JS_PATH)
+    has_code = any(
+        line.strip() and not line.strip().startswith("//") for line in js.splitlines()
+    )
+    if has_code:
+        components_html(f"<script>{js}</script>", height=0)
 def load_dashboard_data(
     personnel_path: str,
     fitness_path: str,
@@ -899,7 +922,18 @@ def render_fitness_management(scoped: pd.DataFrame, measurements: pd.DataFrame) 
             column_config={"최근 측정일": st.column_config.DateColumn(format="YYYY-MM-DD")},
         )
 
+def inject_assets() -> None:
+    """style1.css와 test1.js를 페이지에 적용합니다."""
+    # st.markdown은 빈 줄을 만나면 HTML 블록이 끊기므로 빈 줄은 제거합니다.
+    css = "\n".join(line for line in load_text(CSS_PATH).splitlines() if line.strip())
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
+    js = load_text(JS_PATH)
+    has_code = any(
+        line.strip() and not line.strip().startswith("//") for line in js.splitlines()
+    )
+    if has_code:
+        components_html(f"<script>{js}</script>", height=0)
 def show_dashboard() -> None:
     st.set_page_config(
         page_title="장병 체력·부상관리 대시보드",
@@ -907,246 +941,7 @@ def show_dashboard() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    st.markdown(
-        f"""
-        <style>
-        :root {{
-            color-scheme: dark;
-            --navy-background: {NAVY_BACKGROUND};
-            --navy-surface: {NAVY_SURFACE};
-            --navy-border: {NAVY_BORDER};
-            --light-text: {LIGHT_TEXT};
-            --muted-text: {MUTED_TEXT};
-            --cyan-accent: {CYAN_ACCENT};
-            --blue-accent: {BLUE_ACCENT};
-            --st-background-color: {NAVY_BACKGROUND};
-            --st-secondary-background-color: {NAVY_SURFACE};
-            --st-text-color: {LIGHT_TEXT};
-            --st-primary-color: {BLUE_ACCENT};
-            --st-border-color: {NAVY_BORDER};
-            --st-dataframe-header-background-color: #142D49;
-        }}
-        .stApp,
-        [data-testid="stAppViewContainer"] {{
-            background:
-                radial-gradient(ellipse at 76% -18%, rgba(24, 91, 154, 0.34), transparent 46%),
-                linear-gradient(145deg, #09192B 0%, var(--navy-background) 58%, #050D18 100%);
-            color: var(--light-text);
-        }}
-        [data-testid="stMain"] {{
-            background: transparent;
-        }}
-        [data-testid="stMainBlockContainer"] {{
-            padding-top: 2rem;
-        }}
-        [data-testid="stHeader"] {{
-            background: rgba(7, 19, 33, 0.92);
-        }}
-        [data-testid="stSidebar"] {{
-            background: linear-gradient(180deg, #0A1D33 0%, #09192B 58%, #06101C 100%);
-            border-right: 1px solid rgba(47, 91, 132, 0.48);
-            box-shadow: 12px 0 36px rgba(0, 0, 0, 0.16);
-        }}
-        [data-testid="stSidebar"] [data-testid="stImage"] {{
-            margin-bottom: -0.5rem;
-        }}
-        .st-key-sidebar-navigation button {{
-            justify-content: flex-start;
-            border-radius: 0.55rem;
-            font-weight: 600;
-        }}
-        [data-testid="stSidebar"] [data-testid="stExpander"] {{
-            background: rgba(16, 36, 58, 0.68);
-            border: 1px solid rgba(47, 91, 132, 0.48);
-            border-radius: 0.65rem;
-        }}
-        [data-testid="stMetric"] {{
-            background: linear-gradient(145deg, #142F4B 0%, #0D2035 100%);
-            border: 1px solid #285073;
-            border-radius: 0.8rem;
-            box-shadow: inset 0 1px 0 rgba(151, 203, 242, 0.045), 0 8px 22px rgba(0, 0, 0, 0.14);
-            padding: 0.55rem 0.25rem;
-        }}
-        [data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-total) {{
-            background: linear-gradient(145deg, rgba(37, 137, 255, 0.25), rgba(13, 32, 53, 0.98));
-            border-color: rgba(67, 141, 255, 0.78);
-            box-shadow: inset 0 3px 0 #438DFF, 0 8px 24px rgba(27, 105, 207, 0.16);
-        }}
-        [data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-normal) {{
-            background: linear-gradient(145deg, rgba(22, 199, 154, 0.22), rgba(10, 38, 42, 0.98));
-            border-color: rgba(22, 199, 154, 0.72);
-            box-shadow: inset 0 3px 0 #16C79A, 0 8px 24px rgba(22, 199, 154, 0.12);
-        }}
-        [data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-risk) {{
-            background: linear-gradient(145deg, rgba(242, 169, 59, 0.22), rgba(43, 34, 28, 0.98));
-            border-color: rgba(242, 169, 59, 0.76);
-            box-shadow: inset 0 3px 0 #F2A93B, 0 8px 24px rgba(242, 169, 59, 0.12);
-        }}
-        [data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-underweight) {{
-            background: linear-gradient(145deg, rgba(241, 91, 112, 0.23), rgba(43, 27, 41, 0.98));
-            border-color: rgba(241, 91, 112, 0.78);
-            box-shadow: inset 0 3px 0 #F15B70, 0 8px 24px rgba(241, 91, 112, 0.12);
-        }}
-        .st-key-summary-card-total [data-testid="stMetricLabel"] p,
-        .st-key-summary-card-total [data-testid="stMetricValue"] {{
-            color: #A9CFFF;
-        }}
-        .st-key-summary-card-normal [data-testid="stMetricLabel"] p,
-        .st-key-summary-card-normal [data-testid="stMetricValue"] {{
-            color: #8FE5C9;
-        }}
-        .st-key-summary-card-risk [data-testid="stMetricLabel"] p,
-        .st-key-summary-card-risk [data-testid="stMetricValue"] {{
-            color: #FFD28B;
-        }}
-        .st-key-summary-card-underweight [data-testid="stMetricLabel"] p,
-        .st-key-summary-card-underweight [data-testid="stMetricValue"] {{
-            color: #FFADB7;
-        }}
-        [data-testid="stVerticalBlockBorderWrapper"] {{
-            background: linear-gradient(150deg, rgba(17, 39, 62, 0.94), rgba(10, 27, 46, 0.98));
-            border-color: rgba(42, 78, 114, 0.92);
-            border-radius: 0.8rem;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-        }}
-        [data-testid="stMetricValue"] {{
-            color: var(--light-text);
-            font-size: clamp(0.95rem, 1.3vw, 1.35rem);
-            overflow-wrap: anywhere;
-        }}
-        [data-testid="stMetricLabel"] p {{
-            color: #E0E9F2;
-            font-size: 0.68rem !important;
-            white-space: nowrap;
-        }}
-        [data-testid="stCaptionContainer"] p {{
-            color: var(--muted-text);
-        }}
-        [data-testid="stMarkdownContainer"] p,
-        [data-testid="stMarkdownContainer"] li,
-        label,
-        h1, h2, h3, h4 {{
-            color: var(--light-text);
-        }}
-        h1 {{
-            text-shadow: 0 0 26px rgba(33, 183, 213, 0.14);
-        }}
-        [data-testid="stDataFrame"] {{
-            border: 1px solid #244666;
-            border-radius: 0.65rem;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
-        }}
-        [data-testid="stTextInputRootElement"] {{
-            background: #0D2035 !important;
-            border: 1px solid #2B5278 !important;
-            border-radius: 0.55rem !important;
-        }}
-        [data-testid="stTextInputField"] {{
-            background: transparent !important;
-            color: var(--light-text) !important;
-        }}
-        [data-testid="stTextInputField"]::placeholder {{
-            color: var(--muted-text) !important;
-            opacity: 1;
-        }}
-        [data-testid="stSelectbox"] [role="group"],
-        [data-testid="stMultiSelect"] [role="group"],
-        [data-testid="stDateInput"] [role="group"] {{
-            background: #0D2035 !important;
-            border-color: #2B5278 !important;
-            border-radius: 0.55rem !important;
-            color: var(--light-text) !important;
-        }}
-        [data-testid="stSelectbox"] input,
-        [data-testid="stMultiSelect"] input,
-        [data-testid="stDateInput"] input {{
-            color: var(--light-text) !important;
-        }}
-        [data-testid="stSelectbox"] input::placeholder,
-        [data-testid="stMultiSelect"] input::placeholder,
-        [data-testid="stDateInput"] input::placeholder {{
-            color: var(--muted-text) !important;
-            opacity: 1;
-        }}
-        [data-testid="stSlider"] input[type="range"] {{
-            accent-color: var(--cyan-accent);
-        }}
-        button[kind="secondary"] {{
-            background: linear-gradient(145deg, #17334F, #10243A);
-            border: 1px solid #2B5278;
-            color: var(--light-text);
-            border-radius: 0.55rem;
-            font-size: 0.8rem;
-            padding-left: 0.35rem;
-            padding-right: 0.35rem;
-            white-space: nowrap;
-            transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
-        }}
-        button[kind="secondary"]:hover {{
-            background: #1B3D5D;
-            border-color: var(--cyan-accent);
-            color: #EFF5FB;
-            transform: translateY(-1px);
-        }}
-        button[kind="primary"] {{
-            background: linear-gradient(115deg, #2589FF, #176BD3);
-            border-color: #4199FF;
-            color: #EFF5FB;
-            border-radius: 0.55rem;
-            box-shadow: 0 5px 16px rgba(25, 118, 232, 0.22);
-        }}
-        button[kind="primary"]:hover {{
-            background: linear-gradient(115deg, #4098FF, #2581E8);
-            border-color: #70B0FF;
-        }}
-        [data-testid="stMultiSelectTagsContainer"] span[role="group"] > span:not([role]) {{
-            background: #153956 !important;
-            color: #DCEAF6 !important;
-            border: 1px solid #32658D !important;
-            border-radius: 999px;
-        }}
-        [data-testid="stMultiSelectTagsContainer"] span[role="group"] > span:not([role]) button svg {{
-            fill: #A8C6D9 !important;
-        }}
-        [data-testid="stTab"][aria-selected="true"] {{
-            color: var(--cyan-accent) !important;
-            border-bottom-color: var(--cyan-accent) !important;
-        }}
-        [data-testid="stTab"][aria-selected="true"]::after {{
-            background-color: var(--cyan-accent) !important;
-        }}
-        [data-testid="stTab"][role="tab"] {{
-            color: #C2D2E2;
-        }}
-        [data-testid="stTab"][role="tab"]:hover {{
-            color: #EFF5FB;
-        }}
-        [data-testid="stButtonGroup"] button[role="radio"][aria-checked="true"] {{
-            background: rgba(37, 137, 255, 0.16) !important;
-            border-color: var(--cyan-accent) !important;
-            color: #C2E8E2 !important;
-        }}
-        [data-testid="stSlider"] [role="slider"] {{
-            background: var(--cyan-accent);
-            border-color: var(--cyan-accent);
-            box-shadow: 0 0 12px rgba(32, 200, 163, 0.34);
-        }}
-        [data-testid="stDialog"] {{
-            background: #0A1929;
-            border: 1px solid #2B5278;
-            box-shadow: 0 18px 70px rgba(0, 0, 0, 0.52);
-        }}
-        [data-testid="stAlert"] {{
-            background: linear-gradient(135deg, #142F4B, #0D2035);
-            border-color: #2B5278;
-        }}
-        hr {{
-            border-color: rgba(47, 86, 122, 0.5);
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    inject_assets()
     active_view = st.session_state.setdefault("active_view", "대시보드 홈")
     st.title("🪖 장병 체력 현황")
     st.caption(

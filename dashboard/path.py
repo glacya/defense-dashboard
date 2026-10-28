@@ -4,4 +4,5 @@ app.py가 단계를 연결할 때와 각 단계 모듈을 단독으로 실행할
 결과 파일이 여러 개인 단계는 폴더 경로이며, 폴더 안의 파일 이름은 각 단계 모듈이 정합니다.
 """
 
-from config import DB_DIR, CSV_FINAL_DIR,BASE64_DIR, CSS_PATH, JS_PATH, DIR_DICT
+from config import DASHBOARD_DIR,DB_DIR,DB_FINAL_DIR,CSS_PATH,JS_PATH
+

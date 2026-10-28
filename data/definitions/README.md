@@ -24,7 +24,7 @@
 | `KS_NFA_RAW_DEFINITION.csv` | 57 | 원본 월별 파일(`KS_NFA_FTNESS_MESURE_*.csv`)의 컬럼. 제공처 정의서라 `컬럼영문명` 열을 씁니다. | 전처리 1단계 입력 |
 | `KS_NFA_MERGED_DEFINITION.csv` | 13 | 원본 통합 결과 `intermediate/KS_NFA_MERGED.csv`. 19~24세 남성, 영문 약어 컬럼(`M_CODE`, `REL_GRIP`, `CROSS_UP`, `SIT_REACH`, 심폐 3종목을 하나로 합친 `CARDIO`, 운동 처방 `MVM_PRSCRPTN_CN` 등). | 전처리 1단계 출력 |
 | `KS_NFA_REFINED_DEFINITION.csv` | 13 | 전처리 결과 `intermediate/KS_NFA_REFINED.csv`. 새 PK `MESURE_ID`를 붙이고 측정 컬럼을 체력 요소 이름(`STRENGTH`, `ENDURANCE`, `CARDIO`, `FLEXIBILITY`)으로 바꿉니다. 국민체력100 식별자(`M_CODE`, `M_SEQ_NO`)는 아직 남아 있습니다. | 전처리 6단계 출력, 합성 단계 입력 |
-| `KS_NFA_FINAL_DEFINITION.csv` | 13 | 최종 측정 데이터 `processed/KS_NFA_PROCESSED.csv`. REFINED에서 국민체력100 식별자를 빼고 군번 `SOLDIER_ID`와 부상 위험 그룹 번호 `INJURY_RISK_GROUP_ID`를 붙입니다. 사람은 `SOLDIER_ID`, 측정은 `MESURE_ID`로 구분합니다. | 합성 2단계 출력 |
+| `KS_NFA_FINAL_DEFINITION.csv` | 13 | 최종 측정 데이터 `processed/KS_NFA_PROCESSED.csv`. REFINED에서 국민체력100 식별자를 빼고 군번 `SOLDIER_ID`와 연간 기대 부상 건수 `EXPECTED_INJURY_COUNT_PER_YEAR`(Poisson λ, BMI·심폐지구력 백분위로 선형 보간)를 붙입니다. 사람은 `SOLDIER_ID`, 측정은 `MESURE_ID`로 구분합니다. | 합성 2단계 출력 |
 | `KS_NFA_PRESCRIPTION_DEFINITION.csv` | 3 | 운동 처방 `processed/KS_NFA_PRESCRIPTION.csv`. 측정 하나의 처방 목록을 처방 하나당 한 행으로 나눈 것(`PRESCRIPTION_ID`, `MESURE_ID`, `PRESCRIPTION_TYPE_ID`). | 전처리 6단계 출력 |
 | `KS_NFA_PRESCRIPTION_DETAIL_DEFINITION.csv` | 2 | 운동 처방 상세 `processed/KS_NFA_PRESCRIPTION_DETAIL.csv`. 처방유형번호와 처방 이름(`PRESCRIPTION`). | 전처리 2단계 출력 |
 
@@ -33,7 +33,6 @@
 | 파일 | 컬럼 수 | 내용 | 쓰는 곳 |
 |---|---|---|---|
 | `SOLDIER_PERSONNEL_DEFINITION.csv` | 6 | 가상 장병 명단 `synthetic/SOLDIER_PERSONNEL.csv`: 군번, 이름, 지역, 부대, 계급, 전후방 구분. | 합성 1단계 출력 |
-| `INJURY_RISK_GROUP_DEFINITION.csv` | 4 | 부상 위험 그룹 표 `processed/INJURY_RISK_GROUP.csv`: BMI 구간 × 심폐지구력 구간(각각 백분위 3구간) 9개 그룹의 기대 부상 건수(Poisson λ). | 합성 2단계 출력 |
 | `SOLDIER_INJURY_DEFINITION.csv` | 6 | 가상 부상 기록 `synthetic/SOLDIER_INJURY.csv`: 부상식별번호, 군번, 부상 대분류·세부 부위, 예방 가능 여부(Y/N), 심각도. | 합성 3단계 출력 |
 
 ## 컬럼 정의서가 아닌 파일

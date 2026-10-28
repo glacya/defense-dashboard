@@ -501,7 +501,7 @@ def add_deficiency_flags(data: pd.DataFrame) -> pd.DataFrame:
         result[f"미달_{column}"] = lower_failed | upper_failed
     fitness_flags = [f"미달_{column}" for column in FITNESS_ITEM_LABELS]
     management_flags = fitness_flags + ["미달_BMI", "미달_BODY_FAT_PERCENTAGE"]
-    result["체력미달"] = result[fitness_flags].any(axis=1)
+    result["체력미달"] = result[fitness_flags].sum(axis=1).ge(2)
     result["관리대상"] = result[management_flags].any(axis=1)
     return result
 
@@ -672,7 +672,7 @@ def render_home_overview(
         st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
 
     with st.expander("판정 기준 보기"):
-        st.caption("체력 미달은 3등급 하한 미만, 관리 대상은 체력 4종목 또는 BMI·체지방률 정상 범위 이탈로 계산합니다.")
+        st.caption("체력 미달은 4개 체력 종목 중 2개 이상이 3등급 하한 미만인 경우이며, 관리 대상은 체력 종목 또는 BMI·체지방률 기준을 벗어난 인원입니다.")
         standards = pd.DataFrame([
             {"항목": FITNESS_ITEM_LABELS[column], "미달 기준": f"{GRADE_CUTS[column][3]:g} 미만"}
             for column in FITNESS_ITEM_LABELS

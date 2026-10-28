@@ -5,10 +5,10 @@
 """
 
 from data.scripts.pipeline import Step
-from data.scripts.analysis.fitness_overview import run
-from data.scripts.analysis.management_targets import run as run_targets
-from data.scripts.analysis.personal_detail import run as run_personal
-from data.scripts.analysis.injury_overview import run as run_injury
+from data.scripts.analysis.analysis2.fitness_overview import run
+from data.scripts.analysis.analysis2.management_targets import run as run_targets
+from data.scripts.analysis.analysis2.personal_detail import run as run_personal
+from data.scripts.analysis.analysis2.injury_overview import run as run_injury
 from data.scripts.paths import SYNTHETIC_INJURY_PATH, PROCESSED_INJURY_OVERVIEW_DIR
 from data.scripts.paths import PROCESSED_PERSONAL_DETAIL_DIR
 from data.scripts.paths import PROCESSED_MANAGEMENT_TARGETS_DIR

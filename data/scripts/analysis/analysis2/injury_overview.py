@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from data.scripts.analysis.fitness_overview import EVENTS, judge_measurements
+from data.scripts.analysis.analysis2.fitness_overview import EVENTS, judge_measurements
 from data.scripts.paths import PROCESSED_FITNESS_PATH, SYNTHETIC_PERSONNEL_PATH, SYNTHETIC_INJURY_PATH, PROCESSED_INJURY_OVERVIEW_DIR
 from data.scripts.utils import read_text_csv, require_columns, write_csv
 

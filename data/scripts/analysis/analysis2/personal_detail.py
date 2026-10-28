@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 
-from data.scripts.analysis.fitness_overview import EVENTS
+from data.scripts.analysis.analysis2.fitness_overview import EVENTS
 from data.scripts.paths import PROCESSED_FITNESS_PATH, PROCESSED_MANAGEMENT_TARGETS_DIR, PROCESSED_PERSONAL_DETAIL_DIR
 from data.scripts.utils import read_text_csv, require_columns, write_csv
 

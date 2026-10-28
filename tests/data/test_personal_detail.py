@@ -1,10 +1,10 @@
-﻿"""개인별 측정값 변화와 등급 개선·하락·판정 불가를 검증합니다."""
+"""개인별 측정값 변화와 등급 개선·하락·판정 불가를 검증합니다."""
 
 import pandas as pd
 import pytest
 
-from data.scripts.analysis.personal_detail import build_changes
-from data.scripts.analysis.management_targets import build_targets
+from data.scripts.analysis.analysis2.personal_detail import build_changes
+from data.scripts.analysis.analysis2.management_targets import build_targets
 from data.scripts.fitness_standards import FITNESS_EXERCISES, grade_cut
 
 

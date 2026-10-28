@@ -1,330 +1,265 @@
 /* ==========================================
-   1. 통합 색상 정의 (CSS 변수)
+   1. 색상 변수
+   (sample_dashboard.py의 NAVY_*, LIGHT_TEXT, MUTED_TEXT, CYAN_ACCENT, BLUE_ACCENT 상수와 같은 값)
    ========================================== */
 :root {
-    /* [Streamlit 대시보드 테마] */
-    --color-primary: rgba(81, 52, 13, 0.0);
-    --color-good: #4f6d45;
-    --color-warn: #e5a73b;
-    --color-risk: #ff0800;
-    --color-accent: #7a8f66;
-    --color-soft: #8f8a73;
-    --color-normal: #e9ecef;
-    --color-bg: #e3ede5;
-    --color-white: #ffffff;
-    --color-text-dark: #2c3307;
-    --color-text-light: #b0b0b0;
-    --color-border: rgba(0, 0, 0, 0.1);
-    --bg-image: none; /* Python에서 동적 설정 */
-
-    /* [3D SF HUD 테마] */
-    --hud-cyan: #00f3ff;
-    --hud-pink: #ff007f;
-    --hud-bg: rgba(4, 16, 35, 0.85);
-    --hud-border: #00f3ff;
-    --hud-glow: rgba(0, 243, 255, 0.3);
-    --hud-text-sub: #a5d7e8;
-    --color-bmi: #ff0e04;           /* 청록색 */
-    --color-근지구력: #00f3ff;       /* 청록색 */
-    --color-유연성: #ff15ae;         /* 주황색 */
-    --color-근력: #00ff88;           /* 초록색 */
-    --color-심폐지구력: #fc504b;     /* 핑크색 */
-    --color-광원: #eef2f7;
-    --color-fog: #dbd9d9;        /* 안개 색 */
-    --color-개인별bg: rgba(0, 0, 26, 0.2);               /* 배경색 */
-    --color-원: rgba(255, 217, 78, 0.8);      /* 원의 색 */
-    --color-유형선: rgba(31, 255, 14, 0.7);  
-    --color-5각형3dmesh1: rgba(255, 0, 6, 0.45);
-    --color-5각형3dmesh2: rgba(247, 219, 8, 0.48);
+    color-scheme: dark;
+    --navy-background: #071321;                 /* 앱 전체 배경: 페이지 바탕과 Plotly 차트의 어두운 기본 배경 */
+    --navy-surface: #10243A;                    /* 표면/카드 배경: 사이드바 내부와 어두운 패널 */
+    --navy-border: #244666;                     /* 어두운 경계선: 카드·표·차트 그리드 구분 */
+    --light-text: #EFF5FB;                      /* 기본 밝은 글자: 제목·본문·수치 */
+    --muted-text: #C6D3E0;                      /* 보조 밝은 글자: caption·설명·범례 */
+    --cyan-accent: #25C6D8;                     /* 청록 강조: 선택 탭·슬라이더·활성 상태 */
+    --blue-accent: #2589FF;                    /* 파랑 강조: 기본 버튼·링크·주요 데이터 */
+    --st-background-color: #071321;             /* Streamlit 기본 배경: 앱 바깥 영역 */
+    --st-secondary-background-color: #10243A;   /* Streamlit 보조 배경: 입력창·카드 표면 */
+    --st-text-color: #EFF5FB;                  /* Streamlit 기본 글자색 */
+    --st-primary-color: #2589FF;               /* Streamlit 기본 상호작용 색상 */
+    --st-border-color: #244666;                /* Streamlit 기본 경계선 색상 */
+    --st-dataframe-header-background-color: #142D49; /* 데이터프레임 헤더 배경 */
 }
-
 
 /* ==========================================
-   2. Streamlit 대시보드 기본 스타일
+   2. 앱 배경·레이아웃
    ========================================== */
-.stApp {
-    background-image: var(--bg-image);
-    background-color: var(--color-bg);
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
+.stApp,
+[data-testid="stAppViewContainer"] {
+    background:
+        radial-gradient(ellipse at 76% -18%, rgba(24, 91, 154, 0.34), transparent 46%),
+        linear-gradient(145deg, #09192B 0%, var(--navy-background) 58%, #050D18 100%);
+    color: var(--light-text);
 }
-
-/* 상태 카드 컨테이너 */
-.status-card {
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 2px 2px 5px var(--color-border);
-    text-align: center;
-    background-color: var(--color-white);
+[data-testid="stMain"] {
+    background: transparent;
 }
-
-.status-card__header {
-    color: var(--color-white);
-    padding: 10px;
-    font-weight: bold;
-    font-size: 16px;
+[data-testid="stMainBlockContainer"] {
+    padding-top: 2rem;
 }
-
-.status-card__header--good { background-color: var(--color-good); }
-.status-card__header--warn { background-color: var(--color-warn); }
-.status-card__header--risk { background-color: var(--color-risk); }
-
-.status-card__body {
-    padding: 20px;
-    font-weight: bold;
-    font-size: 18px;
-    color: var(--color-text-dark);
+[data-testid="stHeader"] {
+    background: rgba(7, 19, 33, 0.92);
 }
-
-/* 인물 정보 섹션 */
-.person-info {
-    border-radius: 8px;
-    padding: 20px;
-    background-color: var(--color-white);
-}
-
-.person-info__title {
-    font-size: 24px;
-    font-weight: bold;
-    color: var(--color-text-dark);
-    margin-bottom: 5px;
-}
-
-.person-info__subtitle {
-    font-size: 14px;
-    color: var(--color-text-light);
-    margin-bottom: 20px;
-}
-
-/* 데이터 테이블 */
-.data-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.data-table th {
-    background-color: var(--color-primary);
-    color: var(--color-white);
-    padding: 12px;
-    text-align: left;
-    font-weight: bold;
-}
-
-.data-table td {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--color-border);
-}
-
-.data-table tr:hover {
-    background-color: var(--color-bg);
-}
-
-/* 차트 컨테이너 */
-.chart-container {
-    background-color: var(--color-white);
-    border-radius: 8px;
-    padding: 15px;
-    box-shadow: 0 1px 3px var(--color-border);
-}
-
-.chart-title {
-    font-weight: bold;
-    font-size: 16px;
-    color: var(--color-text-dark);
-    margin-bottom: 15px;
-}
-
-/* 범례 스타일 */
-.legend {
-    display: flex;
-    justify-content: center;
-    gap: 30px;
-    margin-top: 15px;
-    flex-wrap: wrap;
-}
-
-.legend__item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-}
-
-.legend__color {
-    width: 16px;
-    height: 16px;
-    border-radius: 3px;
-}
-
-.legend__color--high-risk { background-color: var(--color-risk); }
-.legend__color--mid-risk { background-color: var(--color-warn); }
-.legend__color--normal { background-color: var(--color-normal); }
-.legend__color--good { background-color: var(--color-good); }
-
-/* 분할선 & 경고 상자 */
-.divider {
-    border: none;
-    border-top: 2px solid var(--color-border);
-    margin: 30px 0;
-}
-
-.warning-box {
-    background-color: #fff3cd;
-    border: 1px solid #ffc107;
-    border-radius: 6px;
-    padding: 15px;
-    margin: 15px 0;
-}
-
-.warning-box__title {
-    color: #856404;
-    font-weight: bold;
-    margin-bottom: 10px;
-}
-
-.warning-box__content {
-    color: #856404;
-    font-size: 14px;
-}
-
-/* 유틸리티 & 간격 */
-.space-sm { margin-bottom: 10px; }
-.space-md { margin-bottom: 20px; }
-.space-lg { margin-bottom: 30px; }
-.space-xl { margin-bottom: 50px; }
-
-.space-top-sm { margin-top: 10px; }
-.space-top-md { margin-top: 20px; }
-.space-top-lg { margin-top: 30px; }
-
-.text-center { text-align: center; }
-.text-bold { font-weight: bold; }
-.text-primary { color: var(--color-primary); }
-.text-risk { color: var(--color-risk); }
-.text-warn { color: var(--color-warn); }
-.text-good { color: var(--color-good); }
-.text-small { font-size: 12px; }
-.text-large { font-size: 18px; }
-
-.flex-center { display: flex; justify-content: center; align-items: center; }
-.flex-between { display: flex; justify-content: space-between; align-items: center; }
-
-.shadow-sm { box-shadow: 1px 1px 3px var(--color-border); }
-.shadow-md { box-shadow: 2px 2px 5px var(--color-border); }
-.shadow-lg { box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.15); }
-.bg-overlay { background-color: rgba(255, 255, 255, 0.95); }
-
 
 /* ==========================================
-   3. 3D Canvas 및 SF HUD 전용 스타일 (iframe 내부)
+   3. 사이드바
    ========================================== */
-#canvas-container {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    background: var(--color-개인별bg);
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0A1D33 0%, #09192B 58%, #06101C 100%);
+    border-right: 1px solid rgba(47, 91, 132, 0.48);
+    box-shadow: 12px 0 36px rgba(0, 0, 0, 0.16);
+}
+[data-testid="stSidebar"] [data-testid="stImage"] {
+    margin-bottom: -0.5rem;
+}
+.st-key-sidebar-navigation button {
+    justify-content: flex-start;
+    border-radius: 0.55rem;
+    font-weight: 600;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    background: rgba(16, 36, 58, 0.68);
+    border: 1px solid rgba(47, 91, 132, 0.48);
+    border-radius: 0.65rem;
 }
 
-
-#hud-panel {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    width: 320px;
-    background: var(--hud-bg);
-    border: 1px solid var(--hud-border);
-    box-shadow: 0 0 20px var(--hud-glow);
-    border-radius: 6px;
-    padding: 18px;
-    backdrop-filter: blur(10px);
-    opacity: 0;
-    transform: translateX(50px);
-    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-    pointer-events: none;
-    z-index: 100;
+/* ==========================================
+   4. 지표 카드 (metric)
+   ========================================== */
+[data-testid="stMetric"] {
+    background: linear-gradient(145deg, #142F4B 0%, #0D2035 100%);
+    border: 1px solid #285073;
+    border-radius: 0.8rem;
+    box-shadow: inset 0 1px 0 rgba(151, 203, 242, 0.045), 0 8px 22px rgba(0, 0, 0, 0.14);
+    padding: 0.55rem 0.25rem;
+}
+[data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-total) {
+    background: linear-gradient(145deg, rgba(37, 137, 255, 0.25), rgba(13, 32, 53, 0.98));
+    border-color: rgba(67, 141, 255, 0.78);
+    box-shadow: inset 0 3px 0 #438DFF, 0 8px 24px rgba(27, 105, 207, 0.16);
+}
+[data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-normal) {
+    background: linear-gradient(145deg, rgba(22, 199, 154, 0.22), rgba(10, 38, 42, 0.98));
+    border-color: rgba(22, 199, 154, 0.72);
+    box-shadow: inset 0 3px 0 #16C79A, 0 8px 24px rgba(22, 199, 154, 0.12);
+}
+[data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-risk) {
+    background: linear-gradient(145deg, rgba(242, 169, 59, 0.22), rgba(43, 34, 28, 0.98));
+    border-color: rgba(242, 169, 59, 0.76);
+    box-shadow: inset 0 3px 0 #F2A93B, 0 8px 24px rgba(242, 169, 59, 0.12);
+}
+[data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-underweight) {
+    background: linear-gradient(145deg, rgba(241, 91, 112, 0.23), rgba(43, 27, 41, 0.98));
+    border-color: rgba(241, 91, 112, 0.78);
+    box-shadow: inset 0 3px 0 #F15B70, 0 8px 24px rgba(241, 91, 112, 0.12);
+}
+.st-key-summary-card-total [data-testid="stMetricLabel"] p,
+.st-key-summary-card-total [data-testid="stMetricValue"] {
+    color: #A9CFFF;
+}
+.st-key-summary-card-normal [data-testid="stMetricLabel"] p,
+.st-key-summary-card-normal [data-testid="stMetricValue"] {
+    color: #8FE5C9;
+}
+.st-key-summary-card-risk [data-testid="stMetricLabel"] p,
+.st-key-summary-card-risk [data-testid="stMetricValue"] {
+    color: #FFD28B;
+}
+.st-key-summary-card-underweight [data-testid="stMetricLabel"] p,
+.st-key-summary-card-underweight [data-testid="stMetricValue"] {
+    color: #FFADB7;
+}
+[data-testid="stVerticalBlockBorderWrapper"] {
+    background: linear-gradient(150deg, rgba(17, 39, 62, 0.94), rgba(10, 27, 46, 0.98));
+    border-color: rgba(42, 78, 114, 0.92);
+    border-radius: 0.8rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+[data-testid="stMetricValue"] {
+    color: var(--light-text);
+    font-size: clamp(0.95rem, 1.3vw, 1.35rem);
+    overflow-wrap: anywhere;
+}
+[data-testid="stMetricLabel"] p {
+    color: #E0E9F2;
+    font-size: 0.68rem !important;
+    white-space: nowrap;
 }
 
-#hud-panel.active {
+/* ==========================================
+   5. 텍스트·표
+   ========================================== */
+[data-testid="stCaptionContainer"] p {
+    color: var(--muted-text);
+}
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+label,
+h1, h2, h3, h4 {
+    color: var(--light-text);
+}
+h1 {
+    text-shadow: 0 0 26px rgba(33, 183, 213, 0.14);
+}
+[data-testid="stDataFrame"] {
+    border: 1px solid #244666;
+    border-radius: 0.65rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+/* ==========================================
+   6. 입력 위젯
+   ========================================== */
+[data-testid="stTextInputRootElement"] {
+    background: #0D2035 !important;
+    border: 1px solid #2B5278 !important;
+    border-radius: 0.55rem !important;
+}
+[data-testid="stTextInputField"] {
+    background: transparent !important;
+    color: var(--light-text) !important;
+}
+[data-testid="stTextInputField"]::placeholder {
+    color: var(--muted-text) !important;
     opacity: 1;
-    transform: translateX(0);
-    pointer-events: auto;
 }
-
-.hud-header {
-    font-size: 15px;
-    font-weight: bold;
-    color: var(--color-white);
-    border-bottom: 1px solid rgba(0, 243, 255, 0.4);
-    padding-bottom: 6px;
-    margin-bottom: 12px;
-    display: flex;
-    justify-content: space-between;
+[data-testid="stSelectbox"] [role="group"],
+[data-testid="stMultiSelect"] [role="group"],
+[data-testid="stDateInput"] [role="group"] {
+    background: #0D2035 !important;
+    border-color: #2B5278 !important;
+    border-radius: 0.55rem !important;
+    color: var(--light-text) !important;
 }
-
-.hud-desc {
-    font-size: 12px;
-    color: var(--hud-text-sub);
-    line-height: 1.5;
-    margin-bottom: 12px;
+[data-testid="stSelectbox"] input,
+[data-testid="stMultiSelect"] input,
+[data-testid="stDateInput"] input {
+    color: var(--light-text) !important;
 }
-
-.stat-label {
-    font-size: 11px;
-    color: var(--hud-cyan);
-    margin-bottom: 4px;
-    display: flex;
-    justify-content: space-between;
+[data-testid="stSelectbox"] input::placeholder,
+[data-testid="stMultiSelect"] input::placeholder,
+[data-testid="stDateInput"] input::placeholder {
+    color: var(--muted-text) !important;
+    opacity: 1;
 }
-
-.stat-bar {
-    background: rgba(255, 255, 255, 0.1);
-    height: 6px;
-    border-radius: 3px;
-    overflow: hidden;
-    margin-bottom: 10px;
+[data-testid="stSlider"] input[type="range"] {
+    accent-color: var(--cyan-accent);
 }
-
-.stat-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--hud-cyan), var(--hud-pink));
-    width: 0%;
-    transition: width 1s ease-out;
+[data-testid="stSlider"] [role="slider"] {
+    background: var(--cyan-accent);
+    border-color: var(--cyan-accent);
+    box-shadow: 0 0 12px rgba(32, 200, 163, 0.34);
 }
-
-#reset-btn {
-    width: 100%;
-    background: rgba(0, 243, 255, 0.1);
-    border: 1px solid var(--hud-cyan);
-    color: var(--hud-cyan);
-    padding: 8px;
-    font-family: inherit;
-    font-size: 12px;
-    cursor: pointer;
-    transition: 0.3s;
+[data-testid="stMultiSelectTagsContainer"] span[role="group"] > span:not([role]) {
+    background: #153956 !important;
+    color: #DCEAF6 !important;
+    border: 1px solid #32658D !important;
+    border-radius: 999px;
 }
-
-#reset-btn:hover {
-    background: var(--hud-cyan);
-    color: #000;
-    box-shadow: 0 0 15px var(--hud-cyan);
+[data-testid="stMultiSelectTagsContainer"] span[role="group"] > span:not([role]) button svg {
+    fill: #A8C6D9 !important;
 }
-
 
 /* ==========================================
-   4. 반응형 미디어 쿼리
+   7. 버튼·탭
    ========================================== */
-@media (max-width: 768px) {
-    .status-card__header { font-size: 14px; padding: 8px; }
-    .status-card__body { font-size: 16px; padding: 15px; }
-    .person-info__title { font-size: 20px; }
-    .legend { gap: 15px; }
+button[kind="secondary"] {
+    background: linear-gradient(145deg, #17334F, #10243A);
+    border: 1px solid #2B5278;
+    color: var(--light-text);
+    border-radius: 0.55rem;
+    font-size: 0.8rem;
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
+    white-space: nowrap;
+    transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+button[kind="secondary"]:hover {
+    background: #1B3D5D;
+    border-color: var(--cyan-accent);
+    color: #EFF5FB;
+    transform: translateY(-1px);
+}
+button[kind="primary"] {
+    background: linear-gradient(115deg, #2589FF, #176BD3);
+    border-color: #4199FF;
+    color: #EFF5FB;
+    border-radius: 0.55rem;
+    box-shadow: 0 5px 16px rgba(25, 118, 232, 0.22);
+}
+button[kind="primary"]:hover {
+    background: linear-gradient(115deg, #4098FF, #2581E8);
+    border-color: #70B0FF;
+}
+[data-testid="stTab"][aria-selected="true"] {
+    color: var(--cyan-accent) !important;
+    border-bottom-color: var(--cyan-accent) !important;
+}
+[data-testid="stTab"][aria-selected="true"]::after {
+    background-color: var(--cyan-accent) !important;
+}
+[data-testid="stTab"][role="tab"] {
+    color: #C2D2E2;
+}
+[data-testid="stTab"][role="tab"]:hover {
+    color: #EFF5FB;
+}
+[data-testid="stButtonGroup"] button[role="radio"][aria-checked="true"] {
+    background: rgba(37, 137, 255, 0.16) !important;
+    border-color: var(--cyan-accent) !important;
+    color: #C2E8E2 !important;
+}
 
-    #hud-panel {
-        width: 260px;
-        top: 10px;
-        right: 10px;
-        padding: 12px;
-    }
+/* ==========================================
+   8. 모달·알림·구분선
+   ========================================== */
+[data-testid="stDialog"] {
+    background: #0A1929;
+    border: 1px solid #2B5278;
+    box-shadow: 0 18px 70px rgba(0, 0, 0, 0.52);
+}
+[data-testid="stAlert"] {
+    background: linear-gradient(135deg, #142F4B, #0D2035);
+    border-color: #2B5278;
+}
+hr {
+    border-color: rgba(47, 86, 122, 0.5);
 }

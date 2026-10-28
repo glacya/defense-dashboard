@@ -17,6 +17,7 @@
 | `synthesis/` | 가상 장병 명단 생성, 최근 측정 연계·기대 부상 건수 계산, 부상 기록 생성. 실행 순서는 `synthesis/pipeline.py` |
 | `logs/` | 실행 로그 (`*.log`는 Git 제외) |
 | `create_samples.py` | 최종 데이터에서 독자 참고용 샘플(`data/samples/`)을 만듭니다. 파이프라인과 따로 직접 실행합니다. |
+| `setup_database.py` | 컬럼 정의서로 PostgreSQL 테이블을 만듭니다. 올릴 데이터는 `paths.DB_SOURCES`, CSV 파일 이름과 테이블 이름의 짝은 `setup_database.py`의 `DB_TABLE_NAMES`. 접속 정보는 `data/.env`(형식은 `data/.env.example`). `--dry-run`은 접속하지 않고 SQL만 출력, `--reset`은 테이블을 지우고 다시 만듭니다. 직접 실행합니다. |
 | `운동기록-이상치-제거.md` | 운동기록 이상치 처리와 셔틀런 잠재능력 지표에 대한 검토 메모 |
 
 ## 실행

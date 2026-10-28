@@ -43,3 +43,27 @@ def load_multiple_fail_counts() -> pd.Series:
     """분석 판정 CSV에서 회차별 2개 이상 종목 미달 인원을 읽습니다."""
     path = PROCESSED_FITNESS_OVERVIEW_DIR / 'measurement_judgments.csv'
     return _read_multiple_fail_counts(str(path), path.stat().st_mtime_ns)
+
+
+@st.cache_data(show_spinner=False)
+def _read_overview_target_counts(path: str, version: int) -> pd.DataFrame:
+    """개인 판정에서 회차별 복수 미달·복수 관리 조건 인원을 집계합니다."""
+    data = pd.read_csv(path, dtype={'SOLDIER_ID':'string'})
+    flags = ['HIGH_BMI_FAIL','MULTIPLE_FAIL','WORSENED','PERSISTENT_FAIL']
+    require_columns(data, ['SOLDIER_ID','ROUND','FAIL_COUNT',*flags])
+    if data.duplicated(['SOLDIER_ID','ROUND']).any():
+        raise ValueError('장병·회차 판정이 중복되었습니다.')
+    for flag in flags:
+        mapped = data[flag].astype('string').str.lower().map({'true':True,'false':False})
+        if mapped.isna().any():
+            raise ValueError(f'{flag}: 잘못된 관리 판정값')
+        data[flag] = mapped.astype(bool)
+    data['미달인원'] = data.FAIL_COUNT.ge(2)
+    data['관리대상인원'] = data[flags].sum(axis=1).ge(2)
+    return data.groupby('ROUND')[['미달인원','관리대상인원']].sum()
+
+
+def load_overview_target_counts() -> pd.DataFrame:
+    """파일 갱신을 감지해 전체현황의 새 인원 기준을 집계합니다."""
+    path = PROCESSED_FITNESS_OVERVIEW_DIR / 'measurement_judgments.csv'
+    return _read_overview_target_counts(str(path), path.stat().st_mtime_ns)

@@ -1,5 +1,6 @@
 """DB 테이블 세팅 스크립트(data/scripts/setup_database.py)를 테스트합니다. 실제 DB에는 접속하지 않습니다."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -8,8 +9,11 @@ from data.scripts import setup_database
 from data.scripts.paths import (
     DB_SOURCES,
     PROCESSED_FITNESS_PATH,
+    PROCESSED_FITNESS_TYPE_PATH,
+    PROCESSED_MEASUREMENT_CLASSIFICATION_PATH,
     PROCESSED_PRESCRIPTION_DETAIL_PATH,
     PROCESSED_PRESCRIPTION_PATH,
+    PROCESSED_SOLDIER_FAILURE_PROBABILITY_PATH,
     SYNTHETIC_INJURY_PATH,
     SYNTHETIC_PERSONNEL_PATH,
 )
@@ -29,12 +33,57 @@ DB_SSLMODE=require
 DEFINITION_HEADER = "순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,FK참조,NOT NULL여부,데이터 상품명\n"
 
 
+class FakeCopy:
+    """COPY로 보낸 글자를 모으는 가짜 객체."""
+
+    def __init__(self, sink: list[str]):
+        self.sink = sink
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def write(self, data):
+        self.sink.append(data)
+
+
+class FakeCursor:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def copy(self, sql):
+        table = sql.split()[1]
+        self.connection.executed.append(sql)
+        return FakeCopy(self.connection.copied.setdefault(table, []))
+
+
+class FakeResult:
+    def __init__(self, value):
+        self.value = value
+
+    def fetchone(self):
+        return (self.value,)
+
+
 class FakeConnection:
-    """실행한 SQL만 기록하는 가짜 연결. with 블록 종료 시 커밋 여부도 기록합니다."""
+    """실행한 SQL과 COPY로 보낸 내용을 기록하는 가짜 연결. with 블록 종료 시 커밋 여부도 기록합니다.
+
+    `SELECT count(*) FROM 테이블`에는 COPY로 받은 데이터 줄 수(헤더 제외)를 돌려줍니다.
+    """
 
     def __init__(self):
         self.executed = []
+        self.copied: dict[str, list[str]] = {}
         self.committed = False
+        self.extra_rows = 0  # 행 수 불일치를 흉내 낼 때 쓴다
 
     def __enter__(self):
         return self
@@ -42,8 +91,15 @@ class FakeConnection:
     def __exit__(self, exc_type, exc, traceback):
         self.committed = exc_type is None
 
+    def cursor(self):
+        return FakeCursor(self)
+
     def execute(self, sql, params=None):
         self.executed.append(sql)
+        if match := re.fullmatch(r"SELECT count\(\*\) FROM (\w+)", sql):
+            lines = "".join(self.copied.get(match[1], [])).splitlines()
+            return FakeResult(max(len(lines) - 1, 0) + self.extra_rows)
+        return FakeResult(None)
 
 
 @pytest.fixture
@@ -85,6 +141,9 @@ def small_sources(tmp_path) -> tuple:
         "1,CHILD_ID,자식번호,INT,,Y,,Y,",
         "2,PARENT_ID,부모번호,VARCHAR,20,N,PARENT_DATA.PARENT_ID,Y,",
     ])
+    # 실제 저장 파일처럼 BOM이 붙은 utf-8-sig로 쓴다.
+    (tmp_path / "PARENT_DATA.csv").write_text("PARENT_ID,SCORE\np1,1.5\np2,\n", encoding="utf-8-sig")
+    (tmp_path / "CHILD_DATA.csv").write_text("CHILD_ID,PARENT_ID\n1,p1\n2,p1\n3,p2\n", encoding="utf-8-sig")
     return (
         (tmp_path / "CHILD_DATA.csv", child),
         (tmp_path / "PARENT_DATA.csv", parent),
@@ -202,12 +261,70 @@ def test_schema_rejects_cyclic_references(tmp_path):
         build_schema(sources, {"A_DATA": "a", "B_DATA": "b"})
 
 
+@pytest.fixture
+def composite_sources(tmp_path) -> tuple:
+    """두 컬럼 PK를 가진 유형 표(TYPE_DATA)와, 그것과 측정(MEASURE_DATA)을 함께 가리키는 분류 표(LABEL_DATA)."""
+    measure = write_definition(tmp_path / "MEASURE_DEFINITION.csv", ["1,MEASURE_ID,측정번호,INT,,Y,,Y,"])
+    types = write_definition(tmp_path / "TYPE_DEFINITION.csv", [
+        "1,GRADE,등급,INT,,Y,,Y,",
+        "2,CLUSTER,군집,INT,,Y,,Y,",
+        "3,NAME,이름,VARCHAR,30,N,,Y,",
+    ])
+    # PK와 다른 순서(CLUSTER 먼저)로 적어도 대상 PK 순서로 묶여야 한다.
+    labels = write_definition(tmp_path / "LABEL_DEFINITION.csv", [
+        "1,MEASURE_ID,측정번호,INT,,Y,MEASURE_DATA.MEASURE_ID,Y,",
+        "2,FIRST_MEASURE_ID,첫측정번호,INT,,N,MEASURE_DATA.MEASURE_ID,Y,",
+        "3,CLUSTER,군집,INT,,N,TYPE_DATA.CLUSTER,Y,",
+        "4,GRADE,등급,INT,,N,TYPE_DATA.GRADE,Y,",
+    ])
+    return (
+        (tmp_path / "LABEL_DATA.csv", labels),
+        (tmp_path / "MEASURE_DATA.csv", measure),
+        (tmp_path / "TYPE_DATA.csv", types),
+    )
+
+
+COMPOSITE_TABLE_NAMES = {"LABEL_DATA": "labels", "MEASURE_DATA": "measures", "TYPE_DATA": "types"}
+
+
+def test_composite_primary_key_reference_becomes_one_foreign_key(composite_sources):
+    """여러 컬럼 PK를 가리키는 참조는 대상 PK 순서의 FK 하나로, 한 컬럼 PK 참조는 컬럼마다 FK 하나로 만드는지 확인합니다."""
+    schema = dict(build_schema(composite_sources, COMPOSITE_TABLE_NAMES))
+
+    assert "PRIMARY KEY (grade, cluster)" in schema["types"]
+    label_sql = schema["labels"]
+    assert "FOREIGN KEY (grade, cluster) REFERENCES types (grade, cluster)" in label_sql
+    # 같은 한 컬럼 PK 테이블을 두 컬럼이 따로 가리키면 FK가 둘이다.
+    assert "FOREIGN KEY (measure_id) REFERENCES measures (measure_id)" in label_sql
+    assert "FOREIGN KEY (first_measure_id) REFERENCES measures (measure_id)" in label_sql
+    assert label_sql.count("FOREIGN KEY") == 3
+    assert list(schema).index("labels") == 2
+
+
+def test_composite_reference_must_cover_whole_primary_key(composite_sources, tmp_path):
+    """여러 컬럼 PK 중 일부만 가리키면 빠진 PK 컬럼을 알려 주며 오류를 내는지 확인합니다."""
+    partial = write_definition(tmp_path / "PARTIAL_DEFINITION.csv", ["1,GRADE,등급,INT,,Y,TYPE_DATA.GRADE,Y,"])
+    sources = (*composite_sources[1:], (tmp_path / "PARTIAL_DATA.csv", partial))
+
+    with pytest.raises(ValueError, match="PK 컬럼을 모두"):
+        build_schema(sources, {**COMPOSITE_TABLE_NAMES, "PARTIAL_DATA": "partial"})
+
+
+def test_reference_must_point_to_primary_key_column(composite_sources, tmp_path):
+    """FK참조가 대상 테이블의 PK가 아닌 컬럼을 가리키면 오류를 내는지 확인합니다."""
+    wrong = write_definition(tmp_path / "WRONG_DEFINITION.csv", ["1,NAME,이름,VARCHAR,30,Y,TYPE_DATA.NAME,Y,"])
+    sources = (*composite_sources[1:], (tmp_path / "WRONG_DATA.csv", wrong))
+
+    with pytest.raises(ValueError, match="PK 컬럼을 가리켜야"):
+        build_schema(sources, {**COMPOSITE_TABLE_NAMES, "WRONG_DATA": "wrong"})
+
+
 def test_project_schema_creates_all_tables_with_expected_foreign_keys():
-    """실제 정의서로 5개 테이블을 모두 만들고, 장병 명단·처방 상세가 먼저 오며 FK 4개가 있는지 확인합니다."""
+    """실제 정의서로 테이블을 모두 만들고, FK가 가리키는 테이블이 먼저 오며 FK 7개가 있는지 확인합니다."""
     schema = dict(build_schema())
     order = list(schema)
     # 테이블 이름은 바뀔 수 있으므로 CSV 경로로 찾는다.
-    personnel, fitness, detail, prescription, injury = (
+    personnel, fitness, detail, prescription, injury, classification, fitness_type, failure = (
         DB_TABLE_NAMES[path.stem]
         for path in (
             SYNTHETIC_PERSONNEL_PATH,
@@ -215,6 +332,9 @@ def test_project_schema_creates_all_tables_with_expected_foreign_keys():
             PROCESSED_PRESCRIPTION_DETAIL_PATH,
             PROCESSED_PRESCRIPTION_PATH,
             SYNTHETIC_INJURY_PATH,
+            PROCESSED_MEASUREMENT_CLASSIFICATION_PATH,
+            PROCESSED_FITNESS_TYPE_PATH,
+            PROCESSED_SOLDIER_FAILURE_PROBABILITY_PATH,
         )
     )
 
@@ -222,15 +342,24 @@ def test_project_schema_creates_all_tables_with_expected_foreign_keys():
     assert order.index(personnel) < order.index(fitness) < order.index(prescription)
     assert order.index(detail) < order.index(prescription)
     assert order.index(personnel) < order.index(injury)
+    assert order.index(fitness) < order.index(classification)
+    assert order.index(fitness_type) < order.index(classification)
+    assert order.index(personnel) < order.index(failure)
     expected_foreign_keys = [
         (fitness, f"FOREIGN KEY (soldier_id) REFERENCES {personnel} (soldier_id)"),
         (prescription, f"FOREIGN KEY (mesure_id) REFERENCES {fitness} (mesure_id)"),
         (prescription, f"FOREIGN KEY (prescription_type_id) REFERENCES {detail} (prescription_type_id)"),
         (injury, f"FOREIGN KEY (soldier_id) REFERENCES {personnel} (soldier_id)"),
+        (classification, f"FOREIGN KEY (mesure_id) REFERENCES {fitness} (mesure_id)"),
+        (
+            classification,
+            f"FOREIGN KEY (average_percentile_grade, cluster) REFERENCES {fitness_type} (average_percentile_grade, cluster)",
+        ),
+        (failure, f"FOREIGN KEY (soldier_id) REFERENCES {personnel} (soldier_id)"),
     ]
     for table, foreign_key in expected_foreign_keys:
         assert foreign_key in schema[table]
-    assert sum(sql.count("FOREIGN KEY") for sql in schema.values()) == 4
+    assert sum(sql.count("FOREIGN KEY") for sql in schema.values()) == 7
 
 
 def test_db_sources_have_lowercase_table_names_and_fk_column():
@@ -245,26 +374,64 @@ def test_db_sources_have_lowercase_table_names_and_fk_column():
 # 실행
 
 
-def test_run_executes_schema_in_one_transaction(small_sources, env_path, fake_connection):
-    """생성 문을 FK 순서대로 실행하고, 오류가 없으면 커밋하는지 확인합니다."""
+def test_run_recreates_tables_and_loads_csv_in_one_transaction(small_sources, env_path, fake_connection):
+    """기본 실행은 테이블을 역순으로 지우고 FK 순서로 만든 뒤, 같은 순서로 CSV를 COPY하고 커밋하는지 확인합니다."""
     run(env_path, sources=small_sources, table_names=SMALL_TABLE_NAMES)
 
-    assert [sql.split("(")[0] for sql in fake_connection.executed] == [
-        "CREATE TABLE IF NOT EXISTS parent_table ",
-        "CREATE TABLE IF NOT EXISTS child_table ",
+    kinds = [sql.split("(")[0].strip() for sql in fake_connection.executed]
+    assert kinds == [
+        "DROP TABLE IF EXISTS child_table CASCADE;",
+        "DROP TABLE IF EXISTS parent_table CASCADE;",
+        "CREATE TABLE IF NOT EXISTS parent_table",
+        "CREATE TABLE IF NOT EXISTS child_table",
+        "COPY parent_table",
+        "SELECT count",
+        "COPY child_table",
+        "SELECT count",
     ]
+    assert "COPY child_table (child_id, parent_id) FROM STDIN WITH (FORMAT csv, HEADER true)" in fake_connection.executed
+    # BOM을 떼고 보낸다. 빈 칸은 그대로 보내 COPY가 NULL로 넣는다.
+    # 줄 끝은 저장한 OS를 따른다(Windows는 CRLF). PostgreSQL의 CSV COPY는 둘 다 읽는다.
+    sent = "".join(fake_connection.copied["parent_table"]).replace("\r\n", "\n")
+    assert sent == "PARENT_ID,SCORE\np1,1.5\np2,\n"
     assert fake_connection.committed
 
 
-def test_reset_drops_tables_in_reverse_order_before_creating(small_sources, env_path, fake_connection):
-    """--reset이면 참조하는 테이블부터 지운 뒤 다시 만드는지 확인합니다."""
-    run(env_path, reset=True, sources=small_sources, table_names=SMALL_TABLE_NAMES)
+def test_schema_only_does_not_load_data(small_sources, env_path, fake_connection):
+    """--schema-only면 테이블만 지우고 다시 만들고 COPY는 하지 않는지 확인합니다."""
+    run(env_path, mode=setup_database.MODE_SCHEMA, sources=small_sources, table_names=SMALL_TABLE_NAMES)
 
-    assert fake_connection.executed[:2] == [
-        "DROP TABLE IF EXISTS child_table CASCADE;",
-        "DROP TABLE IF EXISTS parent_table CASCADE;",
-    ]
     assert len(fake_connection.executed) == 4
+    assert not fake_connection.copied
+
+
+def test_load_only_truncates_existing_tables_before_copy(small_sources, env_path, fake_connection):
+    """--load면 테이블을 다시 만들지 않고, 모두 비운 뒤 데이터만 넣는지 확인합니다."""
+    run(env_path, mode=setup_database.MODE_LOAD, sources=small_sources, table_names=SMALL_TABLE_NAMES)
+
+    assert fake_connection.executed[0] == "TRUNCATE parent_table, child_table;"
+    assert not any(sql.startswith(("DROP", "CREATE")) for sql in fake_connection.executed)
+    assert set(fake_connection.copied) == {"parent_table", "child_table"}
+
+
+def test_header_mismatch_stops_before_touching_database(small_sources, env_path, fake_connection):
+    """CSV 헤더가 정의서와 다르면 테이블을 지우기 전에 멈추는지 확인합니다."""
+    small_sources[0][0].write_text("PARENT_ID,CHILD_ID\np1,1\n", encoding="utf-8-sig")
+
+    with pytest.raises(ValueError, match="헤더가 정의서 컬럼과 다릅니다"):
+        run(env_path, sources=small_sources, table_names=SMALL_TABLE_NAMES)
+
+    assert fake_connection.executed == []
+
+
+def test_row_count_mismatch_rolls_back(small_sources, env_path, fake_connection):
+    """넣은 행 수가 CSV와 다르면 오류를 내고 커밋하지 않는지 확인합니다."""
+    fake_connection.extra_rows = 1
+
+    with pytest.raises(ValueError, match="행 수"):
+        run(env_path, sources=small_sources, table_names=SMALL_TABLE_NAMES)
+
+    assert not fake_connection.committed
 
 
 def test_dry_run_does_not_connect(small_sources, tmp_path, monkeypatch):

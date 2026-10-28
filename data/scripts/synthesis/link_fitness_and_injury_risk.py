@@ -1,13 +1,14 @@
 """가상 장병을 회원별 가장 최근 체력 측정과 연결하고 기대 부상 건수(Poisson λ)를 계산합니다.
 
-BMI와 심폐지구력을 각각 백분위 3구간으로 나눈 부상 위험 그룹(3 × 3 = 9개)마다 기대 부상 건수를 정해
-그룹 표(INJURY_RISK_GROUP)로 저장하고, 최종 측정 데이터(FINAL)에는 측정마다 군번과 그룹 번호를 붙입니다.
+원본 연구는 BMI와 심폐지구력을 각각 백분위 3구간(하위 25%·중간 50%·상위 25%)으로 나눈 3 × 3 = 9개 집단의
+부상 위험만 알려 줍니다. 집단 경계에서 값이 갑자기 바뀌지 않도록, 각 집단의 가운데 백분위(12.5·50·87.5)에
+집단 값을 두고 그 사이를 선형 보간해 측정마다 연간 기대 부상 건수를 정합니다.
+최종 측정 데이터(FINAL)에는 측정마다 군번과 이 값을 붙입니다.
 """
 
 import argparse
 import logging
 import math
-from itertools import product
 from pathlib import Path
 
 import numpy as np
@@ -15,12 +16,10 @@ import pandas as pd
 
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import (
-    DEFINITION_INJURY_RISK_GROUP,
     DEFINITION_KS_NFA_FINAL,
     INTERMEDIATE_REFINED,
     LINKED_INJURY_RISK_PATH,
     PROCESSED_FITNESS_PATH,
-    PROCESSED_INJURY_RISK_GROUP_PATH,
     SYNTHETIC_PERSONNEL_PATH,
 )
 from data.scripts.utils import non_negative_float, read_text_csv, write_by_definition, write_csv
@@ -30,22 +29,21 @@ logger = logging.getLogger(__name__)
 # 원본 연구처럼 BMI와 심폐지구력을 모두 백분위로 나눈다: 하위 25%(LOW)·중간 50%(MODERATE)·상위 25%(HIGH).
 LEVELS = ("LOW", "MODERATE", "HIGH")
 LOWER_PERCENTILE, UPPER_PERCENTILE = 0.25, 0.75
+# 보간 격자점: 각 구간의 가운데 백분위(12.5, 50, 87.5). 원본 연구의 집단 값을 이 위치의 값으로 본다.
+GRID_PERCENTILES = (
+    LOWER_PERCENTILE / 2 * 100,
+    (LOWER_PERCENTILE + UPPER_PERCENTILE) / 2 * 100,
+    (UPPER_PERCENTILE + 1) / 2 * 100,
+)
 
 # BMI 구간 × 심폐지구력 구간별 상대 위험도 (원본 연구의 값). INJURY_RISK[BMI 구간][심폐 구간]
 # 값의 절대 크기는 상관없다. 장병 평균이 1이 되도록 나눈 뒤 1인당 부상 건수(0.3)를 곱하므로 비율만 쓰인다.
 # 가중치는 아래 논문의 표 4-6에서 발췌하였다.
-# National Research Council. (2006). Assessing fitness for military enlistment: Physical, medical, and mental health standards. The National Academies Press. https://doi.org/10.17226/11511 
+# National Research Council. (2006). Assessing fitness for military enlistment: Physical, medical, and mental health standards. The National Academies Press. https://doi.org/10.17226/11511
 INJURY_RISK: dict[str, dict[str, float | None]] = {
     "LOW": {"HIGH": 16.5, "MODERATE": 21.4, "LOW": 28.7},
     "MODERATE": {"HIGH": 19.6, "MODERATE": 19.3, "LOW": 25.1},
     "HIGH": {"HIGH": 20.5, "MODERATE": 19.8, "LOW": 26.5},
-}
-
-# 그룹 번호는 BMI 구간 순서 × 심폐 구간 순서로 고정한다.
-# 1: BMI 하위·심폐 하위, 2: BMI 하위·심폐 중간, ..., 9: BMI 상위·심폐 상위
-RISK_GROUP_IDS = {
-    group: group_id
-    for group_id, group in enumerate(product(LEVELS, LEVELS), start=1)
 }
 
 # 선행 연구의 장병 1명당 연간 부상 건수. 모든 측정이 같은 해에 이루어졌다고 가정하므로
@@ -58,8 +56,8 @@ SOLDIER_ID_COLUMN = "SOLDIER_ID"
 FITNESS_ID_COLUMN = "MESURE_ID"
 MEMBER_ID_COLUMN = "M_CODE"
 MEASURE_DATE_COLUMN = "MESURE_DE"
-RISK_GROUP_ID_COLUMN = "INJURY_RISK_GROUP_ID"
-EXPECTED_COUNT_COLUMN = "EXPECTED_INJURY_COUNT"
+RELATIVE_RISK_COLUMN = "RELATIVE_INJURY_RISK"
+EXPECTED_COUNT_COLUMN = "EXPECTED_INJURY_COUNT_PER_YEAR"
 IDENTITY_COLUMNS = (FITNESS_ID_COLUMN, MEMBER_ID_COLUMN, MEASURE_DATE_COLUMN)
 FITNESS_COLUMNS = (
     "STRENGTH",
@@ -93,72 +91,51 @@ def classify_level(values: pd.Series, cuts: Cuts) -> pd.Series:
     )
 
 
-def assign_risk_group_ids(bmi: pd.Series, cardio: pd.Series, bmi_cuts: Cuts, cardio_cuts: Cuts) -> pd.Series:
-    """BMI 구간과 심폐 구간으로 부상 위험 그룹 번호(1~9)를 반환합니다."""
-    groups = zip(classify_level(bmi, bmi_cuts), classify_level(cardio, cardio_cuts))
-    return pd.Series([RISK_GROUP_IDS[group] for group in groups], index=bmi.index, dtype="int64")
+def percentile_ranks(values: pd.Series, reference: pd.Series) -> pd.Series:
+    """reference 분포 안에서 각 값의 백분위(0~100)를 반환합니다.
+
+    같은 값이 여러 개면 그 값들이 차지하는 순위의 가운데를 씁니다.
+    """
+    ordered = np.sort(reference.to_numpy(dtype=float))
+    below = np.searchsorted(ordered, values.to_numpy(dtype=float), side="left")
+    at_or_below = np.searchsorted(ordered, values.to_numpy(dtype=float), side="right")
+    return pd.Series((below + at_or_below) / 2 / len(ordered) * 100, index=values.index)
 
 
-def measurement_cuts(df_fitness: pd.DataFrame) -> tuple[Cuts, Cuts]:
-    """전체 측정으로 BMI와 심폐지구력의 백분위 경계를 정합니다."""
-    return (
-        percentile_cuts(pd.to_numeric(df_fitness["BMI"])),
-        percentile_cuts(pd.to_numeric(df_fitness["CARDIO"])),
-    )
-
-
-def assign_measurement_risk_groups(df_fitness: pd.DataFrame) -> pd.Series:
-    """모든 측정에 부상 위험 그룹 번호를 붙입니다. 백분위 경계는 전체 측정으로 정합니다."""
-    bmi_cuts, cardio_cuts = measurement_cuts(df_fitness)
-    return assign_risk_group_ids(
-        pd.to_numeric(df_fitness["BMI"]), pd.to_numeric(df_fitness["CARDIO"]), bmi_cuts, cardio_cuts
-    )
-
-
-def group_risks() -> dict[int, float]:
-    """그룹 번호별 상대 위험도를 INJURY_RISK에서 읽습니다.
+def risk_weight_grid() -> np.ndarray:
+    """INJURY_RISK를 [BMI 구간][심폐 구간] 순서(LOW, MODERATE, HIGH)의 3 × 3 배열로 반환합니다.
 
     Raises:
         ValueError: 비어 있거나(None) 0 이하인 가중치가 있을 때
     """
-    risks = {
-        group_id: INJURY_RISK[bmi_level][cardio_level]
-        for (bmi_level, cardio_level), group_id in RISK_GROUP_IDS.items()
-    }
-    invalid = [group_id for group_id, risk in risks.items() if risk is None or not risk > 0]
+    invalid = [
+        f"{bmi_level}·{cardio_level}"
+        for bmi_level in LEVELS for cardio_level in LEVELS
+        if INJURY_RISK[bmi_level][cardio_level] is None or not INJURY_RISK[bmi_level][cardio_level] > 0
+    ]
     if invalid:
         raise ValueError(
             "INJURY_RISK의 가중치가 비어 있거나 0 이하입니다 "
-            f"(그룹 {', '.join(map(str, invalid))}). link_fitness_and_injury_risk.py의 INJURY_RISK를 채우세요."
+            f"(BMI·심폐 {', '.join(invalid)}). link_fitness_and_injury_risk.py의 INJURY_RISK를 채우세요."
         )
-    return risks
+    return np.array([[INJURY_RISK[bmi_level][cardio_level] for cardio_level in LEVELS] for bmi_level in LEVELS])
 
 
-def build_risk_group_table(
-    soldier_group_ids: pd.Series,
-    injuries_per_person: float = INJURIES_PER_PERSON_YEAR,
-) -> pd.DataFrame:
-    """9개 부상 위험 그룹의 기대 부상 건수 표를 만듭니다.
+def interpolate_risk(bmi_percentiles: pd.Series, cardio_percentiles: pd.Series) -> pd.Series:
+    """BMI·심폐 백분위로 상대 위험도를 쌍선형 보간합니다(정규화 전 값).
 
-    상대 위험도를 장병 평균 위험도로 나눠, 장병 전체의 기대 부상 건수 평균이
-    `injuries_per_person`이 되게 합니다. 장병이 없는 그룹도 표에는 넣습니다.
-
-    Raises:
-        ValueError: 장병이 없거나 INJURY_RISK 가중치가 비어 있을 때
+    격자점(GRID_PERCENTILES)에서는 INJURY_RISK 값과 같고, 격자 바깥은 가장 가까운 끝 값으로 고정합니다.
     """
-    if soldier_group_ids.empty:
-        raise ValueError("부상 위험 그룹을 정할 장병이 없습니다.")
-    risks = group_risks()
-    mean_risk = soldier_group_ids.map(risks).mean()
-    return pd.DataFrame([
-        {
-            RISK_GROUP_ID_COLUMN: group_id,
-            "BMI_LEVEL": bmi_level,
-            "CARDIO_LEVEL": cardio_level,
-            EXPECTED_COUNT_COLUMN: round(injuries_per_person * risks[group_id] / mean_risk, EXPECTED_COUNT_DECIMALS),
-        }
-        for (bmi_level, cardio_level), group_id in RISK_GROUP_IDS.items()
-    ])
+    grid = risk_weight_grid()
+    nodes = np.array(GRID_PERCENTILES)
+    bmi = bmi_percentiles.to_numpy(dtype=float)
+    cardio = cardio_percentiles.to_numpy(dtype=float)
+    # np.interp는 범위 밖을 끝 값으로 고정한다. BMI 방향의 선형 가중치 × 각 BMI 행을 심폐 방향으로 보간한 값.
+    risk = sum(
+        np.interp(bmi, nodes, np.eye(len(LEVELS))[row]) * np.interp(cardio, nodes, grid[row])
+        for row in range(len(LEVELS))
+    )
+    return pd.Series(risk, index=bmi_percentiles.index)
 
 
 def select_latest_measurements(df_fitness: pd.DataFrame) -> pd.DataFrame:
@@ -172,6 +149,28 @@ def select_latest_measurements(df_fitness: pd.DataFrame) -> pd.DataFrame:
     )
     latest = order.groupby(MEMBER_ID_COLUMN, sort=False).tail(1)
     return latest.sort_values("_measure_id", kind="stable").drop(columns="_measure_id")
+
+
+def measurement_injury_risks(
+    df_fitness: pd.DataFrame,
+    injuries_per_person: float = INJURIES_PER_PERSON_YEAR,
+) -> pd.DataFrame:
+    """모든 측정의 BMI·심폐 백분위, 상대 위험도, 연간 기대 부상 건수를 df_fitness와 같은 인덱스로 반환합니다.
+
+    백분위는 전체 측정 안에서 구합니다. 상대 위험도는 회원별 최근 측정(장병) 평균이 1이 되도록 나누고,
+    같은 배율을 최근이 아닌 측정에도 씁니다. 기대 부상 건수는 정의서 자릿수(소수 6자리)로 반올림합니다.
+    """
+    bmi = pd.to_numeric(df_fitness["BMI"])
+    cardio = pd.to_numeric(df_fitness["CARDIO"])
+    risks = pd.DataFrame({
+        "BMI_PERCENTILE": percentile_ranks(bmi, bmi),
+        "CARDIO_PERCENTILE": percentile_ranks(cardio, cardio),
+    })
+    raw_risk = interpolate_risk(risks["BMI_PERCENTILE"], risks["CARDIO_PERCENTILE"])
+    latest_index = select_latest_measurements(df_fitness).index
+    risks[RELATIVE_RISK_COLUMN] = raw_risk / raw_risk.loc[latest_index].mean()
+    risks[EXPECTED_COUNT_COLUMN] = (injuries_per_person * risks[RELATIVE_RISK_COLUMN]).round(EXPECTED_COUNT_DECIMALS)
+    return risks
 
 
 def _validate_inputs(df_personnel: pd.DataFrame, df_fitness: pd.DataFrame) -> None:
@@ -203,11 +202,12 @@ def calculate_injury_risk(
     df_fitness: pd.DataFrame,
     injuries_per_person: float = INJURIES_PER_PERSON_YEAR,
 ) -> pd.DataFrame:
-    """장병을 회원별 가장 최근 측정과 연결하고 부상 위험 그룹과 기대 부상 건수를 붙입니다.
+    """장병을 회원별 가장 최근 측정과 연결하고 그 측정의 연간 기대 부상 건수를 붙입니다.
 
     회원 한 명당 장병 한 명이 있다고 보고, 최근 측정을 MESURE_ID 순서로 장병에게 하나씩 연결합니다.
-    BMI·심폐지구력의 백분위 경계는 전체 측정으로 정하고, 상대 위험도는 장병 평균 1로 맞추므로
-    EXPECTED_INJURY_COUNT의 합은 `injuries_per_person × 장병 수`가 됩니다.
+    장병의 기대 부상 건수는 최종 측정 데이터에 저장되는 그 측정의 값과 같고,
+    합은 `injuries_per_person × 장병 수`가 됩니다(소수 6자리 반올림 차이만 있음).
+    BMI_LEVEL·CARDIO_LEVEL(전체 측정의 25·75 백분위수로 나눈 구간)은 로그 요약에만 씁니다.
 
     Raises:
         ValueError: 입력이 비었거나 필수 컬럼·값이 잘못되었을 때, 장병 수와 회원 수가 다를 때
@@ -216,7 +216,6 @@ def calculate_injury_risk(
         raise ValueError("injuries_per_person은 0 이상의 숫자여야 합니다.")
     _validate_inputs(df_personnel, df_fitness)
 
-    bmi_cuts, cardio_cuts = measurement_cuts(df_fitness)
     latest = select_latest_measurements(df_fitness)
     if len(df_personnel) != len(latest):
         raise ValueError(
@@ -229,27 +228,23 @@ def calculate_injury_risk(
         measurements.insert(len(measurements.columns), column, latest[column].to_numpy())
     linked = pd.concat([df_personnel.reset_index(drop=True), measurements], axis=1)
 
-    linked["BMI_LEVEL"] = classify_level(linked["BMI"], bmi_cuts)
-    linked["CARDIO_LEVEL"] = classify_level(linked["CARDIO"], cardio_cuts)
-    linked[RISK_GROUP_ID_COLUMN] = assign_risk_group_ids(linked["BMI"], linked["CARDIO"], bmi_cuts, cardio_cuts)
-    # 평균을 1로 맞춰 집단 간 위험도 비율은 유지하고, 전체 평균은 injuries_per_person이 되게 한다.
-    raw_risk = linked[RISK_GROUP_ID_COLUMN].map(group_risks())
-    linked["RELATIVE_INJURY_RISK"] = raw_risk / raw_risk.mean()
-    # 기대 부상 건수는 그룹 표의 값을 그대로 써서 저장되는 그룹 표와 어긋나지 않게 한다.
-    # Poisson 평균은 1을 넘어도 되므로 상한 검사를 하지 않는다.
-    groups = build_risk_group_table(linked[RISK_GROUP_ID_COLUMN], injuries_per_person)
-    linked[EXPECTED_COUNT_COLUMN] = linked[RISK_GROUP_ID_COLUMN].map(
-        groups.set_index(RISK_GROUP_ID_COLUMN)[EXPECTED_COUNT_COLUMN]
-    )
-    return linked
+    fitness = df_fitness.loc[:, ["BMI", "CARDIO"]].apply(pd.to_numeric)
+    linked["BMI_LEVEL"] = classify_level(linked["BMI"], percentile_cuts(fitness["BMI"]))
+    linked["CARDIO_LEVEL"] = classify_level(linked["CARDIO"], percentile_cuts(fitness["CARDIO"]))
+    risks = measurement_injury_risks(df_fitness, injuries_per_person).loc[latest.index].reset_index(drop=True)
+    return pd.concat([linked, risks], axis=1)
 
 
-def build_final_measurements(df_fitness: pd.DataFrame, linked: pd.DataFrame) -> pd.DataFrame:
-    """모든 측정에 그 회원의 군번(SOLDIER_ID)과 부상 위험 그룹 번호를 붙입니다."""
+def build_final_measurements(
+    df_fitness: pd.DataFrame,
+    linked: pd.DataFrame,
+    injuries_per_person: float = INJURIES_PER_PERSON_YEAR,
+) -> pd.DataFrame:
+    """모든 측정에 그 회원의 군번(SOLDIER_ID)과 연간 기대 부상 건수를 붙입니다."""
     soldier_by_member = linked.set_index(MEMBER_ID_COLUMN)[SOLDIER_ID_COLUMN]
     return df_fitness.assign(**{
         SOLDIER_ID_COLUMN: df_fitness[MEMBER_ID_COLUMN].map(soldier_by_member),
-        RISK_GROUP_ID_COLUMN: assign_measurement_risk_groups(df_fitness),
+        EXPECTED_COUNT_COLUMN: measurement_injury_risks(df_fitness, injuries_per_person)[EXPECTED_COUNT_COLUMN],
     })
 
 
@@ -278,32 +273,26 @@ def run(
     personnel_path: Path,
     fitness_path: Path,
     fitness_definition_path: Path,
-    risk_group_definition_path: Path,
     output_path: Path,
-    risk_group_output_path: Path,
     fitness_output_path: Path,
     injuries_per_person: float = INJURIES_PER_PERSON_YEAR,
 ) -> None:
-    """최근 측정을 연계하고 부상 위험 그룹·기대 부상 건수를 계산해 저장합니다.
+    """최근 측정을 연계하고 측정별 연간 기대 부상 건수를 계산해 저장합니다.
 
     Args:
         personnel_path: 가상 장병 명단 (SOLDIER_PERSONNEL)
         fitness_path: 전처리된 측정 데이터 (REFINED)
         fitness_definition_path: 최종 측정 데이터 정의서 (KS_NFA_FINAL_DEFINITION.csv)
-        risk_group_definition_path: 부상 위험 그룹 정의서 (INJURY_RISK_GROUP_DEFINITION.csv)
         output_path: 장병 연계 결과 저장 경로 (부상 생성 단계의 입력)
-        risk_group_output_path: 부상 위험 그룹 표 저장 경로
-        fitness_output_path: 군번·그룹 번호를 붙인 최종 측정 데이터 저장 경로
+        fitness_output_path: 군번·기대 부상 건수를 붙인 최종 측정 데이터 저장 경로
         injuries_per_person: 장병 1명당 연간 평균 부상 건수
     """
     df_personnel = read_text_csv(personnel_path)
     df_fitness = read_text_csv(fitness_path)
     linked = calculate_injury_risk(df_personnel, df_fitness, injuries_per_person)
-    groups = build_risk_group_table(linked[RISK_GROUP_ID_COLUMN], injuries_per_person)
-    measurements = build_final_measurements(df_fitness, linked)
+    measurements = build_final_measurements(df_fitness, linked, injuries_per_person)
 
     write_csv(linked, output_path)
-    write_by_definition(groups, risk_group_definition_path, risk_group_output_path)
     write_by_definition(measurements, fitness_definition_path, fitness_output_path)
 
     logger.info("입력 %s: 장병 %s명", display_path(personnel_path), f"{len(df_personnel):,}")
@@ -311,13 +300,13 @@ def run(
         "입력 %s: 측정 %s건, 회원 %s명",
         display_path(fitness_path), f"{len(df_fitness):,}", f"{df_fitness[MEMBER_ID_COLUMN].nunique():,}",
     )
+    expected = linked[EXPECTED_COUNT_COLUMN]
     logger.info(
-        "기대 부상 건수 합 %s건 (1인당 %s건)",
-        f"{linked[EXPECTED_COUNT_COLUMN].sum():,.1f}", injuries_per_person,
+        "장병 기대 부상 건수 합 %s건 (1인당 %s건, 장병별 %.6f~%.6f)",
+        f"{expected.sum():,.1f}", injuries_per_person, expected.min(), expected.max(),
     )
     logger.info("장병 BMI·CARDIO 구간별 인원수 및 비율\n%s", summarize_linked_categories(linked).to_string(index=False))
     logger.info("저장(장병 연계): %s", display_path(output_path))
-    logger.info("저장(부상 위험 그룹): %s", display_path(risk_group_output_path))
     logger.info("저장(최종 측정): %s", display_path(fitness_output_path))
 
 
@@ -337,9 +326,7 @@ def main() -> None:
         SYNTHETIC_PERSONNEL_PATH,
         INTERMEDIATE_REFINED,
         DEFINITION_KS_NFA_FINAL,
-        DEFINITION_INJURY_RISK_GROUP,
         LINKED_INJURY_RISK_PATH,
-        PROCESSED_INJURY_RISK_GROUP_PATH,
         PROCESSED_FITNESS_PATH,
         args.injuries_per_person,
     )

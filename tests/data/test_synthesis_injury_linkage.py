@@ -1,11 +1,10 @@
-"""가상 장병 생성, 최근 측정 연계·부상 위험 그룹 계산, Poisson 부상 생성을 테스트합니다."""
+"""가상 장병 생성, 최근 측정 연계·기대 부상 건수 보간, Poisson 부상 생성을 테스트합니다."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from data.scripts.paths import (
-    DEFINITION_INJURY_RISK_GROUP,
     DEFINITION_KS_NFA_FINAL,
     DEFINITION_SOLDIER_INJURY,
     DEFINITION_SOLDIER_PERSONNEL,
@@ -25,11 +24,13 @@ from data.scripts.synthesis.generate_synthetic_personnel import (
 from data.scripts.synthesis.generate_synthetic_personnel import run as personnel_run
 from data.scripts.synthesis.link_fitness_and_injury_risk import (
     FITNESS_COLUMNS,
+    GRID_PERCENTILES,
     INJURIES_PER_PERSON_YEAR,
-    assign_measurement_risk_groups,
-    build_risk_group_table,
     calculate_injury_risk,
+    interpolate_risk,
+    measurement_injury_risks,
     percentile_cuts,
+    percentile_ranks,
     select_latest_measurements,
     summarize_linked_categories,
 )
@@ -37,7 +38,7 @@ from data.scripts.synthesis import link_fitness_and_injury_risk
 from data.scripts.synthesis.link_fitness_and_injury_risk import run as link_run
 from data.scripts.utils import load_definition_columns
 
-# 원본 연구의 가중치(INJURY_RISK)는 사용자가 채울 예정이므로, 테스트는 그룹마다 다른 값을 따로 넣어 쓴다.
+# 원본 연구의 가중치(INJURY_RISK)와 독립적으로 확인하도록, 테스트는 칸마다 다른 값을 따로 넣어 쓴다.
 TEST_INJURY_RISK = {
     "LOW": {"LOW": 3.0, "MODERATE": 2.0, "HIGH": 1.5},
     "MODERATE": {"LOW": 2.0, "MODERATE": 1.0, "HIGH": 0.8},
@@ -84,7 +85,7 @@ def make_personnel(count: int) -> pd.DataFrame:
 def make_injury_soldiers(lambdas: list[float]) -> pd.DataFrame:
     """부상 생성 입력(장병 속성과 기대 부상 건수)을 만듭니다."""
     soldiers = make_personnel(len(lambdas))
-    soldiers["EXPECTED_INJURY_COUNT"] = lambdas
+    soldiers["EXPECTED_INJURY_COUNT_PER_YEAR"] = lambdas
     return soldiers
 
 
@@ -121,7 +122,7 @@ def test_last_names_have_no_duplicates():
     assert len(LAST_NAMES) == len(set(LAST_NAMES))
 
 
-# 최근 측정 연계·부상 위험 그룹
+# 최근 측정 연계·기대 부상 건수
 
 
 def test_latest_measurement_is_chosen_per_member():
@@ -173,51 +174,87 @@ def test_linkage_normalizes_risk_and_calculates_expected_count():
     assert linked["RELATIVE_INJURY_RISK"].mean() == pytest.approx(1.0)
     # 선행 연구: 장병 1명당 연간 0.3건
     assert INJURIES_PER_PERSON_YEAR == 0.3
-    # 그룹 표의 값은 정의서의 DECIMAL(7,6)에 맞춰 소수 6자리로 반올림된다.
+    # 기대 부상 건수는 정의서의 DECIMAL(7,6)에 맞춰 소수 6자리로 반올림된다.
     np.testing.assert_allclose(
-        linked["EXPECTED_INJURY_COUNT"], linked["RELATIVE_INJURY_RISK"] * 0.3, atol=1e-6
+        linked["EXPECTED_INJURY_COUNT_PER_YEAR"], linked["RELATIVE_INJURY_RISK"] * 0.3, atol=1e-6
     )
-    assert linked["EXPECTED_INJURY_COUNT"].sum() == pytest.approx(0.3 * len(linked), abs=1e-5)
+    assert linked["EXPECTED_INJURY_COUNT_PER_YEAR"].sum() == pytest.approx(0.3 * len(linked), abs=1e-5)
 
 
-def test_risk_group_table_covers_nine_groups_with_soldier_mean_baseline():
-    """그룹 표가 9개 그룹을 모두 담고, 장병 평균 기대 부상 건수가 0.3이 되는지 확인합니다."""
-    soldier_group_ids = pd.Series([1, 5, 5, 9])
-
-    groups = build_risk_group_table(soldier_group_ids)
-
-    assert groups["INJURY_RISK_GROUP_ID"].tolist() == list(range(1, 10))
-    soldier_counts = soldier_group_ids.map(groups.set_index("INJURY_RISK_GROUP_ID")["EXPECTED_INJURY_COUNT"])
-    assert soldier_counts.mean() == pytest.approx(0.3, abs=1e-6)
-    # 그룹 1은 BMI 하위·심폐 하위, 그룹 2는 BMI 하위·심폐 중간, 그룹 9는 BMI 상위·심폐 상위다.
-    levels = groups.set_index("INJURY_RISK_GROUP_ID")[["BMI_LEVEL", "CARDIO_LEVEL"]]
-    assert levels.loc[1].tolist() == ["LOW", "LOW"]
-    assert levels.loc[2].tolist() == ["LOW", "MODERATE"]
-    assert levels.loc[9].tolist() == ["HIGH", "HIGH"]
+def test_grid_points_are_centers_of_percentile_levels():
+    """보간 격자점이 하위 25%·중간 50%·상위 25% 구간의 가운데 백분위인지 확인합니다."""
+    assert GRID_PERCENTILES == (12.5, 50.0, 87.5)
 
 
-def test_risk_group_table_rejects_missing_weights(monkeypatch):
-    """INJURY_RISK에 비어 있는 가중치가 있으면 그룹 번호를 알려 주며 오류를 내는지 확인합니다."""
+def test_interpolated_risk_matches_weights_at_grid_points():
+    """격자점에서는 INJURY_RISK[BMI 구간][심폐 구간] 값과 같은지 확인합니다."""
+    levels = dict(zip(("LOW", "MODERATE", "HIGH"), GRID_PERCENTILES))
+    bmi, cardio, expected = zip(*[
+        (levels[bmi_level], levels[cardio_level], weight)
+        for bmi_level, row in TEST_INJURY_RISK.items() for cardio_level, weight in row.items()
+    ])
+
+    risk = interpolate_risk(pd.Series(bmi), pd.Series(cardio))
+
+    np.testing.assert_allclose(risk, expected)
+
+
+def test_interpolated_risk_is_linear_between_and_clamped_outside():
+    """격자점 사이는 선형으로 잇고, 격자 바깥은 끝 값으로 고정하는지 확인합니다."""
+    bmi = pd.Series([12.5, 31.25, 0.0, 100.0, 0.0])
+    cardio = pd.Series([31.25, 31.25, 0.0, 100.0, 50.0])
+
+    risk = interpolate_risk(bmi, cardio)
+
+    # BMI 하위 행에서 심폐 하위(3.0)와 중간(2.0)의 가운데
+    assert risk[0] == pytest.approx(2.5)
+    # 네 격자점(3.0, 2.0, 2.0, 1.0)의 가운데
+    assert risk[1] == pytest.approx(2.0)
+    # 바깥은 가장 가까운 격자점 값: BMI·심폐 하위 3.0, 상위·상위 1.2, BMI 하위·심폐 중간 2.0
+    assert risk[2:].tolist() == pytest.approx([3.0, 1.2, 2.0])
+
+
+def test_interpolated_risk_is_continuous_at_level_boundaries():
+    """옛 구간 경계(25·75 백분위)를 사이에 둔 두 값의 위험도가 거의 같은지 확인합니다."""
+    for boundary in (25.0, 75.0):
+        below = interpolate_risk(pd.Series([boundary - 0.01, 50.0]), pd.Series([50.0, boundary - 0.01]))
+        above = interpolate_risk(pd.Series([boundary + 0.01, 50.0]), pd.Series([50.0, boundary + 0.01]))
+        np.testing.assert_allclose(below, above, atol=1e-3)
+
+
+def test_interpolated_risk_rejects_missing_weights(monkeypatch):
+    """INJURY_RISK에 비어 있는 가중치가 있으면 어느 칸인지 알려 주며 오류를 내는지 확인합니다."""
     weights = {bmi: dict(cardio) for bmi, cardio in TEST_INJURY_RISK.items()}
     weights["HIGH"]["HIGH"] = None
     monkeypatch.setattr(link_fitness_and_injury_risk, "INJURY_RISK", weights)
 
-    with pytest.raises(ValueError, match="그룹 9"):
-        build_risk_group_table(pd.Series([1, 9]))
+    with pytest.raises(ValueError, match="HIGH·HIGH"):
+        interpolate_risk(pd.Series([50.0]), pd.Series([50.0]))
 
 
-def test_measurement_risk_groups_match_linked_soldiers():
-    """모든 측정에 그룹 번호를 붙이고, 장병의 최근 측정은 연계 결과와 같은 그룹이 되는지 확인합니다."""
+def test_percentile_ranks_use_middle_rank_for_ties():
+    """백분위는 기준 분포 안의 순위로 구하고, 같은 값은 순위의 가운데를 쓰는지 확인합니다."""
+    reference = pd.Series([1.0, 2.0, 2.0, 3.0])
+
+    ranks = percentile_ranks(pd.Series([1.0, 2.0, 3.0, 0.0]), reference)
+
+    assert ranks.tolist() == [12.5, 50.0, 87.5, 0.0]
+
+
+def test_measurement_expected_counts_match_linked_soldiers():
+    """모든 측정에 기대 부상 건수를 매기고, 장병의 값은 그 최근 측정의 값과 같은지 확인합니다."""
     fitness = make_fitness_with_repeat()
 
-    measurement_groups = assign_measurement_risk_groups(fitness)
+    risks = measurement_injury_risks(fitness)
     linked = calculate_injury_risk(make_personnel(4), fitness)
 
-    assert len(measurement_groups) == len(fitness)
-    by_measure = dict(zip(fitness["MESURE_ID"], measurement_groups))
+    assert len(risks) == len(fitness)
+    by_measure = dict(zip(fitness["MESURE_ID"], risks["EXPECTED_INJURY_COUNT_PER_YEAR"]))
     assert [by_measure[measure_id] for measure_id in linked["MESURE_ID"]] == (
-        linked["INJURY_RISK_GROUP_ID"].tolist()
+        linked["EXPECTED_INJURY_COUNT_PER_YEAR"].tolist()
     )
+    # 정규화는 장병(최근 측정) 기준이라 최근이 아닌 측정(회원 a의 첫 측정)은 평균 계산에 들어가지 않는다.
+    assert linked["EXPECTED_INJURY_COUNT_PER_YEAR"].mean() == pytest.approx(0.3, abs=1e-6)
 
 
 def test_linked_category_summary_reports_counts_and_percentages():
@@ -249,11 +286,11 @@ def test_linkage_rejects_negative_baseline():
         calculate_injury_risk(make_personnel(4), make_fitness_data(), injuries_per_person=-0.1)
 
 
-def test_link_run_writes_final_measurements_and_risk_group_table(tmp_path):
-    """연계 단계가 군번·그룹 번호를 붙인 FINAL 측정 데이터와 그룹 표를 정의서 컬럼대로 저장하는지 확인합니다."""
+def test_link_run_writes_final_measurements(tmp_path):
+    """연계 단계가 군번·기대 부상 건수를 붙인 FINAL 측정 데이터를 정의서 컬럼대로 저장하는지 확인합니다."""
     fitness = make_fitness_with_repeat().assign(M_SEQ_NO="1", AGE="20")
     personnel = make_personnel(4)
-    paths = {name: tmp_path / f"{name}.csv" for name in ("personnel", "fitness", "linked", "groups", "final")}
+    paths = {name: tmp_path / f"{name}.csv" for name in ("personnel", "fitness", "linked", "final")}
     personnel.to_csv(paths["personnel"], index=False, encoding="utf-8-sig")
     fitness.to_csv(paths["fitness"], index=False, encoding="utf-8-sig")
 
@@ -261,14 +298,12 @@ def test_link_run_writes_final_measurements_and_risk_group_table(tmp_path):
         paths["personnel"],
         paths["fitness"],
         DEFINITION_KS_NFA_FINAL,
-        DEFINITION_INJURY_RISK_GROUP,
         paths["linked"],
-        paths["groups"],
         paths["final"],
     )
 
     final = pd.read_csv(paths["final"], dtype=str, encoding="utf-8-sig")
-    groups = pd.read_csv(paths["groups"], encoding="utf-8-sig")
+    linked = pd.read_csv(paths["linked"], dtype=str, encoding="utf-8-sig")
     assert final.columns.tolist() == load_definition_columns(DEFINITION_KS_NFA_FINAL)
     # 최종 측정 데이터에는 국민체력100 식별자(회원식별번호·측정일련번호)를 남기지 않는다.
     assert not {"M_CODE", "M_SEQ_NO"} & set(final.columns)
@@ -278,8 +313,11 @@ def test_link_run_writes_final_measurements_and_risk_group_table(tmp_path):
     soldiers_per_member = final.groupby(final["MESURE_ID"].map(member_by_measure))["SOLDIER_ID"].nunique()
     assert soldiers_per_member.eq(1).all()
     assert set(final["SOLDIER_ID"]) == set(personnel["SOLDIER_ID"])
-    assert groups.columns.tolist() == load_definition_columns(DEFINITION_INJURY_RISK_GROUP)
-    assert len(groups) == 9
+    # 장병의 기대 부상 건수는 FINAL에 저장된 그 측정의 값과 같다(부상 생성이 쓰는 값).
+    final_counts = final.set_index("MESURE_ID")["EXPECTED_INJURY_COUNT_PER_YEAR"].astype(float)
+    np.testing.assert_allclose(
+        final_counts.loc[linked["MESURE_ID"]].to_numpy(), linked["EXPECTED_INJURY_COUNT_PER_YEAR"].astype(float)
+    )
 
 
 # 부상 기록
@@ -340,7 +378,7 @@ def test_total_injury_count_follows_poisson_of_point_three_n():
     """연계부터 부상 생성까지 거친 총 부상 건수가 평균·분산 모두 0.3N인 Poisson을 따르는지 확인합니다."""
     rng = np.random.default_rng(0)
     member_count = 1000
-    # BMI·CARDIO를 넓게 퍼뜨려 12개 위험 집단이 섞이게 한다(λ가 장병마다 다름).
+    # BMI·CARDIO를 넓게 퍼뜨려 λ가 장병마다 다르게 한다.
     fitness = pd.DataFrame({
         "MESURE_ID": np.arange(1, member_count + 1),
         "M_CODE": [f"m{index}" for index in range(member_count)],
@@ -355,7 +393,7 @@ def test_total_injury_count_follows_poisson_of_point_three_n():
         "BODY_FAT_PERCENTAGE": rng.normal(20, 5, member_count),
     })
     linked = calculate_injury_risk(make_personnel(member_count), fitness)
-    assert linked["EXPECTED_INJURY_COUNT"].nunique() > 1
+    assert linked["EXPECTED_INJURY_COUNT_PER_YEAR"].nunique() > 1
 
     totals = np.array([len(generate_injury_data(linked, seed=seed)) for seed in range(300)])
 

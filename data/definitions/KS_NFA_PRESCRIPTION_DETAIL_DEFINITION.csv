@@ -1,3 +1,3 @@
-순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,NOT NULL여부,데이터 상품명
-1,PRESCRIPTION_TYPE_ID,처방유형번호,INT,,Y,Y,자동 부여
-2,PRESCRIPTION,운동처방,VARCHAR,100,N,Y,국민체력100 19~24세 남성 측정 데이터
+순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,FK참조,NOT NULL여부,데이터 상품명
+1,PRESCRIPTION_TYPE_ID,처방유형번호,INT,,Y,,Y,자동 부여
+2,PRESCRIPTION,운동처방,VARCHAR,100,N,,Y,국민체력100 19~24세 남성 측정 데이터

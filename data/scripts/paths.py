@@ -4,7 +4,7 @@ main.py가 단계를 연결할 때와 각 단계 모듈을 단독으로 실행�
 결과 파일이 여러 개인 단계는 폴더 경로이며, 폴더 안의 파일 이름은 각 단계 모듈이 정합니다.
 """
 
-from config import DEFINITION_DIR, INTERMEDIATE_DIR, PROCESSED_DIR, RAW_DATA_DIR, SYNTHETIC_DIR
+from config import DATA_DIR, DEFINITION_DIR, INTERMEDIATE_DIR, PROCESSED_DIR, RAW_DATA_DIR, SYNTHETIC_DIR
 
 # 결과 파일이 여러 개인 단계에서 통과한 행을 저장하는 파일 이름. 다음 단계는 이 파일을 입력으로 쓴다.
 PASSED_FILENAME = "passed.csv"
@@ -64,3 +64,15 @@ SYNTHETIC_INJURY_PATH = SYNTHETIC_DIR / "SOLDIER_INJURY.csv"
 INTERMEDIATE_3SIGMA = INTERMEDIATE_DIR / "3sigma_outliers"
 INTERMEDIATE_FITNESS_PROFILE = INTERMEDIATE_DIR / "fitness_profile"
 INTERMEDIATE_OFFICIAL_CUT_RATIOS = INTERMEDIATE_DIR / "official_cut_ratios"
+
+# DB 접속 정보(Git 제외, 형식은 data/.env.example). setup_database.py가 쓴다.
+DB_ENV_PATH = DATA_DIR / ".env"
+
+# DB에 올릴 데이터: (저장 CSV, 정의서). setup_database.py가 정의서로 테이블을 만든다.
+DB_SOURCES = (
+    (SYNTHETIC_PERSONNEL_PATH, DEFINITION_SOLDIER_PERSONNEL),
+    (PROCESSED_FITNESS_PATH, DEFINITION_KS_NFA_FINAL),
+    (PROCESSED_PRESCRIPTION_DETAIL_PATH, DEFINITION_KS_NFA_PRESCRIPTION_DETAIL),
+    (PROCESSED_PRESCRIPTION_PATH, DEFINITION_KS_NFA_PRESCRIPTION),
+    (SYNTHETIC_INJURY_PATH, DEFINITION_SOLDIER_INJURY),
+)

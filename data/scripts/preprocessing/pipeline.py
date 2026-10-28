@@ -38,15 +38,15 @@ def build_steps() -> list[Step]:
     """실행 순서대로 전처리 단계 목록을 만듭니다. 앞 단계의 출력 경로를 다음 단계의 입력으로 연결합니다."""
     return [
         Step(
-            "원본 측정 데이터 통합",
-            merge_raw_measurements.run,
-            inputs={
-                "raw_dir": RAW_DIR,
-                "source_definition_path": DEFINITION_KS_NFA_RAW,
-                "output_definition_path": DEFINITION_KS_NFA_MERGED,
-            },
-            outputs={"output_path": INTERMEDIATE_MERGED, "multi_cardio_path": INTERMEDIATE_MULTI_CARDIO},
-        ),
+                    "원본 측정 데이터 통합",
+                    merge_raw_measurements.run,
+                    inputs={
+                        "raw_dir": RAW_DIR,
+                        "source_definition_path": DEFINITION_KS_NFA_RAW,
+                        "output_definition_path": DEFINITION_KS_NFA_MERGED,
+                    },
+                    outputs={"output_path": INTERMEDIATE_MERGED, "multi_cardio_path": INTERMEDIATE_MULTI_CARDIO},
+                ),
         Step(
             "운동 처방 상세 테이블 생성",
             build_prescription_details.run,

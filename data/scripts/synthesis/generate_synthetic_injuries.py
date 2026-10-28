@@ -141,7 +141,7 @@ def generate_injury_data(
     """장병 데이터로 부상 기록(SOLDIER_ID, INJURY_CATEGORY, INJURY_LOCATION, PREVENTABILITY, SEVERITY)을 만듭니다.
 
     - 장병마다 부상 건수를 Poisson(λ)에서 따로 뽑으므로 총 건수는 Poisson(Σλ)를 따릅니다.
-    - λ는 EXPECTED_INJURY_COUNT 컬럼(개인별 기대 부상 건수)이고, 컬럼이 없으면 모든 장병에게
+    - λ는 EXPECTED_INJURY_COUNT_PER_YEAR 컬럼(개인별 연간 기대 부상 건수)이고, 컬럼이 없으면 모든 장병에게
       injuries_per_person(기본 1인당 연간 0.3건)을 씁니다.
     - injury_count를 주면 Poisson 대신 정확히 그 건수를 λ에 비례해 장병에게 나눕니다.
     - 한 장병이 같은 부위를 두 번 다치지 않도록 부위는 장병마다 겹치지 않게 고릅니다.
@@ -282,10 +282,10 @@ def run(
     """장병별 기대 부상 건수로 부상 기록을 만들어 정의서 컬럼 순서대로 저장하고 요약을 로그에 남깁니다.
 
     Args:
-        soldiers_path: 장병 연계 결과 (SOLDIER_ID, 장병 속성, EXPECTED_INJURY_COUNT)
+        soldiers_path: 장병 연계 결과 (SOLDIER_ID, 장병 속성, EXPECTED_INJURY_COUNT_PER_YEAR)
         definition_path: 부상 기록 정의서 (SOLDIER_INJURY_DEFINITION.csv)
         output_path: 부상 기록 저장 경로
-        injuries_per_person: EXPECTED_INJURY_COUNT가 없을 때 쓸 1인당 연간 평균 부상 건수
+        injuries_per_person: EXPECTED_INJURY_COUNT_PER_YEAR가 없을 때 쓸 1인당 연간 평균 부상 건수
         seed: 난수 시드
         injury_count: 지정하면 Poisson 대신 정확히 이 건수를 만든다
     """

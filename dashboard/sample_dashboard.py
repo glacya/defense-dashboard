@@ -348,17 +348,43 @@ def render_soldier_details(
     fitness_columns[2].metric("BMI 구간", str(soldier["BMI구간"]))
 
     if history is not None:
-        soldier_history = add_deficiency_flags(
-            history.loc[history["SOLDIER_ID"].eq(soldier["SOLDIER_ID"])].sort_values("MESURE_DE")
+        soldier_history = add_measurement_rounds(
+            add_deficiency_flags(
+                history.loc[history["SOLDIER_ID"].eq(soldier["SOLDIER_ID"])]
+            )
         )
         if not soldier_history.empty:
             st.markdown("#### 회차별 체력 측정 변화")
+            chart_data = soldier_history[["측정회차", "MESURE_DE", *FITNESS_ITEM_LABELS]].melt(
+                id_vars=["측정회차", "MESURE_DE"],
+                var_name="종목",
+                value_name="측정값",
+            )
+            chart_data["종목"] = chart_data["종목"].map(FITNESS_ITEM_LABELS)
+            figure = px.line(
+                chart_data,
+                x="측정회차",
+                y="측정값",
+                color="종목",
+                facet_col="종목",
+                facet_col_wrap=2,
+                markers=True,
+                color_discrete_map=FITNESS_ITEM_COLORS,
+                hover_data={"MESURE_DE": True, "측정값": ":.1f"},
+            )
+            _overview_chart_layout(figure, 500)
+            figure.update_yaxes(matches=None)
+            figure.update_xaxes(title="측정회차", dtick=1)
+            figure.update_layout(showlegend=False, margin=dict(l=8, r=8, t=24, b=8))
+            figure.for_each_annotation(lambda annotation: annotation.update(text=annotation.text.split("=")[-1]))
+            st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
             history_table = soldier_history[[
-                "MESURE_DE", "STRENGTH", "ENDURANCE", "CARDIO", "FLEXIBILITY",
+                "측정회차", "MESURE_DE", "STRENGTH", "ENDURANCE", "CARDIO", "FLEXIBILITY",
                 "등급_STRENGTH", "등급_ENDURANCE", "등급_CARDIO", "등급_FLEXIBILITY",
                 "체력미달",
             ]].rename(columns={
-                "MESURE_DE": "측정일", "STRENGTH": "근력", "ENDURANCE": "근지구력",
+                "측정회차": "회차", "MESURE_DE": "측정일", "STRENGTH": "근력", "ENDURANCE": "근지구력",
                 "CARDIO": "심폐지구력", "FLEXIBILITY": "유연성", "등급_STRENGTH": "근력 등급",
                 "등급_ENDURANCE": "근지구력 등급", "등급_CARDIO": "심폐지구력 등급",
                 "등급_FLEXIBILITY": "유연성 등급", "체력미달": "미달 여부",
@@ -368,6 +394,7 @@ def render_soldier_details(
                 hide_index=True,
                 width="stretch",
                 column_config={
+                    "회차": st.column_config.NumberColumn(format="%d회차"),
                     "측정일": st.column_config.DateColumn(format="YYYY-MM-DD"),
                     "근력": st.column_config.NumberColumn(format="%.1f"),
                     "근지구력": st.column_config.NumberColumn(format="%.1f"),
@@ -774,7 +801,9 @@ def render_empty_menu_layout(view_name: str) -> None:
         st.info("이 화면은 추후 기능이 채워질 예정입니다.")
 
 
-def render_fitness_management(scoped: pd.DataFrame, measurements: pd.DataFrame) -> None:
+def render_fitness_management(
+    scoped: pd.DataFrame, measurements: pd.DataFrame, injuries: pd.DataFrame
+) -> None:
     """최근 3회차 체력 현황과 관리 대상 장병을 표시합니다."""
     scoped_ids = set(scoped["SOLDIER_ID"])
     history = add_measurement_rounds(
@@ -883,12 +912,22 @@ def render_fitness_management(scoped: pd.DataFrame, measurements: pd.DataFrame) 
         "RANK_NAME": "계급", "MESURE_DE": "최근 측정일",
     }
     with management_tab:
-        st.dataframe(
+        target_event = st.dataframe(
             targets[display_columns].rename(columns=display_rename),
             hide_index=True,
             width="stretch",
+            on_select="rerun",
+            selection_mode="single-row",
+            key=f"fitness_management_targets_{filter_signature(tuple(targets['SOLDIER_ID']))}",
             column_config={"최근 측정일": st.column_config.DateColumn(format="YYYY-MM-DD")},
         )
+        selected_rows = target_event.selection.rows
+        if selected_rows and 0 <= selected_rows[0] < len(targets):
+            selected_soldier = targets.iloc[selected_rows[0]]
+            selected_soldier_id = selected_soldier["SOLDIER_ID"]
+            if st.session_state.get("soldier_detail_dismissed_id") != selected_soldier_id:
+                st.session_state["selected_soldier_id"] = selected_soldier_id
+                show_soldier_detail_dialog(selected_soldier, measurements, injuries)
     with personnel_tab:
         st.dataframe(
             latest.assign(**{"미달 종목": latest.apply(
@@ -1315,7 +1354,7 @@ def show_dashboard() -> None:
         )
 
     elif active_view == "체력 관리":
-        render_fitness_management(scoped, measurements)
+        render_fitness_management(scoped, measurements, injuries)
 
     elif active_view == "개인 정보 조회":
         st.subheader("개인 정보 조회")

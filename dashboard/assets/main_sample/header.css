@@ -1,0 +1,5 @@
+.sample-status {display:flex;gap:16px;align-items:center;flex-wrap:wrap;font:13px sans-serif;color:#AFC4D9;}
+.sample-badge {color:#FFD85A;border:1px solid #806239;background:#302A20;border-radius:20px;padding:6px 12px;letter-spacing:2px;}
+button {margin-left:auto;background:#10243A;color:#EFF5FB;border:1px solid #244666;border-radius:8px;padding:7px 12px;cursor:pointer;}
+button:hover {border-color:#25C6D8;}
+#sample-note {font:13px sans-serif;color:#FFD85A;}

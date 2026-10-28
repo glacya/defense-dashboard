@@ -237,3 +237,4 @@ data/synthetic/*
 data/processed/analysis2/management/
 !data/synthetic/.gitkeep
 !data/scripts/logs/.gitkeep
+data/samples/dashboard_demo.sqlite3*

@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from dashboard.py.fitness_overview_data import load_overview
+from dashboard.py.fitness_overview_data import load_overview, load_multiple_fail_counts
 
 EVENT_ORDER = ['근력','근지구력','심폐지구력','유연성']
 
@@ -19,6 +19,7 @@ def main() -> None:
     st.write('부대의 체력 수준과 미달 추이를 확인합니다.')
     try:
         rounds, events, metadata = load_overview()
+        multiple_counts = load_multiple_fail_counts()
     except FileNotFoundError:
         st.warning('전체 현황 분석 결과가 없습니다. 먼저 아래 명령을 실행해 주세요.')
         st.code('python -m data.scripts.analysis.analysis2.fitness_overview', language='powershell')
@@ -30,7 +31,9 @@ def main() -> None:
         st.info('표시할 분석 자료가 없습니다.')
         st.stop()
     st.sidebar.header('조회 범위')
-    scope = rounds
+    scope = rounds.copy()
+    scope['미달인원'] = scope['회차'].map(multiple_counts).fillna(0).astype(int)
+    scope['미달률'] = scope['미달인원'].div(scope['판정가능인원'].replace(0, float('nan'))) * 100
     choices = sorted(scope['회차'].unique())
     number = st.sidebar.selectbox('측정 회차', choices, index=len(choices)-1, format_func=lambda n:f'{n}차')
     st.sidebar.caption('전체 장병 기준으로 조회합니다. 전체 장병 수는 명단 기준이며, 회차별 측정 인원은 달라질 수 있습니다.')
@@ -38,20 +41,25 @@ def main() -> None:
     selected = events.loc[events['회차'].eq(number)]
     st.subheader(f'전체 장병 · {number}차')
     metrics = [('전체 장병 수',f'{int(row["전체장병수"]):,}명'), ('측정 인원',f'{int(row["측정인원"]):,}명'),
-        ('미달 인원',f'{int(row["미달인원"]):,}명'), ('미달 비율',f'{row["미달률"]:.1f}%' if pd.notna(row['미달률']) else '판정 불가'),
+        ('미달 인원 (2종목 이상)',f'{int(row["미달인원"]):,}명'), ('미달 비율 (2종목 이상)',f'{row["미달률"]:.1f}%' if pd.notna(row['미달률']) else '판정 불가'),
         ('집중관리 대상',f'{int(row["관리대상인원"]):,}명')]
     for column,(label,value) in zip(st.columns(5), metrics):
         column.metric(label,value,border=True)
-    st.caption(f'4종목 판정 가능 {int(row["판정가능인원"]):,}명 · 판정 불완전 {int(row["판정불완전인원"]):,}명. 전체 미달률은 4종목 모두 판정 가능한 인원 중 1종목 이상 미달 비율입니다.')
+    st.caption(f'4종목 판정 가능 {int(row["판정가능인원"]):,}명 · 판정 불완전 {int(row["판정불완전인원"]):,}명. 상단 미달 인원과 회차별 미달 인원은 1인당 2종목 이상 미달 기준이며, 비율 분모는 4종목 판정 가능 인원입니다.')
+    st.subheader('종목별 미달 인원')
+    for column,event in zip(st.columns(4),EVENT_ORDER):
+        record = selected.loc[selected['종목'].eq(event)].iloc[0]
+        column.metric(event, f'{int(record["미달인원"]):,}명', border=True)
+    st.caption('각 종목의 3등급 미만 장병 수입니다. 여러 종목에 미달한 장병은 종목별로 각각 집계됩니다.')
     if row['측정인원']==0:
         st.info('선택한 조건에서 측정한 장병이 없습니다.')
     left,right=st.columns(2)
     with left,st.container(border=True):
-        st.subheader('종목별 미달률')
-        chart=px.bar(selected,x='종목',y='미달률',text='미달률',category_orders={'종목':EVENT_ORDER},
-            hover_data=['미달인원','판정가능인원'],color_discrete_sequence=['#d47746'])
-        chart.update_traces(texttemplate='%{text:.1f}%')
-        chart.update_layout(yaxis_title='미달률 (%)',yaxis_range=[0,100],showlegend=False)
+        st.subheader('종목별 미달 인원')
+        chart=px.bar(selected,x='종목',y='미달인원',text='미달인원',category_orders={'종목':EVENT_ORDER},
+            hover_data=['미달률','판정가능인원'],color_discrete_sequence=['#d47746'])
+        chart.update_traces(texttemplate='%{text:,}명')
+        chart.update_layout(yaxis_title='미달 인원 (명)',showlegend=False)
         st.plotly_chart(chart,width='stretch')
     with right,st.container(border=True):
         st.subheader('종목별 등급 분포')

@@ -28,3 +28,18 @@ def load_overview() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     files = ['round_summary.csv','event_summary.csv','metadata.json']
     versions = tuple((PROCESSED_FITNESS_OVERVIEW_DIR / name).stat().st_mtime_ns for name in files)
     return _read_tables(str(PROCESSED_FITNESS_OVERVIEW_DIR), versions)
+
+
+@st.cache_data(show_spinner=False)
+def _read_multiple_fail_counts(path: str, version: int) -> pd.Series:
+    data = pd.read_csv(path, dtype={'SOLDIER_ID':'string'})
+    require_columns(data, ['SOLDIER_ID','ROUND','FAIL_COUNT'])
+    if data.duplicated(['SOLDIER_ID','ROUND']).any():
+        raise ValueError('장병·회차 판정이 중복되었습니다.')
+    return data.loc[data.FAIL_COUNT.ge(2)].groupby('ROUND').SOLDIER_ID.nunique()
+
+
+def load_multiple_fail_counts() -> pd.Series:
+    """분석 판정 CSV에서 회차별 2개 이상 종목 미달 인원을 읽습니다."""
+    path = PROCESSED_FITNESS_OVERVIEW_DIR / 'measurement_judgments.csv'
+    return _read_multiple_fail_counts(str(path), path.stat().st_mtime_ns)

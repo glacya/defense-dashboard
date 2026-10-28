@@ -1,0 +1,147 @@
+"""3번 화면: 개인 장병의 기본·신체·체력 변화 및 부상 이력입니다."""
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+from dashboard.py.personal_detail_data import load_personal
+from data.scripts.analysis.analysis2.fitness_overview import EVENTS
+from data.scripts.fitness_standards import grade_cut
+
+
+def formatted(value, digits=2) -> str:
+    """누락된 숫자는 미측정으로 표시합니다."""
+    number=pd.to_numeric(value,errors='coerce')
+    return '정보 없음' if pd.isna(number) else f'{number:.{digits}f}'
+
+
+def grade_label(value) -> str:
+    """종목 등급 0과 판정 불가를 구분해 표시합니다."""
+    return '판정 불가' if pd.isna(value) else '3등급 미만' if value==0 else f'{int(value)}등급'
+
+
+def main() -> None:
+    """장병 선택 후 측정 시점별 상세와 개인 이력을 표시합니다."""
+    st.set_page_config(page_title='개인 장병 상세',page_icon='🪖',layout='wide')
+    st.caption('장병 체력관리 / 03')
+    st.title('개인 장병 상세')
+    st.write('한 장병의 신체·체력 변화와 부상 기록을 함께 확인합니다.')
+    try:
+        data,injuries,metadata,injury_present=load_personal()
+    except FileNotFoundError:
+        st.warning('개인 상세용 분석 파일 또는 원본이 없습니다. 분석을 먼저 실행하세요.')
+        st.code('python -m data.scripts.main analysis',language='powershell');st.stop()
+    except (ValueError,KeyError,pd.errors.EmptyDataError) as error:
+        st.error(f'자료 확인이 필요합니다: {error}');st.stop()
+    st.sidebar.header('장병 찾기')
+    search=st.sidebar.text_input('이름·장병번호 검색')
+    people=data[['SOLDIER_ID','SOLDIER_NAME','RANK_NAME','UNIT_NAME']].drop_duplicates('SOLDIER_ID').sort_values(['SOLDIER_NAME','SOLDIER_ID'])
+    if search:
+        people=people.loc[people.SOLDIER_NAME.str.contains(search,regex=False)|people.SOLDIER_ID.str.contains(search,regex=False)]
+    if people.empty:
+        st.info('검색 조건에 해당하는 장병이 없습니다.');st.stop()
+    labels=people.set_index('SOLDIER_ID')
+    soldier=st.sidebar.selectbox('장병 선택',people.SOLDIER_ID.tolist(),
+        format_func=lambda value:f'{labels.loc[value,"SOLDIER_NAME"]} · {labels.loc[value,"RANK_NAME"]} · {value}')
+    history=data.loc[data.SOLDIER_ID.eq(soldier)].sort_values('ROUND')
+    rounds=history.ROUND.astype(int).tolist()
+    number=st.radio('상세 측정 회차',rounds,index=len(rounds)-1,horizontal=True,format_func=lambda value:f'{value}차')
+    row=history.loc[history.ROUND.eq(number)].iloc[0]
+    person_injuries=injuries.loc[injuries.SOLDIER_ID.eq(soldier)]
+    date=pd.to_datetime(str(row.MESURE_DE).removesuffix('.0'),format='%Y%m%d',errors='coerce')
+    date_label=date.strftime('%Y-%m-%d') if pd.notna(date) else '날짜 확인 필요'
+    st.subheader(f'{row.SOLDIER_NAME} · {row.RANK_NAME} · {row.UNIT_NAME}')
+    st.caption(f'장병 식별자 {soldier} · 선택 측정일 {date_label} · 측정 당시 나이 {formatted(row.AGE,0)}세 · 신상·부상은 합성 자료')
+    for column,label,value in zip(st.columns(4),['선택 회차','미달 종목 수','집중관리 조건','전체 부상 기록'],
+        [f'{number}차',f'{int(row.FAIL_COUNT)}개' if pd.notna(row.FAIL_COUNT) else '판정 불완전',
+         '해당' if row.MANAGED else '확인된 조건 없음',f'{len(person_injuries)}건' if injury_present else '자료 없음']):
+        column.metric(label,value,border=True)
+    st.caption('부상 기록은 전체 보유 이력입니다. 발생일이 없어 선택 측정 회차의 부상으로 해석하지 않습니다.')
+    body,fitness,changes,injury=st.tabs(['기본·신체 정보','체력측정·등급','회차별 변화','부상 이력'])
+    with body:
+        st.subheader(f'{number}차 신체 정보')
+        entries=[('키','HEIGHT','cm'),('체중','WEIGHT','kg'),('BMI','BMI','kg/m²'),('체지방률','BODY_FAT_PERCENTAGE','%')]
+        for col,(label,key,unit) in zip(st.columns(4),entries):
+            col.metric(label,f'{formatted(row.get(key))} {unit}',border=True)
+        st.write('BMI 구간: **'+row.BMI_GROUP+'**')
+        st.caption('낮음 <18.5 · 보통 18.5 이상 25 미만 · 높음 25 이상. 보통에는 정상·비만전단계가 포함됩니다.')
+        cols=['ROUND','MESURE_DE','AGE','HEIGHT','WEIGHT','BMI','BODY_FAT_PERCENTAGE']
+        st.dataframe(history[[c for c in cols if c in history]].rename(columns={'ROUND':'회차','MESURE_DE':'측정일','AGE':'나이','HEIGHT':'키 (cm)','WEIGHT':'체중 (kg)','BODY_FAT_PERCENTAGE':'체지방률 (%)'}),hide_index=True,width='stretch')
+    with fitness:
+        rows=[]
+        for event,(label,unit) in EVENTS.items():
+            grade=row[f'{event}_GRADE']
+            rows.append({'종목':label,'단위':unit,'측정값':row[event],'등급':grade_label(grade),
+                '판정':'판정 불가' if pd.isna(grade) else '미달' if grade==0 else '충족',
+                '3등급 하한':grade_cut(event,3)})
+        st.dataframe(pd.DataFrame(rows),hide_index=True,width='stretch')
+        st.write('미달 종목: '+(row.FAILED_EVENTS or '확인된 미달 없음'))
+        if row.EVALUATED_COUNT<4:
+            st.warning('일부 종목은 판정할 수 없습니다. 확인된 미달이 없다는 것이 전 종목 통과를 뜻하지 않습니다.')
+        st.write('집중관리 사유: '+(row.SELECTION_REASONS or '현재 자료에서 확인된 선정 조건 없음'))
+    with changes:
+        st.subheader('1차 대비 선택 회차 변화')
+        rows=[]
+        for event,(label,unit) in EVENTS.items():
+            rows.append({'종목':label,'단위':unit,'측정값 변화':row[f'{event}_CHANGE'],'등급 변화':row[f'{event}_GRADE_CHANGE']})
+        st.dataframe(pd.DataFrame(rows),hide_index=True,width='stretch')
+        delta=row.FAIL_COUNT_CHANGE
+        st.write('미달 종목 수 변화: '+(f'{int(delta):+d}개' if pd.notna(delta) else '판정 불가'))
+        st.write('1차 대비 신규 미달: '+(row.NEW_FAILED_EVENTS or '없음'))
+        st.write('1차 대비 미달 해소: '+(row.IMPROVED_EVENTS or '없음'))
+        st.write('선택 회차까지 최근 3회 지속 미달: '+(row.PERSISTENT_EVENTS or '확인된 종목 없음'))
+        st.caption('미측정·연령 범위 밖은 판정 불가입니다. 개선·신규 미달은 두 시점 모두 판정 가능한 종목에서만 확인합니다.')
+        st.subheader('종목별 개인 변화와 전체 평균')
+        st.caption('파랑: 개인 측정값 · 회색: 같은 회차 전체 평균 · 주황 점선: 3등급 하한. 평균에는 선택 장병도 포함합니다.')
+        for offset in (0,2):
+            for container,(event,(label,unit)) in zip(st.columns(2),list(EVENTS.items())[offset:offset+2]):
+                with container,st.container(border=True):
+                    reference=data[['ROUND',event]].copy()
+                    reference[event]=pd.to_numeric(reference[event],errors='coerce').replace([float('inf'),float('-inf')],float('nan'))
+                    reference=reference.groupby('ROUND')[event].agg(['mean','count']).sort_index()
+                    average=reference.loc[number,'mean'] if number in reference.index else float('nan')
+                    value=pd.to_numeric(row[event],errors='coerce')
+                    if pd.notna(value) and pd.notna(average):
+                        difference=value-average
+                        comparison=f'평균보다 {abs(difference):.2f} {unit} '+('높음' if difference>0 else '낮음' if difference<0 else '차이 없음')
+                    else:
+                        comparison='측정값 또는 평균이 없어 비교할 수 없음'
+                    st.metric(f'{label} · {number}차',f'{formatted(value)} {unit}',border=False)
+                    st.caption(f'전체 평균 {formatted(average)} {unit} · {comparison}')
+                    plot=go.Figure()
+                    plot.add_trace(go.Scatter(x=reference.index,y=reference['mean'],mode='lines+markers',
+                        name='전체 평균',line={'color':'#94a3b8','width':2},
+                        customdata=reference['count'],hovertemplate='%{x}차<br>전체 평균 %{y:.2f}<br>유효 인원 %{customdata:,.0f}명<extra></extra>'))
+                    plot.add_trace(go.Scatter(x=history.ROUND,y=history[event],mode='lines+markers',
+                        name='개인 측정값',line={'color':'#2563eb','width':3},
+                        hovertemplate='%{x}차<br>개인 측정값 %{y:.2f}<extra></extra>'))
+                    plot.add_trace(go.Scatter(x=reference.index,y=[grade_cut(event,3)]*len(reference),mode='lines',
+                        name='3등급 하한',line={'color':'#ea580c','dash':'dot'},
+                        hovertemplate='3등급 하한 %{y:.2f}<extra></extra>'))
+                    plot.add_vline(x=number,line_color='#cbd5e1',line_dash='dash')
+                    plot.update_layout(xaxis_title='측정 회차',xaxis_dtick=1,yaxis_title=f'{label} ({unit})',height=340,
+                                       legend={'orientation':'h','y':1.15,'x':0},margin={'t':65,'l':25,'r':15,'b':30})
+                    st.plotly_chart(plot,width='stretch',key=f'personal_mean_{event}')
+        st.caption('전체 평균은 각 회차의 유효 측정값으로 계산하며 회차별 인원이 달라질 수 있습니다. 평균보다 낮다는 것과 기준 미달은 다릅니다. 그래프는 전체 보유 회차를 표시하고, 세로 점선은 선택 회차입니다. 등급 기준은 남성 19~24세에서만 유효합니다.')
+        table=history[['ROUND','FAIL_COUNT','FAILED_EVENTS','NEW_FAILED_EVENTS','IMPROVED_EVENTS','PERSISTENT_EVENTS']].rename(columns={'ROUND':'회차','FAIL_COUNT':'미달 개수','FAILED_EVENTS':'미달 종목','NEW_FAILED_EVENTS':'1차 대비 신규 미달','IMPROVED_EVENTS':'1차 대비 미달 해소','PERSISTENT_EVENTS':'최근 3회 지속 미달'})
+        st.dataframe(table,hide_index=True,width='stretch')
+    with injury:
+        st.subheader('개인 부상 이력')
+        st.caption('발생일·회복 상태·운동 제한 자료는 현재 원본에 없습니다. 회차별 부상이나 현재 회복 여부를 추정하지 않습니다.')
+        if not injury_present:
+            st.warning('부상 원본 파일이 없습니다. 부상 없음으로 판단하지 않습니다.')
+        elif person_injuries.empty:
+            st.info('보유 부상 자료에서 이 장병의 기록이 없습니다.')
+        else:
+            shown=person_injuries.rename(columns={'INJURY_ID':'부상 식별자','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류','INJURY_LOCATION':'부위','PREVENTABILITY':'예방 가능 여부','SEVERITY':'심각도'})
+            shown['예방 가능 여부']=shown['예방 가능 여부'].map({'Y':'가능','N':'불가능'}).fillna('정보 없음')
+            st.dataframe(shown,hide_index=True,width='stretch')
+            st.download_button('부상 이력 CSV',shown.to_csv(index=False).encode('utf-8-sig'),f'{soldier}_부상이력.csv','text/csv')
+    with st.expander('개인 측정 자료 다운로드·기준'):
+        st.download_button('개인 전체 측정·판정·변화 CSV',history.to_csv(index=False).encode('utf-8-sig'),f'{soldier}_체력상세.csv','text/csv')
+        st.write(metadata['비교']);st.write(metadata['주의'])
+        st.caption('측정 당시 남성 19~24세 기준 · 종목별 등급이며 종합 인증등급이 아닙니다. 생성일: '+metadata['생성일시'])
+
+
+if __name__=='__main__':
+    main()

@@ -10,12 +10,15 @@ import altair as alt
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from config import PROCESSED_DIR, SYNTHETIC_DIR
+from data.scripts.fitness_standards import GRADE_CUTS, RANGE_STANDARDS
 
 PERSONNEL_PATH = SYNTHETIC_DIR / "SOLDIER_PERSONNEL.csv"
 FITNESS_PATH = PROCESSED_DIR / "KS_NFA_PROCESSED.csv"
+INJURY_PATH = SYNTHETIC_DIR / "SOLDIER_INJURY.csv"
 
 BMI_CATEGORY_ORDER = ("저체중", "정상", "과체중", "비만")
 BMI_COLORS = {
@@ -49,10 +52,29 @@ FITNESS_COLUMNS = {
     "BMI",
     "BODY_FAT_PERCENTAGE",
     "MESURE_DE",
+    "STRENGTH",
+    "ENDURANCE",
+    "CARDIO",
+    "FLEXIBILITY",
+}
+FITNESS_ITEM_LABELS = {
+    "STRENGTH": "근력",
+    "ENDURANCE": "근지구력",
+    "CARDIO": "심폐지구력",
+    "FLEXIBILITY": "유연성",
+}
+FITNESS_ITEM_COLORS = {
+    "근력": "#438DFF",
+    "근지구력": "#25C6D8",
+    "심폐지구력": "#F2A93B",
+    "유연성": "#F15B70",
 }
 NAVIGATION_ITEMS = (
     ("대시보드 홈", ":material/home:"),
+    ("부대 현황", ":material/domain:"),
+    ("체력 관리", ":material/fitness_center:"),
     ("개인 정보 조회", ":material/person_search:"),
+    ("부상 현황", ":material/healing:"),
     ("통계/분석", ":material/analytics:"),
     ("리포트", ":material/description:"),
     ("설정", ":material/settings:"),
@@ -143,6 +165,22 @@ def load_dashboard_data(
     ).reset_index(drop=True)
 
 
+@st.cache_data(show_spinner=False)
+def load_injury_data(injury_path: str, file_version: tuple[int, int]) -> pd.DataFrame:
+    """부상 기록을 검증하고 표시용 한글 컬럼을 추가합니다."""
+    path = Path(injury_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"부상 기록 파일이 없습니다: {path}")
+    injury = pd.read_csv(path, encoding="utf-8-sig", dtype={"SOLDIER_ID": "string"})
+    required = {"INJURY_ID", "SOLDIER_ID", "INJURY_CATEGORY", "INJURY_LOCATION", "PREVENTABILITY", "SEVERITY"}
+    missing = sorted(required - set(injury.columns))
+    if missing:
+        raise ValueError(f"부상 기록에 필수 컬럼이 없습니다: {', '.join(missing)}")
+    if injury["INJURY_ID"].duplicated().any() or injury["SOLDIER_ID"].isna().any():
+        raise ValueError("부상 기록의 부상 ID는 고유하고 군번은 비어 있지 않아야 합니다.")
+    return injury
+
+
 def classify_bmi(values: pd.Series) -> pd.Series:
     """BMI를 저체중·정상·과체중·비만 구간으로 분류합니다."""
     return pd.Series(
@@ -216,16 +254,22 @@ def summarize_groups(data: pd.DataFrame, group_column: str) -> pd.DataFrame:
 
 def summary_card_callback(categories: tuple[str, ...], card_name: str) -> None:
     """요약 카드를 누르면 장병 목록의 BMI 구간 필터를 설정합니다."""
-    st.session_state["bmi_filter"] = list(categories)
+    st.session_state[filter_state_key("bmi_filter")] = list(categories)
     st.session_state["active_summary_card"] = card_name
     st.session_state["personnel_page"] = 1
 
 
+def filter_state_key(name: str) -> str:
+    """현재 화면별로 분리된 필터 상태 키를 반환합니다."""
+    view = st.session_state.get("active_view", "대시보드 홈")
+    return f"{name}_{view}"
+
+
 def reset_unit_selection() -> None:
     """지역이 바뀌면 새 지역 범위의 부대를 모두 선택합니다."""
-    units_by_region = st.session_state.get("units_by_region", {})
-    regions = st.session_state.get("region_filter", [])
-    st.session_state["unit_filter"] = sorted(
+    units_by_region = st.session_state.get(filter_state_key("units_by_region"), {})
+    regions = st.session_state.get(filter_state_key("region_filter"), [])
+    st.session_state[filter_state_key("unit_filter")] = sorted(
         {
             unit
             for region in regions
@@ -276,8 +320,10 @@ def dismiss_soldier_detail_dialog() -> None:
     )
 
 
-def render_soldier_details(soldier: pd.Series) -> None:
-    """선택 장병의 인적 정보와 최신 신체 측정값을 표시합니다."""
+def render_soldier_details(
+    soldier: pd.Series, history: pd.DataFrame | None = None, injuries: pd.DataFrame | None = None
+) -> None:
+    """선택 장병의 기본 정보·회차별 변화·부상 이력을 표시합니다."""
     st.markdown(f"### {soldier['SOLDIER_NAME']} · {soldier['RANK_NAME']}")
     st.caption(
         f"{soldier['SOLDIER_ID']} · {soldier['REGION_NAME']} · {soldier['UNIT_NAME']}"
@@ -301,15 +347,69 @@ def render_soldier_details(soldier: pd.Series) -> None:
     )
     fitness_columns[2].metric("BMI 구간", str(soldier["BMI구간"]))
 
+    if history is not None:
+        soldier_history = add_deficiency_flags(
+            history.loc[history["SOLDIER_ID"].eq(soldier["SOLDIER_ID"])].sort_values("MESURE_DE")
+        )
+        if not soldier_history.empty:
+            st.markdown("#### 회차별 체력 측정 변화")
+            history_table = soldier_history[[
+                "MESURE_DE", "STRENGTH", "ENDURANCE", "CARDIO", "FLEXIBILITY",
+                "등급_STRENGTH", "등급_ENDURANCE", "등급_CARDIO", "등급_FLEXIBILITY",
+                "체력미달",
+            ]].rename(columns={
+                "MESURE_DE": "측정일", "STRENGTH": "근력", "ENDURANCE": "근지구력",
+                "CARDIO": "심폐지구력", "FLEXIBILITY": "유연성", "등급_STRENGTH": "근력 등급",
+                "등급_ENDURANCE": "근지구력 등급", "등급_CARDIO": "심폐지구력 등급",
+                "등급_FLEXIBILITY": "유연성 등급", "체력미달": "미달 여부",
+            })
+            st.dataframe(
+                history_table,
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "측정일": st.column_config.DateColumn(format="YYYY-MM-DD"),
+                    "근력": st.column_config.NumberColumn(format="%.1f"),
+                    "근지구력": st.column_config.NumberColumn(format="%.1f"),
+                    "심폐지구력": st.column_config.NumberColumn(format="%.1f"),
+                    "유연성": st.column_config.NumberColumn(format="%.1f"),
+                },
+            )
+            deficiency_columns = [f"미달_{column}" for column in FITNESS_ITEM_LABELS]
+            latest_flags = soldier_history.iloc[-1]
+            deficient_items = [
+                FITNESS_ITEM_LABELS[column]
+                for column in FITNESS_ITEM_LABELS
+                if bool(latest_flags[f"미달_{column}"])
+            ]
+            st.caption("현재 미달 종목: " + (", ".join(deficient_items) if deficient_items else "없음"))
+
+    if injuries is not None:
+        soldier_injuries = injuries.loc[injuries["SOLDIER_ID"].eq(soldier["SOLDIER_ID"])].copy()
+        st.markdown(f"#### 개인 부상 이력 · {len(soldier_injuries):,}건")
+        if soldier_injuries.empty:
+            st.info("등록된 부상 이력이 없습니다.")
+        else:
+            st.dataframe(
+                soldier_injuries[["INJURY_ID", "INJURY_CATEGORY", "INJURY_LOCATION", "SEVERITY", "PREVENTABILITY"]].rename(columns={
+                    "INJURY_ID": "부상 ID", "INJURY_CATEGORY": "부상 분류", "INJURY_LOCATION": "부위",
+                    "SEVERITY": "심각도", "PREVENTABILITY": "예방 가능",
+                }),
+                hide_index=True,
+                width="stretch",
+            )
+
 
 @st.dialog(
     "장병 상세정보",
-    width="medium",
+    width="large",
     on_dismiss=dismiss_soldier_detail_dialog,
 )
-def show_soldier_detail_dialog(soldier: pd.Series) -> None:
+def show_soldier_detail_dialog(
+    soldier: pd.Series, history: pd.DataFrame, injuries: pd.DataFrame
+) -> None:
     """장병 목록에서 선택한 장병의 상세정보를 모달로 표시합니다."""
-    render_soldier_details(soldier)
+    render_soldier_details(soldier, history, injuries)
 
 
 def show_bmi_soldiers_panel(
@@ -381,6 +481,423 @@ def show_bmi_soldiers_panel(
             st.rerun()
 
     show_panel()
+
+
+def add_deficiency_flags(data: pd.DataFrame) -> pd.DataFrame:
+    """체력 4종목과 체격 기준을 적용해 미달 플래그를 추가합니다."""
+    result = data.copy()
+    for column in FITNESS_ITEM_LABELS:
+        values = pd.to_numeric(result[column], errors="coerce")
+        result[f"미달_{column}"] = values.lt(GRADE_CUTS[column][3])
+        result[f"등급_{column}"] = np.select(
+            [values.ge(GRADE_CUTS[column][1]), values.ge(GRADE_CUTS[column][2]), values.ge(GRADE_CUTS[column][3])],
+            ["1등급", "2등급", "3등급"],
+            default="미달",
+        )
+    for column, (lower, lower_inclusive, upper, upper_inclusive) in RANGE_STANDARDS.items():
+        values = pd.to_numeric(result[column], errors="coerce")
+        lower_failed = values.lt(lower) if lower_inclusive else values.le(lower)
+        upper_failed = values.gt(upper) if upper_inclusive else values.ge(upper)
+        result[f"미달_{column}"] = lower_failed | upper_failed
+    fitness_flags = [f"미달_{column}" for column in FITNESS_ITEM_LABELS]
+    management_flags = fitness_flags + ["미달_BMI", "미달_BODY_FAT_PERCENTAGE"]
+    result["체력미달"] = result[fitness_flags].any(axis=1)
+    result["관리대상"] = result[management_flags].any(axis=1)
+    return result
+
+
+def add_measurement_rounds(data: pd.DataFrame) -> pd.DataFrame:
+    """장병별 측정일 순서로 개인 측정회차를 부여합니다."""
+    result = data.sort_values(
+        ["SOLDIER_ID", "MESURE_DE", "MESURE_ID"], kind="stable"
+    ).copy()
+    result["측정회차"] = result.groupby("SOLDIER_ID", sort=False).cumcount() + 1
+    return result
+
+
+def _overview_chart_layout(figure: object, height: int = 300) -> None:
+    """홈 요약 차트에 공통 다크 테마를 적용합니다."""
+    figure.update_layout(
+        height=height,
+        margin=dict(l=8, r=18, t=16, b=8),
+        template="plotly_dark",
+        paper_bgcolor=NAVY_BACKGROUND,
+        plot_bgcolor=NAVY_BACKGROUND,
+        font=dict(color=LIGHT_TEXT),
+        legend=dict(font=dict(color=MUTED_TEXT)),
+    )
+    figure.update_xaxes(gridcolor=NAVY_BORDER, zerolinecolor=NAVY_BORDER)
+    figure.update_yaxes(gridcolor=NAVY_BORDER, zerolinecolor=NAVY_BORDER)
+
+
+def render_home_overview(
+    scoped: pd.DataFrame,
+    measurements: pd.DataFrame,
+    date_start: date,
+    date_end: date,
+    selected_regions: list[str],
+    selected_units: list[str],
+    selected_ranks: list[str],
+) -> None:
+    """홈에서 전체 인원·회차·미달·관리 대상 현황을 시각화합니다."""
+    latest = add_deficiency_flags(scoped)
+    total_count = latest["SOLDIER_ID"].nunique()
+    underperformers = latest.loc[latest["체력미달"], "SOLDIER_ID"].nunique()
+    managed = latest.loc[latest["관리대상"], "SOLDIER_ID"].nunique()
+    underperform_rate = underperformers / max(total_count, 1) * 100
+    managed_rate = managed / max(total_count, 1) * 100
+
+    st.subheader("전체 현황")
+    st.caption("현재 필터의 장병별 최신 측정과 선택 기간의 전체 측정 회차를 함께 집계합니다.")
+    cards = [
+        ("전체 장병", f"{total_count:,}명", "기준 인원", "total"),
+        ("측정 회차", f"{measurements['MESURE_DE'].nunique():,}회", "선택 기간 전체", "normal"),
+        ("체력 미달", f"{underperformers:,}명", f"전체의 {underperform_rate:.1f}%", "risk"),
+        ("관리 대상", f"{managed:,}명", f"전체의 {managed_rate:.1f}%", "underweight"),
+    ]
+    card_columns = st.columns(4)
+    for column, (label, value, detail, style) in zip(card_columns, cards):
+        with column:
+            with st.container(border=True, key=f"overview-card-{style}"):
+                st.metric(label, value)
+                st.caption(detail)
+
+    scoped_history = measurements.loc[
+        measurements["MESURE_DE"].between(
+            pd.Timestamp(date_start),
+            pd.Timestamp(date_end) + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1),
+        )
+        & measurements["REGION_NAME"].isin(selected_regions)
+        & measurements["UNIT_NAME"].isin(selected_units)
+        & measurements["RANK_NAME"].isin(selected_ranks)
+    ].copy()
+    scoped_history = add_measurement_rounds(scoped_history)
+    round_summary = (
+        scoped_history.groupby("측정회차", as_index=False)
+        .agg(측정인원=("SOLDIER_ID", "nunique"), 측정건수=("MESURE_ID", "count"))
+        .sort_values("측정회차")
+    )
+    history_with_flags = add_deficiency_flags(scoped_history)
+    round_deficiency = (
+        history_with_flags.groupby("측정회차", as_index=False)
+        .agg(미달인원=("체력미달", "sum"), 관리대상=("관리대상", "sum"))
+    )
+    round_summary = round_summary.merge(round_deficiency, on="측정회차", how="left")
+    recent_round_numbers = set(round_summary["측정회차"].sort_values().tail(3))
+    round_summary = round_summary.loc[round_summary["측정회차"].isin(recent_round_numbers)].copy()
+    round_summary["측정회차"] = round_summary["측정회차"].astype(int)
+    round_summary["회차"] = round_summary["측정회차"].map(lambda value: f"{value}회차")
+    round_summary["미달비율"] = round_summary["미달인원"] / round_summary["측정인원"].clip(lower=1) * 100
+
+    chart_columns = st.columns([1.15, 0.85])
+    with chart_columns[0]:
+        st.markdown("**회차별 측정 인원 및 미달 인원**")
+        if round_summary.empty:
+            st.info("선택한 조건의 측정 회차가 없습니다.")
+        else:
+            figure = go.Figure()
+            figure.add_trace(go.Bar(
+                name="측정인원", x=round_summary["회차"], y=round_summary["측정인원"],
+                marker_color=BLUE_ACCENT, hovertemplate="측정 인원: %{y:,}명<extra></extra>",
+            ))
+            figure.add_trace(go.Bar(
+                name="미달인원", x=round_summary["회차"], y=round_summary["미달인원"],
+                marker_color="#F15B70", hovertemplate="미달 인원: %{y:,}명<extra></extra>",
+            ))
+            figure.add_trace(go.Scatter(
+                name="미달비율", x=round_summary["회차"], y=round_summary["미달비율"],
+                yaxis="y2", mode="lines+markers", line=dict(color="#F2A93B", width=3),
+                hovertemplate="미달 비율: %{y:.1f}%<extra></extra>",
+            ))
+            _overview_chart_layout(figure, 330)
+            figure.update_layout(
+                barmode="group", xaxis_title=None, yaxis_title="인원",
+                yaxis2=dict(title="미달 비율(%)", overlaying="y", side="right", showgrid=False),
+                legend=dict(orientation="h", y=1.12, x=0),
+            )
+            st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+    with chart_columns[1]:
+        st.markdown("**현재 체력 판정**")
+        status_data = pd.DataFrame({"판정": ["기준 충족", "체력 미달"], "인원": [total_count - underperformers, underperformers]})
+        figure = px.pie(
+            status_data, names="판정", values="인원", hole=0.62,
+            color="판정", color_discrete_map={"기준 충족": "#16C79A", "체력 미달": "#F15B70"},
+        )
+        _overview_chart_layout(figure, 310)
+        figure.update_traces(textinfo="label+percent", textfont_color=LIGHT_TEXT)
+        figure.update_layout(showlegend=False)
+        st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+    st.markdown("**종목별 미달 현황**")
+    item_rows = []
+    for column, label in FITNESS_ITEM_LABELS.items():
+        count = int(latest[f"미달_{column}"].sum())
+        item_rows.append({"종목": label, "미달 인원": count, "미달 비율": count / max(total_count, 1) * 100})
+    item_summary = pd.DataFrame(item_rows).sort_values("미달 인원", ascending=True)
+    figure = px.bar(
+        item_summary, x="미달 인원", y="종목", orientation="h", text="미달 인원",
+        color="종목", color_discrete_map=FITNESS_ITEM_COLORS,
+        hover_data={"미달 비율": ":.1f"},
+    )
+    _overview_chart_layout(figure, 270)
+    figure.update_traces(texttemplate="%{x:,}명", textposition="outside")
+    figure.update_layout(showlegend=False, xaxis_title="미달 인원", yaxis_title=None)
+    st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+    stat_columns = st.columns(2)
+    with stat_columns[0]:
+        st.markdown("**종목별 평균 측정값**")
+        average_rows = [
+            {"종목": label, "평균값": float(pd.to_numeric(latest[column], errors="coerce").mean())}
+            for column, label in FITNESS_ITEM_LABELS.items()
+        ]
+        average_summary = pd.DataFrame(average_rows).sort_values("평균값")
+        figure = px.bar(average_summary, x="평균값", y="종목", orientation="h", text="평균값", color="종목", color_discrete_map=FITNESS_ITEM_COLORS)
+        _overview_chart_layout(figure, 275)
+        figure.update_traces(texttemplate="%{x:.1f}", textposition="outside")
+        figure.update_layout(showlegend=False, xaxis_title="평균 측정값", yaxis_title=None)
+        st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+    with stat_columns[1]:
+        st.markdown("**종목별 등급 분포**")
+        grade_rows = []
+        for column, label in FITNESS_ITEM_LABELS.items():
+            counts = latest[f"등급_{column}"].value_counts()
+            grade_rows.extend({"종목": label, "등급": grade, "인원": int(counts.get(grade, 0))} for grade in ["1등급", "2등급", "3등급", "미달"])
+        grade_distribution = pd.DataFrame(grade_rows)
+        figure = px.bar(grade_distribution, x="종목", y="인원", color="등급", barmode="stack", category_orders={"등급": ["1등급", "2등급", "3등급", "미달"]}, color_discrete_map={"1등급": "#16C79A", "2등급": "#25C6D8", "3등급": "#F2A93B", "미달": "#F15B70"})
+        _overview_chart_layout(figure, 275)
+        figure.update_layout(xaxis_title=None, yaxis_title="인원")
+        st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+    with st.expander("판정 기준 보기"):
+        st.caption("체력 미달은 3등급 하한 미만, 관리 대상은 체력 4종목 또는 BMI·체지방률 정상 범위 이탈로 계산합니다.")
+        standards = pd.DataFrame([
+            {"항목": FITNESS_ITEM_LABELS[column], "미달 기준": f"{GRADE_CUTS[column][3]:g} 미만"}
+            for column in FITNESS_ITEM_LABELS
+        ] + [
+            {"항목": "BMI", "미달 기준": "18.5 미만 또는 25.0 이상"},
+            {"항목": "체지방률", "미달 기준": "7.0 이하 또는 27.0 이상"},
+        ])
+        st.dataframe(standards, hide_index=True, width="stretch")
+
+
+def render_injury_overview(
+    scoped: pd.DataFrame, injuries: pd.DataFrame
+) -> None:
+    """부상 인원·건수·비율과 체력등급별·개인별 부상 현황을 표시합니다."""
+    latest = add_deficiency_flags(scoped)
+    total_count = latest["SOLDIER_ID"].nunique()
+    scoped_injuries = injuries.loc[injuries["SOLDIER_ID"].isin(latest["SOLDIER_ID"])].copy()
+    injured_count = scoped_injuries["SOLDIER_ID"].nunique()
+    injury_count = len(scoped_injuries)
+    injury_rate = injured_count / max(total_count, 1) * 100
+
+    st.subheader("부상 현황")
+    st.caption("현재 필터에 포함된 장병 기준으로 등록된 부상 기록을 집계합니다.")
+    card_columns = st.columns(4)
+    for column, label, value, detail, style in zip(
+        card_columns,
+        ["전체 장병", "부상 인원", "부상 건수", "부상 비율"],
+        [f"{total_count:,}명", f"{injured_count:,}명", f"{injury_count:,}건", f"{injury_rate:.1f}%"],
+        ["기준 인원", "1건 이상 등록", "중복 부상 포함", "부상 인원 / 전체 장병"],
+        ["total", "risk", "normal", "underweight"],
+    ):
+        with column:
+            with st.container(border=True, key=f"injury-card-{style}"):
+                st.metric(label, value)
+                st.caption(detail)
+
+    chart_columns = st.columns(2)
+    with chart_columns[0]:
+        st.markdown("**부상 분류별 건수**")
+        if scoped_injuries.empty:
+            st.info("현재 필터에 해당하는 부상 기록이 없습니다.")
+        else:
+            category_counts = scoped_injuries["INJURY_CATEGORY"].value_counts().rename_axis("부상 분류").reset_index(name="건수")
+            figure = px.bar(category_counts, x="건수", y="부상 분류", orientation="h", text="건수", color_discrete_sequence=["#F15B70"])
+            _overview_chart_layout(figure, max(260, len(category_counts) * 42 + 90))
+            figure.update_traces(texttemplate="%{x:,}건", textposition="outside")
+            figure.update_layout(xaxis_title="부상 건수", yaxis_title=None)
+            st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+    with chart_columns[1]:
+        st.markdown("**체력등급별 부상 비교**")
+        grade_order = ["미달", "3등급", "2등급", "1등급"]
+        latest["종합 체력등급"] = latest[[f"등급_{column}" for column in FITNESS_ITEM_LABELS]].apply(
+            lambda row: min(row, key=lambda value: grade_order.index(value)), axis=1
+        )
+        grade_summary = latest.groupby("종합 체력등급").agg(전체인원=("SOLDIER_ID", "nunique")).reindex(grade_order, fill_value=0).reset_index()
+        injured_by_grade = scoped_injuries.groupby("SOLDIER_ID").size().rename("부상건수").to_frame()
+        grade_summary["부상인원"] = grade_summary["종합 체력등급"].map(
+            latest.loc[latest["SOLDIER_ID"].isin(injured_by_grade.index)].groupby("종합 체력등급")["SOLDIER_ID"].nunique()
+        ).fillna(0).astype(int)
+        grade_long = grade_summary.melt(id_vars="종합 체력등급", value_vars=["전체인원", "부상인원"], var_name="구분", value_name="인원")
+        figure = px.bar(grade_long, x="종합 체력등급", y="인원", color="구분", barmode="group", color_discrete_map={"전체인원": BLUE_ACCENT, "부상인원": "#F15B70"})
+        _overview_chart_layout(figure, 310)
+        figure.update_layout(xaxis_title=None, yaxis_title="인원")
+        st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+    st.markdown("**개인별 부상 내역**")
+    if scoped_injuries.empty:
+        st.info("현재 필터에 해당하는 개인 부상 내역이 없습니다.")
+    else:
+        detail = scoped_injuries.merge(
+            latest[["SOLDIER_ID", "SOLDIER_NAME", "RANK_NAME", "UNIT_NAME", "종합 체력등급"]].drop_duplicates("SOLDIER_ID"),
+            on="SOLDIER_ID", how="left",
+        )
+        detail = detail.rename(columns={
+            "SOLDIER_NAME": "이름", "SOLDIER_ID": "군번", "RANK_NAME": "계급", "UNIT_NAME": "부대",
+            "INJURY_ID": "부상 ID", "INJURY_CATEGORY": "부상 분류", "INJURY_LOCATION": "부위",
+            "SEVERITY": "심각도", "PREVENTABILITY": "예방 가능",
+        })
+        st.dataframe(
+            detail[["부상 ID", "군번", "이름", "계급", "부대", "종합 체력등급", "부상 분류", "부위", "심각도", "예방 가능"]],
+            hide_index=True,
+            width="stretch",
+        )
+
+
+def render_empty_menu_layout(view_name: str) -> None:
+    """추후 기능을 채울 메뉴의 공통 레이아웃을 표시합니다."""
+    st.subheader(view_name)
+    st.caption("세부 기능을 준비 중입니다. 현재 메뉴 구조와 화면 틀을 먼저 제공합니다.")
+    summary_columns = st.columns(3)
+    for column, label in zip(summary_columns, ["요약 영역", "분석 영역", "상세 영역"]):
+        with column:
+            with st.container(border=True):
+                st.markdown(f"**{label}**")
+                st.caption("추후 콘텐츠가 표시됩니다.")
+    with st.container(border=True):
+        st.markdown("**콘텐츠 영역**")
+        st.info("이 화면은 추후 기능이 채워질 예정입니다.")
+
+
+def render_fitness_management(scoped: pd.DataFrame, measurements: pd.DataFrame) -> None:
+    """최근 3회차 체력 현황과 관리 대상 장병을 표시합니다."""
+    scoped_ids = set(scoped["SOLDIER_ID"])
+    history = add_measurement_rounds(
+        measurements.loc[measurements["SOLDIER_ID"].isin(scoped_ids)].copy()
+    )
+    latest_round_by_soldier = history.groupby("SOLDIER_ID")["측정회차"].transform("max")
+    history["최근회차"] = latest_round_by_soldier - history["측정회차"] + 1
+    recent_history = add_deficiency_flags(history.loc[history["최근회차"].le(3)])
+    latest = add_deficiency_flags(scoped)
+    total_count = latest["SOLDIER_ID"].nunique()
+    measured_count = recent_history["SOLDIER_ID"].nunique()
+    underperformers = recent_history.loc[recent_history["체력미달"], "SOLDIER_ID"].nunique()
+    managed = recent_history.loc[recent_history["관리대상"], "SOLDIER_ID"].nunique()
+
+    st.subheader("체력 관리")
+    st.caption("현재 필터 대상 중 최근 3회차 측정 기록을 기준으로 체력 취약 인원을 확인합니다.")
+    cards = [
+        ("최근 3회차 측정 인원", f"{measured_count:,}명", "중복 장병은 1명으로 집계", "total"),
+        ("최근 3회차 미달 인원", f"{underperformers:,}명", f"측정 인원의 {underperformers / max(measured_count, 1) * 100:.1f}%", "risk"),
+        ("최근 3회차 미달 건수", f"{int(recent_history['체력미달'].sum()):,}건", "회차별 미달 측정 포함", "normal"),
+        ("관리 대상", f"{managed:,}명", f"전체 필터 대상 {total_count:,}명 중", "underweight"),
+    ]
+    card_columns = st.columns(4)
+    for column, (label, value, detail, style) in zip(card_columns, cards):
+        with column:
+            with st.container(border=True, key=f"fitness-management-card-{style}"):
+                st.metric(label, value)
+                st.caption(detail)
+
+    if recent_history.empty:
+        st.info("최근 3회차 측정 기록이 없습니다.")
+        return
+
+    round_data = (
+        recent_history.groupby("최근회차", as_index=False)
+        .agg(측정인원=("SOLDIER_ID", "nunique"), 미달인원=("체력미달", "sum"))
+        .sort_values("최근회차", ascending=False)
+    )
+    round_data["회차"] = round_data["최근회차"].map(lambda value: f"최근 {int(value)}회차")
+    round_data["미달비율"] = round_data["미달인원"] / round_data["측정인원"].clip(lower=1) * 100
+
+    chart_columns = st.columns([1.1, 0.9])
+    with chart_columns[0]:
+        st.markdown("**최근 3회차 측정·미달 인원**")
+        round_long = round_data.melt(id_vars="회차", value_vars=["측정인원", "미달인원"], var_name="구분", value_name="인원")
+        figure = px.bar(round_long, x="회차", y="인원", color="구분", barmode="group", color_discrete_map={"측정인원": BLUE_ACCENT, "미달인원": "#F15B70"})
+        _overview_chart_layout(figure, 300)
+        figure.update_layout(xaxis_title=None, yaxis_title="인원")
+        st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+    with chart_columns[1]:
+        st.markdown("**최근 3회차 미달 비율 추이**")
+        figure = px.line(round_data, x="회차", y="미달비율", markers=True, color_discrete_sequence=["#F2A93B"])
+        _overview_chart_layout(figure, 300)
+        figure.update_layout(xaxis_title=None, yaxis_title="미달 비율(%)")
+        figure.update_traces(hovertemplate="미달 비율: %{y:.1f}%<extra></extra>")
+        st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+    st.markdown("**최근 3회차 종목별 평균·등급 분포**")
+    stat_columns = st.columns(2)
+    with stat_columns[0]:
+        average_rows = [
+            {"종목": label, "평균값": float(pd.to_numeric(recent_history[column], errors="coerce").mean())}
+            for column, label in FITNESS_ITEM_LABELS.items()
+        ]
+        average_summary = pd.DataFrame(average_rows).sort_values("평균값")
+        figure = px.bar(average_summary, x="평균값", y="종목", orientation="h", text="평균값", color="종목", color_discrete_map=FITNESS_ITEM_COLORS)
+        _overview_chart_layout(figure, 280)
+        figure.update_traces(texttemplate="%{x:.1f}", textposition="outside")
+        figure.update_layout(showlegend=False, xaxis_title="최근 3회차 평균", yaxis_title=None)
+        st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+    with stat_columns[1]:
+        grade_rows = []
+        for column, label in FITNESS_ITEM_LABELS.items():
+            counts = recent_history[f"등급_{column}"].value_counts()
+            grade_rows.extend({"종목": label, "등급": grade, "인원": int(counts.get(grade, 0))} for grade in ["1등급", "2등급", "3등급", "미달"])
+        grade_distribution = pd.DataFrame(grade_rows)
+        figure = px.bar(grade_distribution, x="종목", y="인원", color="등급", barmode="stack", category_orders={"등급": ["1등급", "2등급", "3등급", "미달"]}, color_discrete_map={"1등급": "#16C79A", "2등급": "#25C6D8", "3등급": "#F2A93B", "미달": "#F15B70"})
+        _overview_chart_layout(figure, 280)
+        figure.update_layout(xaxis_title=None, yaxis_title="인원")
+        st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+    st.markdown("**종목별 미달 추이**")
+    trend_rows = []
+    for recent_round, date_group in recent_history.groupby("최근회차"):
+        for column, label in FITNESS_ITEM_LABELS.items():
+            count = int(date_group[f"미달_{column}"].sum())
+            trend_rows.append({"최근회차": f"최근 {int(recent_round)}회차", "회차순서": int(recent_round), "종목": label, "미달 비율": count / max(len(date_group), 1) * 100})
+    trend_data = pd.DataFrame(trend_rows)
+    figure = px.line(trend_data.sort_values("회차순서", ascending=False), x="최근회차", y="미달 비율", color="종목", markers=True, color_discrete_map=FITNESS_ITEM_COLORS)
+    _overview_chart_layout(figure, 300)
+    figure.update_layout(xaxis_title=None, yaxis_title="미달 비율(%)")
+    st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+    target_ids = set(recent_history.loc[recent_history["관리대상"], "SOLDIER_ID"])
+    targets = latest.loc[latest["SOLDIER_ID"].isin(target_ids)].copy()
+    targets["미달 종목"] = targets.apply(
+        lambda row: ", ".join(FITNESS_ITEM_LABELS[column] for column in FITNESS_ITEM_LABELS if row[f"미달_{column}"]), axis=1
+    )
+    management_tab, personnel_tab = st.tabs([
+        f"관리 대상 장병 · {len(targets):,}명",
+        f"전체 장병 목록 · {len(latest):,}명",
+    ])
+    display_columns = ["SOLDIER_ID", "SOLDIER_NAME", "REGION_NAME", "UNIT_NAME", "RANK_NAME", "MESURE_DE", "미달 종목"]
+    display_rename = {
+        "SOLDIER_ID": "군번", "SOLDIER_NAME": "이름", "REGION_NAME": "지역", "UNIT_NAME": "부대",
+        "RANK_NAME": "계급", "MESURE_DE": "최근 측정일",
+    }
+    with management_tab:
+        st.dataframe(
+            targets[display_columns].rename(columns=display_rename),
+            hide_index=True,
+            width="stretch",
+            column_config={"최근 측정일": st.column_config.DateColumn(format="YYYY-MM-DD")},
+        )
+    with personnel_tab:
+        st.dataframe(
+            latest.assign(**{"미달 종목": latest.apply(
+                lambda row: ", ".join(FITNESS_ITEM_LABELS[column] for column in FITNESS_ITEM_LABELS if row[f"미달_{column}"]), axis=1
+            )})[display_columns].rename(columns=display_rename),
+            hide_index=True,
+            width="stretch",
+            column_config={"최근 측정일": st.column_config.DateColumn(format="YYYY-MM-DD")},
+        )
 
 
 def show_dashboard() -> None:
@@ -645,6 +1162,10 @@ def show_dashboard() -> None:
             (personnel_stat.st_mtime_ns, personnel_stat.st_size),
             (fitness_stat.st_mtime_ns, fitness_stat.st_size),
         )
+        injury_stat = INJURY_PATH.stat()
+        injuries = load_injury_data(
+            str(INJURY_PATH), (injury_stat.st_mtime_ns, injury_stat.st_size)
+        )
     except (FileNotFoundError, ValueError, UnicodeDecodeError, pd.errors.ParserError) as error:
         st.error(f"대시보드 데이터를 불러오지 못했습니다: {error}")
         st.info(
@@ -673,98 +1194,88 @@ def show_dashboard() -> None:
                     args=(view_name,),
                 )
 
-        with st.expander("필터", icon=":material/filter_list:", expanded=False):
+
+
+    if active_view in ("통계/분석", "리포트", "설정"):
+        render_empty_menu_layout(active_view)
+        return
+
+    if active_view in ("개인 정보 조회", "부상 현황"):
+        st.markdown("### 조회 조건")
+        st.caption("지역·부대·계급·나이·측정 기간을 조절해 현재 화면의 대상을 좁힐 수 있습니다.")
+        filter_container = st.container(border=True)
+    else:
+        filter_container = st.container()
+
+    with filter_container:
+        filter_columns = st.columns([1.2, 1.6, 1.6, 1.25, 1.25])
+        with filter_columns[0]:
             selected_dates = st.date_input(
                 "측정일 기간",
                 value=(min_measure_date, max_measure_date),
                 min_value=min_measure_date,
                 max_value=max_measure_date,
                 format="YYYY/MM/DD",
-                key="measurement_date_filter",
+                key=filter_state_key("measurement_date_filter"),
             )
-            if isinstance(selected_dates, tuple):
-                date_start, date_end = selected_dates
-            else:
-                date_start = date_end = selected_dates
-            if date_start > date_end:
-                date_start, date_end = date_end, date_start
+        if isinstance(selected_dates, tuple):
+            date_start, date_end = selected_dates
+        else:
+            date_start = date_end = selected_dates
+        if date_start > date_end:
+            date_start, date_end = date_end, date_start
 
-            population = latest_measurements(measurements, date_start, date_end)
-            if population.empty:
-                st.info("선택한 측정일 기간에 해당하는 측정 기록이 없습니다.")
-                st.stop()
+        population = latest_measurements(measurements, date_start, date_end)
+        if population.empty:
+            st.info("선택한 측정일 기간에 해당하는 측정 기록이 없습니다.")
+            st.stop()
 
-            all_regions = sorted(population["REGION_NAME"].dropna().unique().tolist())
-            st.session_state["units_by_region"] = (
-                population.groupby("REGION_NAME")["UNIT_NAME"]
-                .unique()
-                .map(list)
-                .to_dict()
-            )
-            if "region_filter" not in st.session_state or not set(
-                st.session_state["region_filter"]
-            ).issubset(all_regions):
-                st.session_state["region_filter"] = all_regions
-            selected_regions = st.multiselect(
-                "지역",
-                options=all_regions,
-                key="region_filter",
-                on_change=reset_unit_selection,
-            )
-            region_population = population.loc[
-                population["REGION_NAME"].isin(selected_regions)
-            ]
-            all_units = sorted(region_population["UNIT_NAME"].dropna().unique().tolist())
-            if "unit_filter" not in st.session_state:
-                st.session_state["unit_filter"] = all_units
-            elif not set(st.session_state["unit_filter"]).issubset(all_units):
-                st.session_state["unit_filter"] = all_units
-            selected_units = st.multiselect(
-                "부대",
-                options=all_units,
-                key="unit_filter",
-            )
-            available_ranks = [
-                rank for rank in RANK_ORDER if rank in population["RANK_NAME"].unique()
-            ]
-            if "rank_filter" not in st.session_state or not set(
-                st.session_state["rank_filter"]
-            ).issubset(available_ranks):
-                st.session_state["rank_filter"] = available_ranks
-            selected_ranks = st.multiselect(
-                "계급",
-                options=available_ranks,
-                key="rank_filter",
-            )
+        all_regions = sorted(population["REGION_NAME"].dropna().unique().tolist())
+        st.session_state[filter_state_key("units_by_region")] = (
+            population.groupby("REGION_NAME")["UNIT_NAME"].unique().map(list).to_dict()
+        )
+        region_key = filter_state_key("region_filter")
+        unit_key = filter_state_key("unit_filter")
+        rank_key = filter_state_key("rank_filter")
+        age_key = filter_state_key("age_filter")
+        bmi_key = filter_state_key("bmi_filter")
+        if region_key not in st.session_state or not set(st.session_state[region_key]).issubset(all_regions):
+            st.session_state[region_key] = all_regions
+        with filter_columns[1]:
+            selected_regions = st.multiselect("지역", options=all_regions, key=region_key, on_change=reset_unit_selection)
 
-            age_min = int(population["AGE"].min())
-            age_max = int(population["AGE"].max())
-            if age_min < age_max:
-                if "age_filter" not in st.session_state:
-                    st.session_state["age_filter"] = (age_min, age_max)
-                elif (
-                    len(st.session_state["age_filter"]) != 2
-                    or st.session_state["age_filter"][0] < age_min
-                    or st.session_state["age_filter"][1] > age_max
-                ):
-                    st.session_state["age_filter"] = (age_min, age_max)
-                age_range = st.slider(
-                    "나이 범위",
-                    min_value=age_min,
-                    max_value=age_max,
-                    key="age_filter",
-                )
-            else:
-                age_range = (age_min, age_max)
+        region_population = population.loc[population["REGION_NAME"].isin(selected_regions)]
+        all_units = sorted(region_population["UNIT_NAME"].dropna().unique().tolist())
+        if unit_key not in st.session_state or not set(st.session_state[unit_key]).issubset(all_units):
+            st.session_state[unit_key] = all_units
+        with filter_columns[2]:
+            selected_units = st.multiselect("부대", options=all_units, key=unit_key)
+
+        available_ranks = [rank for rank in RANK_ORDER if rank in population["RANK_NAME"].unique()]
+        if rank_key not in st.session_state or not set(st.session_state[rank_key]).issubset(available_ranks):
+            st.session_state[rank_key] = available_ranks
+        with filter_columns[3]:
+            selected_ranks = st.multiselect("계급", options=available_ranks, key=rank_key)
+
+        age_min = int(population["AGE"].min())
+        age_max = int(population["AGE"].max())
+        if age_min < age_max:
+            if age_key not in st.session_state:
+                st.session_state[age_key] = (age_min, age_max)
+            elif len(st.session_state[age_key]) != 2 or st.session_state[age_key][0] < age_min or st.session_state[age_key][1] > age_max:
+                st.session_state[age_key] = (age_min, age_max)
+            with filter_columns[4]:
+                age_range = st.slider("나이 범위", min_value=age_min, max_value=age_max, key=age_key)
+        else:
+            age_range = (age_min, age_max)
+            with filter_columns[4]:
                 st.caption(f"나이 범위: {age_min}세")
 
-            if "bmi_filter" not in st.session_state:
-                st.session_state["bmi_filter"] = list(BMI_CATEGORY_ORDER)
-            st.multiselect(
-                "BMI 구간 (목록)",
-                options=list(BMI_CATEGORY_ORDER),
-                key="bmi_filter",
-            )
+        if bmi_key not in st.session_state:
+            st.session_state[bmi_key] = list(BMI_CATEGORY_ORDER)
+        if active_view in ("개인 정보 조회", "부상 현황"):
+            with st.expander("추가 조건", expanded=False):
+                st.multiselect("BMI 구간", options=list(BMI_CATEGORY_ORDER), key=bmi_key)
 
     scoped = population.loc[
         population["REGION_NAME"].isin(selected_regions)
@@ -789,36 +1300,22 @@ def show_dashboard() -> None:
     elif active_view == "설정":
         st.subheader("설정")
         st.info("설정 화면은 준비 중입니다.")
+    elif active_view == "부상 현황":
+        render_injury_overview(scoped, injuries)
 
     if active_view == "대시보드 홈":
-        st.subheader("전체 현황 요약")
-        category_counts = scoped["BMI구간"].value_counts()
-        total_count = scoped["SOLDIER_ID"].nunique()
-        normal_count = int(category_counts.get("정상", 0))
-        overweight_obese_count = int(
-            category_counts.get("과체중", 0) + category_counts.get("비만", 0)
+        render_home_overview(
+            scoped,
+            measurements,
+            date_start,
+            date_end,
+            selected_regions,
+            selected_units,
+            selected_ranks,
         )
-        underweight_count = int(category_counts.get("저체중", 0))
-        cards = [
-            ("전체 장병", total_count, tuple(BMI_CATEGORY_ORDER), "total"),
-            ("정상 BMI", normal_count, ("정상",), "normal"),
-            ("과체중·비만", overweight_obese_count, ("과체중", "비만"), "risk"),
-            ("저체중", underweight_count, ("저체중",), "underweight"),
-        ]
-        card_columns = st.columns(4)
-        for column, (label, count, categories, card_style) in zip(card_columns, cards):
-            card_active = st.session_state.get("active_summary_card") == label
-            with column:
-                with st.container(border=True, key=f"summary-card-{card_style}"):
-                    st.metric(label, f"{count:,}명")
-                    st.button(
-                        "선택됨" if card_active else "장병 조회",
-                        key=f"summary_card_{label}",
-                        type="primary" if card_active else "secondary",
-                        width="stretch",
-                        on_click=summary_card_callback,
-                        args=(categories, label),
-                    )
+
+    elif active_view == "체력 관리":
+        render_fitness_management(scoped, measurements)
 
     elif active_view == "개인 정보 조회":
         st.subheader("개인 정보 조회")
@@ -830,7 +1327,7 @@ def show_dashboard() -> None:
     )
 
     bmi_panel_open = False
-    if active_view in ("대시보드 홈", "통계/분석"):
+    if active_view in ("부대 현황", "통계/분석"):
         summary_tab, analysis_tab = st.tabs(["지역·부대별 요약", "신체정보 분석"])
         with summary_tab:
             summary_level = st.segmented_control(
@@ -1138,7 +1635,7 @@ def show_dashboard() -> None:
                 key="personnel_search",
             ).strip()
             list_data = scoped.loc[
-                scoped["BMI구간"].isin(st.session_state.get("bmi_filter", list(BMI_CATEGORY_ORDER)))
+                scoped["BMI구간"].isin(st.session_state.get(filter_state_key("bmi_filter"), list(BMI_CATEGORY_ORDER)))
             ].copy()
             if search_query:
                 matches = (
@@ -1186,7 +1683,7 @@ def show_dashboard() -> None:
                 age_range,
                 date_start,
                 date_end,
-                tuple(st.session_state.get("bmi_filter", [])),
+                tuple(st.session_state.get(filter_state_key("bmi_filter"), [])),
                 search_query,
                 sort_label,
                 sort_direction,
@@ -1285,7 +1782,7 @@ def show_dashboard() -> None:
                             and st.session_state.get("soldier_detail_dismissed_id")
                             != selected_soldier_id
                         ):
-                            show_soldier_detail_dialog(selected_soldier)
+                            show_soldier_detail_dialog(selected_soldier, measurements, injuries)
 
     st.divider()
     st.caption(

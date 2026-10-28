@@ -48,13 +48,13 @@ PROCESSED_INJURY_RISK_GROUP_PATH = PROCESSED_DIR / "INJURY_RISK_GROUP.csv"
 
 # 2026-10-27 추가: 대시보드 1~3번 화면에서 사용할 분석 결과 저장 폴더
 # 1. 전체 체력 현황: 개인별 판정, 회차별·종목별 집계
-PROCESSED_FITNESS_OVERVIEW_DIR = PROCESSED_DIR / "analysis" / "fitness_overview"
+PROCESSED_FITNESS_OVERVIEW_DIR = PROCESSED_DIR / "analysis2" / "fitness_overview"
 # 2. 측정 기반 관리 대상자: BMI·복수 미달·악화·지속 미달 판정과 선정 사유
-PROCESSED_MANAGEMENT_TARGETS_DIR = PROCESSED_DIR / "analysis" / "management_targets"
+PROCESSED_MANAGEMENT_TARGETS_DIR = PROCESSED_DIR / "analysis2" / "management_targets"
 # 3. 개인 장병 상세: 1차 대비 측정값·등급 변화 및 미달 해소 종목
-PROCESSED_PERSONAL_DETAIL_DIR = PROCESSED_DIR / "analysis" / "personal_detail"
+PROCESSED_PERSONAL_DETAIL_DIR = PROCESSED_DIR / "analysis2" / "personal_detail"
 # 6. 부상 현황: 장병별 부상 건수, 최신 종목 등급별 비교 및 전체 요약
-PROCESSED_INJURY_OVERVIEW_DIR = PROCESSED_DIR / "analysis" / "injury_overview"
+PROCESSED_INJURY_OVERVIEW_DIR = PROCESSED_DIR / "analysis2" / "injury_overview"
 # 2026-10-27 추가 경로 끝
 
 # 가상 장병·부상 데이터. 명단과 부상 기록은 data/synthetic/, 단계 사이의 연계 결과는 intermediate/synthesis/에 둔다.

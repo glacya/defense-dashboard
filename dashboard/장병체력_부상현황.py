@@ -1,12 +1,12 @@
-﻿"""6번 화면: 전체 부상·종목별 등급 비교·개인 부상 이력입니다."""
+"""6번 화면: 전체 부상·종목별 등급 비교·개인 부상 이력입니다."""
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from dashboard.py.injury_overview_data import load_injury_overview
-from data.scripts.analysis.fitness_overview import EVENTS
-from data.scripts.analysis.injury_overview import GRADE_LABELS
+from data.scripts.analysis.analysis2.fitness_overview import EVENTS
+from data.scripts.analysis.analysis2.injury_overview import GRADE_LABELS
 
 INJURY_LABELS={'INJURY_ID':'부상 식별자','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류',
                'INJURY_LOCATION':'부상 부위','SEVERITY':'심각도','PREVENTABILITY':'예방 가능 여부'}
@@ -22,7 +22,7 @@ def main() -> None:
         people,grades,summary,metadata,injuries=load_injury_overview()
     except FileNotFoundError:
         st.warning('분석 결과 또는 원본 파일이 없습니다. 아래 명령으로 생성하세요.')
-        st.code('python -m data.scripts.analysis.injury_overview',language='powershell');st.stop()
+        st.code('python -m data.scripts.analysis.analysis2.injury_overview',language='powershell');st.stop()
     except (ValueError,KeyError,pd.errors.EmptyDataError) as error:
         st.error(f'자료를 확인해 주세요: {error}');st.stop()
     if summary.empty:

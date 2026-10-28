@@ -7,8 +7,8 @@ import plotly.express as px
 import streamlit as st
 
 from dashboard.py.management_targets_data import load_targets
-from data.scripts.analysis.management_targets import REASONS
-from data.scripts.analysis.fitness_overview import EVENTS
+from data.scripts.analysis.analysis2.management_targets import REASONS
+from data.scripts.analysis.analysis2.fitness_overview import EVENTS
 from data.scripts.fitness_standards import grade_cut
 
 LABELS={'SOLDIER_ID':'장병 식별자','SOLDIER_NAME':'이름','RANK_NAME':'계급','UNIT_NAME':'소속',
@@ -31,7 +31,7 @@ def main() -> None:
         data,source,metadata=load_targets()
     except FileNotFoundError:
         st.warning('분석 자료 또는 원본이 없습니다. 먼저 집중관리 분석을 실행하세요.')
-        st.code('python -m data.scripts.analysis.management_targets',language='powershell');st.stop()
+        st.code('python -m data.scripts.analysis.analysis2.management_targets',language='powershell');st.stop()
     except (ValueError,KeyError,pd.errors.EmptyDataError,json.JSONDecodeError) as error:
         st.error(f'자료 확인이 필요합니다: {error}');st.stop()
     if data.empty:

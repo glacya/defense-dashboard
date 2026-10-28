@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard.py.personal_detail_data import load_personal
-from data.scripts.analysis.fitness_overview import EVENTS
+from data.scripts.analysis.analysis2.fitness_overview import EVENTS
 from data.scripts.fitness_standards import grade_cut
 
 

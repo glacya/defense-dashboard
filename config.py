@@ -19,6 +19,8 @@ SAMPLE_DIR = DATA_DIR / "samples"  # 가상·샘플 데이터
 SYNTHETIC_DIR = DATA_DIR / "synthetic"  # 합성 단계가 만드는 가상 장병 명단·부상 기록
 DATA_SCRIPTS_DIR = DATA_DIR / "scripts"
 DATA_LOG_DIR = DATA_SCRIPTS_DIR / "logs"
+# 대시보드에서 직접 입력하는 기록. 분석 재실행으로 갱신하지 않습니다.
+MANAGEMENT_DIR = PROCESSED_DIR / "analysis2" / "management"
 
 # ============================================================================
 # dashboard 영역

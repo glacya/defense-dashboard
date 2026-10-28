@@ -21,7 +21,7 @@ def main() -> None:
         rounds, events, metadata = load_overview()
     except FileNotFoundError:
         st.warning('전체 현황 분석 결과가 없습니다. 먼저 아래 명령을 실행해 주세요.')
-        st.code('python -m data.scripts.analysis.fitness_overview', language='powershell')
+        st.code('python -m data.scripts.analysis.analysis2.fitness_overview', language='powershell')
         st.stop()
     except (ValueError, KeyError, pd.errors.EmptyDataError, json.JSONDecodeError) as error:
         st.error(f'분석 결과를 확인해 주세요: {error}')

@@ -1,9 +1,9 @@
-﻿"""부상 인원·건수 분리와 최신 종목 등급 집계를 검증합니다."""
+"""부상 인원·건수 분리와 최신 종목 등급 집계를 검증합니다."""
 
 import pandas as pd
 import pytest
 
-from data.scripts.analysis.injury_overview import build_tables
+from data.scripts.analysis.analysis2.injury_overview import build_tables
 from data.scripts.fitness_standards import FITNESS_EXERCISES, grade_cut
 
 

@@ -1,8 +1,8 @@
-﻿"""집중관리 대상의 BMI 경계·다중 사유·시간순 판정을 확인합니다."""
+"""집중관리 대상의 BMI 경계·다중 사유·시간순 판정을 확인합니다."""
 
 import pandas as pd
 
-from data.scripts.analysis.management_targets import build_targets
+from data.scripts.analysis.analysis2.management_targets import build_targets
 from data.scripts.fitness_standards import FITNESS_EXERCISES, grade_cut
 
 

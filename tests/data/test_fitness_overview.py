@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from data.scripts.analysis.fitness_overview import judge_measurements, summarize
+from data.scripts.analysis.analysis2.fitness_overview import judge_measurements, summarize
 from data.scripts.fitness_standards import FITNESS_EXERCISES, grade_cut
 
 

@@ -1,5 +1,0 @@
-순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,NOT NULL여부,데이터 상품명
-1,INJURY_RISK_GROUP_ID,부상위험그룹번호,INT,,Y,Y,자동 부여
-2,BMI_LEVEL,BMI구간,VARCHAR,8,N,Y,장병 부상 위험 그룹 데이터
-3,CARDIO_LEVEL,심폐지구력구간,VARCHAR,8,N,Y,장병 부상 위험 그룹 데이터
-4,EXPECTED_INJURY_COUNT,기대부상건수,DECIMAL,"7,6",N,Y,장병 부상 위험 그룹 데이터

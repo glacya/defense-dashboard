@@ -83,7 +83,7 @@ dashboard/
 
 **`filters.py`**
 
-- `render_filters(measurements, prefix, show_bmi=False)`: 측정 기간, 지역, 부대, 계급, 나이 조건을 그리고 `FilterResult`를 반환합니다.
+- `render_filters(measurements, prefix, show_bmi=False, show_date=True)`: 측정 기간(선택), 지역, 부대, 계급, 나이 조건을 그리고 `FilterResult`를 반환합니다. 홈 화면은 `show_date=False`로 전체 기간을 사용합니다.
 - `prefix`가 세션 키의 접두어입니다. 같은 prefix를 쓰면 페이지 사이에서 조건이 공유되고, 다른 prefix를 쓰면 독립입니다.
   - 현재 구현: `mainpage`는 `"home"`, 부대 현황은 `"unit"`을 씁니다.
 - 지역을 바꾸면 `_reset_units`가 부대 선택을 새 지역 범위로 다시 맞춥니다.

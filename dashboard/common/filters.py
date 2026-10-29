@@ -44,31 +44,59 @@ def _reset_units(region_key: str, unit_key: str, units_by_region: dict) -> None:
     st.session_state[unit_key] = sorted({u for r in regions for u in units_by_region.get(r, [])})
 
 
-def render_filters(measurements: pd.DataFrame, prefix: str, show_bmi: bool = False) -> FilterResult:
+def render_filters(
+    measurements: pd.DataFrame,
+    prefix: str,
+    show_bmi: bool = False,
+    show_date: bool = True,
+    show_controls: bool = True,
+) -> FilterResult:
     min_date = measurements["MESURE_DE"].min().date()
     max_date = measurements["MESURE_DE"].max().date()
-    columns = st.columns([1.2, 1.6, 1.6, 1.25, 1.25])
-
-    with columns[0]:
-        picked = st.date_input(
-            "측정일 기간",
-            value=(min_date, max_date),
-            min_value=min_date,
-            max_value=max_date,
-            format="YYYY/MM/DD",
-            key=_key(prefix, "date"),
-        )
-    dates = list(picked) if isinstance(picked, (tuple, list)) else [picked]
-    if not dates:
-        dates = [min_date]
-    if len(dates) == 1:  # 시작일만 고른 중간 상태
-        dates = dates * 2
-    date_start, date_end = sorted(dates[:2])
+    if show_date:
+        columns = st.columns([1.2, 1.6, 1.6, 1.25, 1.25])
+        with columns[0]:
+            picked = st.date_input(
+                "측정일 기간",
+                value=(min_date, max_date),
+                min_value=min_date,
+                max_value=max_date,
+                format="YYYY/MM/DD",
+                key=_key(prefix, "date"),
+            )
+        dates = list(picked) if isinstance(picked, (tuple, list)) else [picked]
+        if not dates:
+            dates = [min_date]
+        if len(dates) == 1:  # 시작일만 고른 중간 상태
+            dates = dates * 2
+        date_start, date_end = sorted(dates[:2])
+    else:
+        columns = st.columns([1.6, 1.6, 1.25, 1.25])
+        date_start, date_end = min_date, max_date
 
     population = latest_measurements(measurements, date_start, date_end)
     if population.empty:
         st.info("선택한 측정일 기간에 해당하는 측정 기록이 없습니다.")
         st.stop()
+
+    if not show_controls:
+        regions = sorted(population["REGION_NAME"].dropna().unique().tolist())
+        units = sorted(population["UNIT_NAME"].dropna().unique().tolist())
+        ranks = [rank for rank in RANK_ORDER if rank in population["RANK_NAME"].unique()]
+        age_range = (int(population["AGE"].min()), int(population["AGE"].max()))
+        scoped = population.copy()
+        st.caption(f"전체 측정 기록 기준 · 장병별 최신 측정 · 현재 조건 {len(scoped):,}명")
+        return FilterResult(
+            date_start=date_start,
+            date_end=date_end,
+            regions=regions,
+            units=units,
+            ranks=ranks,
+            age_range=age_range,
+            bmi=list(BMI_CATEGORY_ORDER),
+            population=population,
+            scoped=scoped,
+        )
 
     region_key = _key(prefix, "region")
     unit_key = _key(prefix, "unit")
@@ -79,7 +107,11 @@ def render_filters(measurements: pd.DataFrame, prefix: str, show_bmi: bool = Fal
     all_regions = sorted(population["REGION_NAME"].dropna().unique().tolist())
     units_by_region = population.groupby("REGION_NAME")["UNIT_NAME"].unique().map(list).to_dict()
     _sync_selection(region_key, all_regions)
-    with columns[1]:
+    region_column = 1 if show_date else 0
+    unit_column = 2 if show_date else 1
+    rank_column = 3 if show_date else 2
+    age_column = 4 if show_date else 3
+    with columns[region_column]:
         regions = st.multiselect(
             "지역",
             options=all_regions,
@@ -91,17 +123,17 @@ def render_filters(measurements: pd.DataFrame, prefix: str, show_bmi: bool = Fal
     region_population = population.loc[population["REGION_NAME"].isin(regions)]
     all_units = sorted(region_population["UNIT_NAME"].dropna().unique().tolist())
     _sync_selection(unit_key, all_units)
-    with columns[2]:
+    with columns[unit_column]:
         units = st.multiselect("부대", options=all_units, key=unit_key)
 
     available_ranks = [rank for rank in RANK_ORDER if rank in population["RANK_NAME"].unique()]
     _sync_selection(rank_key, available_ranks)
-    with columns[3]:
+    with columns[rank_column]:
         ranks = st.multiselect("계급", options=available_ranks, key=rank_key)
 
     age_min = int(population["AGE"].min())
     age_max = int(population["AGE"].max())
-    with columns[4]:
+    with columns[age_column]:
         if age_min < age_max:
             stored = st.session_state.get(age_key)
             if not stored or len(stored) != 2 or stored[0] < age_min or stored[1] > age_max:
@@ -124,10 +156,13 @@ def render_filters(measurements: pd.DataFrame, prefix: str, show_bmi: bool = Fal
         & population["AGE"].between(age_range[0], age_range[1])
     ].copy()
 
-    st.caption(
+    scope_caption = (
         f"측정 기간 {date_start:%Y-%m-%d} ~ {date_end:%Y-%m-%d} · "
         f"장병별 기간 내 최신 측정 기준 · 현재 조건 {len(scoped):,}명"
+        if show_date else
+        f"전체 측정 기록 기준 · 장병별 최신 측정 · 현재 조건 {len(scoped):,}명"
     )
+    st.caption(scope_caption)
     return FilterResult(
         date_start=date_start,
         date_end=date_end,

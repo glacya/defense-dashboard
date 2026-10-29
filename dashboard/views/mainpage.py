@@ -9,6 +9,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from dashboard.common.charts import CHART_CONTINUOUS_SCALE, CHART_PALETTE, show_plotly
 from dashboard.common.filters import render_filters
 from dashboard.common.formatting import FITNESS_ITEM_LABELS, GRADE_LABELS, NAV_STATE_KEY, add_deficiency_flags
 from dashboard.common.widgets import PieChartWidget, RadarChartWidget
@@ -16,7 +17,7 @@ from dashboard.main_data import load_main_data
 from dashboard.py.management_store import load_records
 
 HOME_TITLE = "대시보드 홈"
-PALETTE = ["#2589FF", "#16C79A", "#F2A93B", "#F15B70", "#6E7F95"]
+PALETTE = list(CHART_PALETTE)
 REGION_GEOJSON_PATH = Path(__file__).resolve().parents[1] / "assets" / "geojson" / "korea_provinces.geojson"
 # 지도는 9개 도 단위로 그립니다. 특별시·광역시·특별자치시는 둘러싼 도에 편입합니다.
 # (경도 최소, 경도 최대, 위도 최소, 위도 최대) — 서로 겹치지 않는 도식 지도용 사각형
@@ -151,7 +152,7 @@ def _render_fitness_variance(unit: pd.DataFrame) -> None:
     with st.container(border=True):
         st.subheader("부대·지역별 체력 편차")
         st.caption(
-            "전체 평균 대비 편차입니다. 평균 근처는 초록, 평균보다 낮으면 빨강, 높으면 파랑입니다. "
+            "지역별 체력 충족률을 표시합니다. 낮은 값은 연한 파랑, 높은 값은 짙은 청록·남색으로 구분합니다. "
             "실제 시·도 경계 GeoJSON을 사용합니다."
         )
         unit = unit.assign(
@@ -171,28 +172,26 @@ def _render_fitness_variance(unit: pd.DataFrame) -> None:
             포함지역=("REGION_NAME", lambda names: "·".join(sorted(set(map(str, names))))),
         )
         region["충족률"] = region["충족인원"] / region["인원"].clip(lower=1) * 100
-        overall_rate = region["충족인원"].sum() / max(region["인원"].sum(), 1) * 100
-        region["편차"] = region["충족률"] - overall_rate
-        max_deviation = max(float(region["편차"].abs().max()), 1.0)
         chart = px.choropleth(
             region,
             geojson=_region_geojson(),
             locations="지역",
             featureidkey="properties.name",
-            color="편차",
+            color="충족률",
             hover_name="지역",
-            hover_data={"편차": ":+.1f", "충족률": ":.1f", "인원": ":,", "포함지역": True},
-            color_continuous_scale=[(0.0, "#F15B70"), (0.5, "#16C79A"), (1.0, "#2589FF")],
-            range_color=(-max_deviation, max_deviation),
-            labels={"편차": "전체 평균 대비 편차(%p)", "충족률": "지역 충족률(%)", "인원": "인원(명)", "포함지역": "포함 지역"},
+            hover_data={"충족률": ":.1f", "인원": ":,", "포함지역": True},
+            color_continuous_scale=list(CHART_CONTINUOUS_SCALE),
+            range_color=(0, 100),
+            labels={"충족률": "체력 충족률(%)", "인원": "인원(명)", "포함지역": "포함 지역"},
         )
+        chart.update_traces(marker=dict(line=dict(width=1, color="#FFFFFF")))
         chart.update_geos(
-            fitbounds="locations", visible=False, bgcolor="#071321",
+            fitbounds="locations", visible=False, bgcolor="#EAF2F9",
             projection_type="mercator", showcountries=False,
         )
-        chart.update_layout(height=470, margin=dict(t=10, b=10, l=0, r=0),
-                            coloraxis_colorbar=dict(title="평균 대비 편차(%p)"))
-        st.plotly_chart(chart, width="stretch")
+        chart.update_layout(height=470, margin=dict(t=20, b=20, l=10, r=10),
+                            coloraxis_colorbar=dict(title="충족률(%)"))
+        show_plotly(chart)
 
 
 def _pie(data: pd.DataFrame, names: str, title: str, colors=None, show_legend: bool = False) -> None:
@@ -286,7 +285,7 @@ def _render_exercise_and_shortlist(latest: pd.DataFrame) -> None:
             under = int(latest["체력미달"].sum())
             total = max(latest["SOLDIER_ID"].nunique(), 1)
             ratio = pd.DataFrame({"구분": ["미달", "기준 충족"], "인원": [under, max(total - under, 0)]})
-            _pie(ratio, "구분", "미달 인원 비율", colors=["#F15B70", "#16C79A"], show_legend=True)
+            _pie(ratio, "구분", "미달 인원 비율", colors=[CHART_PALETTE[4], CHART_PALETTE[2]], show_legend=True)
 
 
 def render_home_overview(filters, measurements: pd.DataFrame, injuries: pd.DataFrame) -> None:

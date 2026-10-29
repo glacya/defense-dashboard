@@ -58,6 +58,19 @@ def render_recommendation(grade: int, cluster: int) -> None:
                 st.write(instruction)
     for basis in recommendation.RECOMMENDATION_BASIS.drop_duplicates():
         st.caption(basis)
+    with st.container(border=True):
+        st.markdown('**운동 추천의 한계점**')
+        st.markdown(
+            '- 원본 처방 자료는 운동명 목록이며, 체력요소별 분류와 추천 연결은 수동으로 구성했습니다. '
+            '실제 장병별 처방 이력이나 운동 효과를 분석한 결과는 아닙니다.\n'
+            '- 강점형에서 강점 종목을 제외한 세 종목은 보완 대상으로 지정한 것이며, '
+            '해당 종목이 실제 약점이거나 기준 미달이라는 뜻은 아닙니다.\n'
+            '- 부상·질환·통증·회복 상태와 개인별 운동 경험을 반영하지 않았습니다. '
+            '개인별 운동 적합성은 별도로 확인해야 합니다.\n'
+            '- 별도 장비가 없는 운동을 선정했으나, 부대별 공간·바닥 상태·훈련 일정·'
+            '기상 여건에 따라 실시 가능 여부가 달라집니다.\n'
+            '- 안내는 일반 지침이며, 개인별 횟수·세트·강도·휴식·진행 계획은 제공하지 않습니다.'
+        )
     with st.expander('운동 추천 참고 자료'):
         urls = dict.fromkeys(url.strip() for sources in recommendation.SOURCE_URL
                              for url in sources.split('|') if url.strip())

@@ -30,7 +30,7 @@ render_recommendation(3, 0)
     assert not app.exception
     assert len(app.get('imgs')) == 3
     text = '\n'.join(element.value for element in app.markdown)
-    assert '의자 또는 맨몸 스쿼트' in text
+    assert '팔굽혀펴기' in text
     assert '낮은 발판 오르기 반복' not in text
     assert '빠르게 걷기' in text
-    assert '햄스트링 스트레칭' in text
+    assert '넙다리 뒤쪽 스트레칭' in text

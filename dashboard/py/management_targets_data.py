@@ -16,7 +16,7 @@ def _read(paths: tuple[str,...], versions: tuple[int,...]) -> tuple[pd.DataFrame
     source=pd.read_csv(paths[1],dtype={'SOLDIER_ID':'string','MESURE_ID':'string'})
     people=pd.read_csv(paths[2],dtype='string')
     require_columns(targets,['MESURE_ID','SOLDIER_ID','ROUND','MANAGED','HIGH_BMI_FAIL','MULTIPLE_FAIL','WORSENED','PERSISTENT_FAIL','BMI_GROUP','FAIL_COUNT','EVALUATED_COUNT','SELECTION_REASONS','FAILED_EVENTS','NEW_FAILED_EVENTS','PERSISTENT_EVENTS'])
-    require_columns(people,['SOLDIER_ID','SOLDIER_NAME','RANK_NAME','UNIT_NAME'])
+    require_columns(people,['SOLDIER_ID','SOLDIER_NAME','REGION_NAME','RANK_NAME','UNIT_NAME'])
     for column in ['MANAGED','HIGH_BMI_FAIL','MULTIPLE_FAIL','WORSENED','PERSISTENT_FAIL']:
         mapped=targets[column].astype('string').str.lower().map({'true':True,'false':False})
         if mapped.isna().any():
@@ -28,7 +28,10 @@ def _read(paths: tuple[str,...], versions: tuple[int,...]) -> tuple[pd.DataFrame
     linked=targets.merge(source,on=['MESURE_ID','SOLDIER_ID'],how='left',validate='one_to_one',indicator=True)
     if linked['_merge'].ne('both').any():
         raise ValueError('판정과 원본 측정이 맞지 않습니다. 분석 CSV를 다시 생성하세요.')
-    linked=linked.drop(columns='_merge').merge(people[['SOLDIER_ID','SOLDIER_NAME','RANK_NAME','UNIT_NAME']],on='SOLDIER_ID',how='left',validate='many_to_one')
+    linked=linked.drop(columns='_merge').merge(
+        people[['SOLDIER_ID','SOLDIER_NAME','REGION_NAME','RANK_NAME','UNIT_NAME']],
+        on='SOLDIER_ID',how='left',validate='many_to_one'
+    )
     if linked.SOLDIER_NAME.isna().any():
         raise ValueError('장병 명단과 연결되지 않는 기록이 있습니다.')
     for column in ['SELECTION_REASONS','FAILED_EVENTS','NEW_FAILED_EVENTS','PERSISTENT_EVENTS']:

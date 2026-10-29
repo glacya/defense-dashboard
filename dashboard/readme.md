@@ -116,3 +116,5 @@ dashboard/
 | `injury_overview_data.py` | `load_injury_overview()` | 부상 현황 분석 결과 | 파일 수정 시각 |
 | `management_store.py` | `load_records(kind)` | `MANAGEMENT_DIR/*.csv` | 캐시하지 않음 (입력 기록은 즉시 반영) |
 | `management_forms.py` | `editor(...)`, `LABELS` | 관리 기록 | - |
+
+개인 장병 상세 화면의 `장병 찾기`에서는 지역을 먼저 선택한 뒤 해당 지역의 부대를 선택해 장병 목록을 좁힐 수 있습니다. 두 필터를 비워 두면 전체를 조회합니다.

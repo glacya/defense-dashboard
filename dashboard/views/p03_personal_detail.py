@@ -9,6 +9,11 @@ from data.scripts.analysis.analysis2.fitness_overview import EVENTS
 from data.scripts.fitness_standards import grade_cut
 
 
+def _reset_personal_unit_filter(unit_key: str) -> None:
+    """지역 변경 시 부대 선택을 초기화해 이전 지역의 조건이 남지 않게 합니다."""
+    st.session_state[unit_key] = []
+
+
 def formatted(value, digits=2) -> str:
     """누락된 숫자는 미측정으로 표시합니다."""
     number=pd.to_numeric(value,errors='coerce')
@@ -33,12 +38,39 @@ def render() -> None:
     except (ValueError,KeyError,pd.errors.EmptyDataError) as error:
         st.error(f'자료 확인이 필요합니다: {error}');st.stop()
     st.sidebar.header('장병 찾기')
+    people=data[['SOLDIER_ID','SOLDIER_NAME','REGION_NAME','RANK_NAME','UNIT_NAME']].drop_duplicates('SOLDIER_ID')
+    region_key='personal_region_filter'
+    unit_key='personal_unit_filter'
+    units_by_region=people.groupby('REGION_NAME')['UNIT_NAME'].unique().map(list).to_dict()
+    regions=st.sidebar.multiselect(
+        '지역',
+        options=sorted(people.REGION_NAME.dropna().unique().tolist()),
+        key=region_key,
+        on_change=_reset_personal_unit_filter,
+        args=(unit_key,),
+        placeholder='전체 지역',
+    )
+    available_units=(
+        sorted({unit for region in regions for unit in units_by_region.get(region, [])})
+        if regions else sorted(people.UNIT_NAME.dropna().unique().tolist())
+    )
+    units=st.sidebar.multiselect(
+        '부대',
+        options=available_units,
+        key=unit_key,
+        placeholder='전체 부대',
+    )
     search=st.sidebar.text_input('이름·장병번호 검색')
-    people=data[['SOLDIER_ID','SOLDIER_NAME','RANK_NAME','UNIT_NAME']].drop_duplicates('SOLDIER_ID').sort_values(['SOLDIER_NAME','SOLDIER_ID'])
+    if regions:
+        people=people.loc[people.REGION_NAME.isin(regions)]
+    if units:
+        people=people.loc[people.UNIT_NAME.isin(units)]
     if search:
         people=people.loc[people.SOLDIER_NAME.str.contains(search,regex=False)|people.SOLDIER_ID.str.contains(search,regex=False)]
     if people.empty:
-        st.info('검색 조건에 해당하는 장병이 없습니다.');st.stop()
+        st.info('선택한 지역·부대·검색 조건에 해당하는 장병이 없습니다.');st.stop()
+    st.sidebar.caption(f'조건에 해당하는 장병 {people.SOLDIER_ID.nunique():,}명')
+    people=people.sort_values(['SOLDIER_NAME','SOLDIER_ID'])
     labels=people.set_index('SOLDIER_ID')
     soldier=st.sidebar.selectbox('장병 선택',people.SOLDIER_ID.tolist(),
         format_func=lambda value:f'{labels.loc[value,"SOLDIER_NAME"]} · {labels.loc[value,"RANK_NAME"]} · {value}')

@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from data.scripts.analysis.analysis2.fitness_overview import judge_measurements, summarize
 from data.scripts.paths import PROCESSED_FITNESS_OVERVIEW_DIR
 from data.scripts.utils import require_columns
 
@@ -28,3 +29,40 @@ def load_overview() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     files = ['round_summary.csv','event_summary.csv','metadata.json']
     versions = tuple((PROCESSED_FITNESS_OVERVIEW_DIR / name).stat().st_mtime_ns for name in files)
     return _read_tables(str(PROCESSED_FITNESS_OVERVIEW_DIR), versions)
+
+
+def summarize_by_group(
+    measurements: pd.DataFrame,
+    group_column: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """전체 체력 측정치를 지역 또는 부대별·회차별로 집계합니다."""
+    if group_column not in {"REGION_NAME", "UNIT_NAME"}:
+        raise ValueError(f"지원하지 않는 조직 구분입니다: {group_column}")
+    required = {"SOLDIER_ID", "MESURE_ID", "MESURE_DE", "AGE", group_column}
+    missing = sorted(required - set(measurements.columns))
+    if missing:
+        raise ValueError(f"조직별 체력 집계에 필요한 컬럼이 없습니다: {', '.join(missing)}")
+    if measurements.empty:
+        raise ValueError("조직별 체력 집계에 사용할 측정 자료가 없습니다.")
+
+    source = measurements.copy()
+    source["MESURE_DE"] = pd.to_datetime(source["MESURE_DE"]).dt.strftime("%Y%m%d")
+    judged = judge_measurements(source)
+    personnel = measurements[["SOLDIER_ID", group_column]].drop_duplicates("SOLDIER_ID")
+    round_tables = []
+    event_tables = []
+
+    for group_name, group_people in personnel.groupby(group_column, dropna=False, sort=True):
+        soldier_ids = set(group_people["SOLDIER_ID"])
+        group_measurements = judged.loc[judged["SOLDIER_ID"].isin(soldier_ids)]
+        group_rounds, group_events = summarize(
+            group_measurements,
+            group_people[["SOLDIER_ID"]],
+        )
+        label = "미지정" if pd.isna(group_name) else str(group_name)
+        group_rounds.insert(0, "그룹", label)
+        group_events.insert(0, "그룹", label)
+        round_tables.append(group_rounds)
+        event_tables.append(group_events)
+
+    return pd.concat(round_tables, ignore_index=True), pd.concat(event_tables, ignore_index=True)

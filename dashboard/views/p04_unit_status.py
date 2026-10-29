@@ -86,8 +86,11 @@ def show_bmi_soldiers_panel(group_name: str, category: str, soldiers: pd.DataFra
             if rows and 0 <= rows[0] < len(soldiers):
                 st.divider()
                 soldier = soldiers.iloc[rows[0]]
-                render_soldier_details(soldier)
-                render_soldier_fitness_type(soldier)
+                details_column, fitness_type_column = st.columns([1.15, 1], gap="medium")
+                with details_column:
+                    render_soldier_details(soldier)
+                with fitness_type_column:
+                    render_soldier_fitness_type(soldier)
         if st.button("닫기", width="stretch", type="primary"):
             st.session_state["bmi_chart_selected_category"] = None
             st.session_state["bmi_chart_dismissed_selection_key"] = st.session_state.get("bmi_chart_selection_key")
@@ -142,8 +145,8 @@ def render_soldier_fitness_type(soldier: pd.Series) -> None:
     radar.update_layout(
         polar={"radialaxis": {"visible": True, "range": [0, 100], "dtick": 20},
                "angularaxis": {"direction": "clockwise"}, "gridshape": "linear"},
-        height=380, margin={"t": 35, "b": 45, "l": 65, "r": 65},
-        legend={"orientation": "h", "y": -0.12, "x": 0.5, "xanchor": "center"},
+        height=310, margin={"t": 20, "b": 35, "l": 35, "r": 35},
+        legend={"orientation": "h", "y": -0.08, "x": 0.5, "xanchor": "center", "font": {"size": 10}},
     )
     st.plotly_chart(radar, width="stretch", key=f"unit_soldier_fitness_type_{soldier['MESURE_ID']}",
                     config={"displayModeBar": False})

@@ -7,6 +7,7 @@ import plotly.express as px
 import streamlit as st
 
 from dashboard.common.charts import CHART_PALETTE, GRADE_COLORS, apply_chart_layout, show_plotly
+from dashboard.common.formatting import filter_signature
 from dashboard.main_data import load_main_data
 from dashboard.py.fitness_overview_data import load_overview, summarize_by_group
 
@@ -96,6 +97,7 @@ def render() -> None:
         st.stop()
     st.sidebar.header('조회 범위')
     level = st.sidebar.radio('분석 기준', ['전체', '지역별', '부대별'], horizontal=True)
+    group_label = '지역' if level == '지역별' else '부대' if level == '부대별' else '구분'
     comparison_rounds = pd.DataFrame()
     comparison_events = pd.DataFrame()
     if level != '전체':
@@ -109,7 +111,6 @@ def render() -> None:
         all_comparison_rounds = comparison_rounds
         all_comparison_events = comparison_events
         groups = sorted(comparison_rounds['그룹'].unique().tolist())
-        group_label = '지역' if level == '지역별' else '부대'
         selected_group = st.sidebar.selectbox(
             f'{group_label} 선택',
             ['전체 비교', *groups],
@@ -165,40 +166,54 @@ def render() -> None:
         apply_chart_layout(chart)
         show_plotly(chart)
     if level != '전체':
-        compare = all_comparison_rounds.loc[all_comparison_rounds['회차'].eq(number)].sort_values(
-            '그룹', kind='stable'
-        )
+        compare = all_comparison_rounds.loc[all_comparison_rounds['회차'].eq(number)].copy()
+        compare = compare.sort_values('미달률', ascending=False, na_position='last', kind='stable')
         compare_events = all_comparison_events.loc[all_comparison_events['회차'].eq(number)]
-        left, right = st.columns(2)
-        with left, st.container(border=True):
-            st.subheader(f'{group_label}별 전체 미달률 비교')
-            chart = px.bar(
-                compare,
-                x='그룹',
-                y='미달률',
-                text='미달률',
-                hover_data=['미달인원', '판정가능인원', '측정인원'],
-                color_discrete_sequence=[CHART_PALETTE[2]],
+        st.subheader(f'{group_label}별 미달률 비교')
+        st.caption('전체 미달률과 4개 종목별 미달률을 함께 표시합니다. 전체 미달률이 높은 순서로 5개씩 볼 수 있습니다.')
+        group_names = compare['그룹'].tolist()
+        page_size = 5
+        page_count = max(1, (len(group_names) + page_size - 1) // page_size)
+        page_key = f"fitness_comparison_page_{filter_signature(level, selected_group, number, tuple(group_names))}"
+        page = min(max(int(st.session_state.get(page_key, 0)), 0), page_count - 1)
+        previous_col, page_col, next_col = st.columns([1, 2, 1])
+        if previous_col.button('← 이전', disabled=page == 0, key=f'{page_key}_previous'):
+            page -= 1
+            st.session_state[page_key] = page
+        page_col.markdown(f'<div style="text-align:center;padding:.45rem">{page + 1} / {page_count}</div>',
+                          unsafe_allow_html=True)
+        if next_col.button('다음 →', disabled=page >= page_count - 1, key=f'{page_key}_next'):
+            page += 1
+            st.session_state[page_key] = page
+
+        start = page * page_size
+        visible_groups = group_names[start:start + page_size]
+        visible_overall = compare.loc[compare['그룹'].isin(visible_groups), ['그룹', '미달률']].copy()
+        visible_overall['비교 항목'] = '전체'
+        visible_events = compare_events.loc[compare_events['그룹'].isin(visible_groups),
+                                            ['그룹', '종목', '미달률']].rename(columns={'종목': '비교 항목'})
+        chart_data = pd.concat([visible_overall, visible_events], ignore_index=True)
+        chart = px.bar(
+            chart_data, x='그룹', y='미달률', color='비교 항목', barmode='group',
+            category_orders={'그룹': visible_groups, '비교 항목': ['전체', *EVENT_ORDER]},
+            color_discrete_sequence=list(CHART_PALETTE),
+            hover_data={'미달률': ':.1f'},
+        )
+        average_rate = compare['미달률'].mean()
+        if pd.notna(average_rate):
+            chart.add_hline(y=average_rate, line_color='#F59E0B', line_dash='dot', line_width=2)
+            chart.add_annotation(
+                x=1, y=average_rate, xref='paper', yref='y',
+                text=f'전체 평균 {average_rate:.1f}%', showarrow=False,
+                xanchor='right', yanchor='bottom', font={'color': '#F59E0B', 'size': 11},
             )
-            chart.update_traces(texttemplate='%{text:.1f}%')
-            chart.update_layout(yaxis_title='미달률 (%)', yaxis_range=[0, 100])
-            apply_chart_layout(chart)
-            show_plotly(chart)
-        with right, st.container(border=True):
-            st.subheader(f'{group_label}별 종목 미달률 비교')
-            chart = px.bar(
-                compare_events,
-                x='그룹',
-                y='미달률',
-                color='종목',
-                barmode='group',
-                category_orders={'종목': EVENT_ORDER},
-                color_discrete_sequence=list(CHART_PALETTE),
-                hover_data=['미달인원', '판정가능인원'],
-            )
-            chart.update_layout(yaxis_title='미달률 (%)', yaxis_range=[0, 100])
-            apply_chart_layout(chart)
-            show_plotly(chart)
+        chart.update_layout(
+            xaxis_title=group_label, yaxis_title='미달률 (%)', yaxis_range=[0, 100],
+            xaxis={'tickangle': -25, 'automargin': True},
+            legend={'orientation': 'h', 'y': 1.12, 'x': 0},
+        )
+        apply_chart_layout(chart, height=430, margin={'l': 55, 'r': 24, 't': 70, 'b': 90})
+        show_plotly(chart)
         st.dataframe(
             compare.rename(columns={'그룹': group_label}),
             hide_index=True,
@@ -226,16 +241,63 @@ def render() -> None:
         apply_chart_layout(chart)
         show_plotly(chart)
     with tab2:
-        if level != '전체' and selected_group == '전체 비교':
-            trend=all_comparison_events
-            chart=px.line(trend,x='회차',y='미달률',color='그룹',facet_col='종목',markers=True,
-                          category_orders={'종목':EVENT_ORDER},hover_data=['미달인원','판정가능인원'])
-        else:
-            chart=px.line(scoped_events,x='회차',y='미달률',color='종목',markers=True,
-                          category_orders={'종목':EVENT_ORDER},hover_data=['미달인원','판정가능인원'])
-        chart.update_layout(yaxis_title='미달률 (%)',yaxis_range=[0,100],xaxis_dtick=1)
-        apply_chart_layout(chart)
-        show_plotly(chart)
+        compare_groups = level != '전체' and selected_group == '전체 비교'
+        trend = all_comparison_events.copy() if compare_groups else scoped_events.copy()
+        if compare_groups:
+            available_groups = sorted(trend['그룹'].dropna().unique().tolist())
+            latest_round = all_comparison_rounds['회차'].max()
+            defaults = (
+                all_comparison_rounds.loc[all_comparison_rounds['회차'].eq(latest_round)]
+                .sort_values('미달률', ascending=False, na_position='last')['그룹']
+                .head(min(5, len(available_groups))).tolist()
+            )
+            selected_groups = st.sidebar.multiselect(
+                f'{group_label} 선택 · 미달률 추이',
+                options=available_groups,
+                default=defaults,
+                key=f'fitness_trend_groups_{filter_signature(level, selected_group)}',
+                help='기본값은 최신 회차의 전체 미달률 상위 5개입니다. 여러 그룹을 선택해 비교할 수 있습니다.',
+            )
+            trend = trend.loc[trend['그룹'].isin(selected_groups)]
+            st.caption(f'선택한 {group_label} {len(selected_groups)}개 · 범례를 클릭하면 선을 숨기거나 다시 표시할 수 있습니다.')
+
+        event_tabs = st.tabs(EVENT_ORDER)
+        for event, event_tab in zip(EVENT_ORDER, event_tabs):
+            with event_tab:
+                event_trend = trend.loc[trend['종목'].eq(event)]
+                if compare_groups and not selected_groups:
+                    st.info(f'추이를 볼 {group_label}을 선택하세요.')
+                    continue
+                if event_trend.empty:
+                    st.info('선택한 조건에 표시할 미달률 자료가 없습니다.')
+                    continue
+                if compare_groups:
+                    chart = px.line(
+                        event_trend, x='회차', y='미달률', color='그룹', line_group='그룹',
+                        markers=True,
+                        labels={'그룹': group_label, '회차': '회차', '미달률': '미달률 (%)',
+                                '미달인원': '미달 인원', '판정가능인원': '판정 가능 인원'},
+                        hover_data={'그룹': True, '회차': True, '미달률': ':.1f',
+                                    '미달인원': ':,d', '판정가능인원': ':,d'},
+                    )
+                    chart.update_traces(line={'width': 2}, marker={'size': 7})
+                else:
+                    chart = px.line(
+                        event_trend, x='회차', y='미달률', markers=True,
+                        labels={'회차': '회차', '미달률': '미달률 (%)',
+                                '미달인원': '미달 인원', '판정가능인원': '판정 가능 인원'},
+                        hover_data={'회차': True, '미달률': ':.1f',
+                                    '미달인원': ':,d', '판정가능인원': ':,d'},
+                    )
+                    chart.update_traces(line={'width': 3}, marker={'size': 8})
+                chart.update_layout(
+                    title=f'{event} 미달률 추이',
+                    xaxis_title='측정 회차', yaxis_title='미달률 (%)',
+                    yaxis_range=[0, 100], xaxis_dtick=1, hovermode='closest',
+                    legend={'title': group_label, 'itemclick': 'toggle', 'itemdoubleclick': 'toggleothers'},
+                )
+                apply_chart_layout(chart, height=430, margin={'l': 55, 'r': 24, 't': 55, 'b': 45})
+                show_plotly(chart)
     st.caption('회차는 개인별 날짜순 측정 순서입니다. 같은 달력 기간을 뜻하지 않으며, 회차별 측정·판정 가능 인원을 함께 확인하세요.')
     with st.expander('집계표 및 CSV 다운로드'):
         st.dataframe(scope,hide_index=True,width='stretch')

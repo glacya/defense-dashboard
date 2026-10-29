@@ -22,15 +22,25 @@ KINDS=['exercise_plans','exercise_participation','followup_records']
 
 
 def _select_grade(label: str) -> None:
-    """같은 카드를 다시 클릭하면 전체 조회로 돌아갑니다."""
-    st.session_state['followup_selected_grade'] = (
-        None if st.session_state.get('followup_selected_grade') == label else label
-    )
+    """클릭한 등급만 선택·해제하고 다른 등급의 선택은 유지합니다."""
+    selected=set(st.session_state.get('followup_selected_grades', []))
+    selected.symmetric_difference_update([label])
+    st.session_state['followup_selected_grades']=[grade for grade in RISK_LEVELS if grade in selected]
 
 
 def _clear_fitness_types() -> None:
     """운동유형 필터를 해제합니다."""
     st.session_state['followup_fitness_types']=[]
+
+
+def _toggle_fitness_type(type_key: str) -> None:
+    """유형 버튼을 누를 때 해당 유형만 선택하거나 해제합니다."""
+    selected=list(st.session_state.get('followup_fitness_types', []))
+    if type_key in selected:
+        selected.remove(type_key)
+    else:
+        selected.append(type_key)
+    st.session_state['followup_fitness_types']=selected
 
 
 def render() -> None:
@@ -56,8 +66,10 @@ def render() -> None:
         st.error(f'관리 자료를 읽을 수 없습니다: {error}')
         st.caption('장병 명단과 SOLDIER_FAILURE_PROBABILITY.csv를 확인하세요.')
         st.stop()
-    active_grade=st.session_state.get('followup_selected_grade')
-    chosen=[active_grade] if active_grade in RISK_LEVELS else []
+    if 'followup_selected_grades' not in st.session_state:
+        active_grade=st.session_state.pop('followup_selected_grade',None)
+        st.session_state['followup_selected_grades']=[active_grade] if active_grade in RISK_LEVELS else []
+    chosen=[grade for grade in RISK_LEVELS if grade in st.session_state['followup_selected_grades']]
     eligible=set(current_ids)
     st.subheader('등급별 대상 인원')
     st.markdown('''<style>
@@ -71,13 +83,33 @@ def render() -> None:
             font-size: 18px;
             line-height: 1.8;
         }
+        div.st-key-followup-grade-idle-0 button,
+        div.st-key-followup-grade-selected-0 button {
+            background-color: #ecfdf5; border-color: #059669; color: #065f46;
+        }
+        div.st-key-followup-grade-idle-1 button,
+        div.st-key-followup-grade-selected-1 button {
+            background-color: #fefce8; border-color: #ca8a04; color: #854d0e;
+        }
+        div.st-key-followup-grade-idle-2 button,
+        div.st-key-followup-grade-selected-2 button {
+            background-color: #fff7ed; border-color: #ea580c; color: #9a3412;
+        }
+        div.st-key-followup-grade-idle-3 button,
+        div.st-key-followup-grade-selected-3 button {
+            background-color: #fef2f2; border-color: #dc2626; color: #991b1b;
+        }
+        div[class*="st-key-followup-grade-"] button * {
+            color: inherit !important;
+        }
+        div[class*="st-key-followup-grade-"] button:hover {
+            filter: brightness(.97);
+        }
         div[class*="st-key-followup-grade-selected-"] button {
-            background-color: #173b70;
-            border: 2px solid #2563eb;
-            border-radius: 12px;
+            border-width: 3px;
+            box-shadow: 0 0 0 2px currentColor;
         }
         div[class*="st-key-followup-grade-selected-"] button * {
-            color: #ffffff !important;
             font-weight: 700 !important;
         }
     </style>''',unsafe_allow_html=True)
@@ -88,7 +120,7 @@ def render() -> None:
             st.button(f'{"✓ " if selected else ""}**{label}**  \n**{count:,}명**  \n{interval}',
                 key=f'followup-grade-{"selected" if selected else "idle"}-{RISK_LEVELS.index(label)}',
                 width='stretch',on_click=_select_grade,args=(label,))
-    st.caption('상단 카드를 클릭하면 아래 현황·명단·장병 선택이 해당 등급으로 바뀝니다. 선택한 카드를 다시 누르면 전체 등급을 표시합니다.')
+    st.caption('카드를 여러 개 선택하면 선택한 등급의 장병을 합쳐 표시합니다. 다시 누르면 해당 등급만 해제하며, 선택이 없으면 전체 등급을 표시합니다.')
     if missing or unmatched:
         st.warning(f'예측 누락 장병 {missing:,}명 · 명단에 없는 예측 {unmatched:,}명은 제외했습니다. 예측 누락을 안전으로 분류하지 않습니다.')
     if chosen:
@@ -107,20 +139,76 @@ def render() -> None:
         for field in ['MESURE_ID','MESURE_DE','AGE','BMI',*EVENTS]:
             people[field]=pd.NA
     st.subheader('운동유형 (16)')
-    st.caption('장병별 최신 측정의 백분위 4등급 × 군집 4개입니다. 선택창에서 여러 유형을 함께 고를 수 있습니다. 인원은 위에서 선택한 확률 등급 기준입니다.')
+    st.caption('장병별 최신 측정의 백분위 4등급 × 군집 4개입니다. 등급별 유형 버튼을 여러 개 선택할 수 있습니다. 인원은 위에서 선택한 확률 등급 기준입니다.')
     try:
         people,type_catalog=load_fitness_types(people)
     except (OSError,ValueError,KeyError) as error:
         st.error(f'운동유형 자료를 연결할 수 없습니다: {error}')
         st.stop()
     counts=people.groupby('FITNESS_TYPE_KEY').SOLDIER_ID.nunique()
-    type_labels={item.FITNESS_TYPE_KEY:
-                 f'백분위 {int(item.AVERAGE_PERCENTILE_GRADE)}등급 · {item.TYPE_NAME} · {int(counts.get(item.FITNESS_TYPE_KEY,0)):,}명'
-                 for _,item in type_catalog.iterrows()}
-    selected_types=st.multiselect('운동유형 선택 (복수 선택 가능)',
-        options=type_catalog.FITNESS_TYPE_KEY.tolist(),format_func=type_labels.get,
-        key='followup_fitness_types',placeholder='운동유형을 선택하세요 · 미선택 시 전체',
-        help='여러 유형을 선택하면 선택한 유형 중 하나에 해당하는 장병을 모두 조회합니다.')
+    selected_types=[key for key in st.session_state.get('followup_fitness_types', [])
+                    if key in set(type_catalog.FITNESS_TYPE_KEY) and counts.get(key,0)>0]
+    st.session_state['followup_fitness_types']=selected_types
+    st.markdown('''<style>
+        div[class*="st-key-followup-type-box-"] {
+            border-radius: 20px !important;
+            padding: 12px !important;
+            gap: 8px !important;
+        }
+        div[class*="st-key-followup-type-box-"] [data-testid="stVerticalBlock"] {
+            gap: 8px;
+        }
+        div[class*="st-key-followup-type-"] button {
+            border-radius: 18px !important;
+            min-height: 32px;
+            padding: 4px 10px;
+        }
+        div[class*="st-key-followup-type-"] button p {
+            font-size: 13px;
+            line-height: 1.3;
+        }
+        div[class*="st-key-followup-type-"] button small {
+            font-size: 11px !important;
+            color: #2563eb !important;
+        }
+        div[class*="st-key-followup-type-"] button[kind="primary"] small {
+            color: #ffffff !important;
+        }
+        div[class*="st-key-followup-type-"] button:disabled {
+            background-color: #e5e7eb !important;
+            border-color: #d1d5db !important;
+            color: #6b7280 !important;
+            opacity: 1 !important;
+            cursor: not-allowed;
+        }
+        div[class*="st-key-followup-type-"] button:disabled * {
+            color: #6b7280 !important;
+        }
+        div[class*="st-key-followup-type-"] button:disabled small {
+            color: #6b7280 !important;
+        }
+        div[class*="st-key-followup-type-box-"] h4 {
+            font-size: 17px;
+            padding: 0 0 6px;
+        }
+    </style>''',unsafe_allow_html=True)
+    type_columns=st.columns(4)
+    for grade,column in zip((1,2,3,4),type_columns):
+        with column,st.container(border=True,key=f'followup-type-box-{grade}',gap='small'):
+            st.markdown(f'#### {grade}등급')
+            grade_types=type_catalog.loc[type_catalog.AVERAGE_PERCENTILE_GRADE.eq(grade)].sort_values('CLUSTER')
+            for offset in range(0,len(grade_types),2):
+                for button_column,(_,item) in zip(st.columns(2),grade_types.iloc[offset:offset+2].iterrows()):
+                    key=item.FITNESS_TYPE_KEY
+                    selected=key in selected_types
+                    type_name=str(item.TYPE_NAME).split(':',1)[-1].strip()
+                    count=int(counts.get(key,0))
+                    count_color='gray' if count==0 else 'orange' if selected else 'blue'
+                    button_column.button(f'{"✓ " if selected else ""}{type_name} · :{count_color}[:small[{count:,}명]]',
+                              key=f'followup-type-{key}',
+                              type='primary' if selected else 'secondary',
+                              width='stretch',disabled=count==0,
+                              on_click=_toggle_fitness_type,args=(key,))
     st.button('운동유형 전체 보기',key='followup-types-clear',on_click=_clear_fitness_types)
     unclassified=int(people.FITNESS_TYPE_KEY.isna().sum())
     st.caption(f'선택 유형 {len(selected_types)}개 · 미선택 시 전체 유형 조회 · 최신 측정 분류 없음 {unclassified:,}명. 분류 없는 장병은 전체 조회에만 포함됩니다.')

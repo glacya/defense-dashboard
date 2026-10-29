@@ -125,11 +125,16 @@ def _injury_completion_rate(records: pd.DataFrame, injury_ids: set[str], denomin
     return f"{completed / denominator * 100:.1f}%"
 
 
-def _non_safe_count(soldier_ids: set[str]) -> int:
-    """다음 체력검정 미달 확률이 안전(30% 미만)이 아닌 장병 수를 계산합니다."""
+def _non_safe_ids(soldier_ids: set[str]) -> set[str]:
+    """현재 조회 장병 중 미달 확률 경계1~3등급에 해당하는 식별자를 반환합니다."""
     probabilities = load_probabilities()
     scoped = probabilities.loc[probabilities["SOLDIER_ID"].isin(soldier_ids)]
-    return int(scoped.loc[scoped["RISK_LEVEL"].ne("안전"), "SOLDIER_ID"].nunique())
+    return set(scoped.loc[scoped["RISK_LEVEL"].isin(['경계1등급', '경계2등급', '경계3등급']), "SOLDIER_ID"])
+
+
+def _non_safe_count(soldier_ids: set[str]) -> int:
+    """현재 조회 장병 중 안전을 제외한 경계1~3등급 인원을 계산합니다."""
+    return len(_non_safe_ids(soldier_ids))
 
 
 def _render_kpis(total: int, managed: int, latest: pd.DataFrame, injuries: pd.DataFrame) -> None:
@@ -138,14 +143,19 @@ def _render_kpis(total: int, managed: int, latest: pd.DataFrame, injuries: pd.Da
     followups = load_records("followup_records")
     injury_followups = load_records("injury_followup")
     try:
-        non_safe = _non_safe_count(ids)
+        non_safe_ids = _non_safe_ids(ids)
+        non_safe = len(non_safe_ids)
+        fitness_completion = _completion_rate(followups, non_safe_ids, non_safe)
+        fitness_detail = f'경계1~3등급 {non_safe:,}명 기준 · 안전 제외'
         risk_value = f"{non_safe / max(total, 1) * 100:.1f}%"
         risk_detail = f"{non_safe:,}명 · 안전 제외"
     except (OSError, ValueError, KeyError, UnicodeDecodeError, pd.errors.ParserError):
         risk_value = "기록 없음"
         risk_detail = "미달 확률 자료 확인 필요"
+        fitness_completion = "기록 없음"
+        fitness_detail = "미달 확률 자료 확인 필요"
     values = [
-        ("체력 후속조치 완료율", _completion_rate(followups, ids, managed), "관리 대상 기준"),
+        ("체력 후속조치 완료율", fitness_completion, fitness_detail),
         ("부상 후속조치 완료율", _injury_completion_rate(injury_followups, set(scoped_injuries["INJURY_ID"]), len(scoped_injuries)), "부상 건수 기준"),
         ("체력관리 위험인원 비율", risk_value, risk_detail),
     ]

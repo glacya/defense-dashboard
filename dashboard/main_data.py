@@ -7,6 +7,7 @@ import streamlit as st
 
 from dashboard.common.formatting import classify_bmi
 from config import PROCESSED_DIR, SYNTHETIC_DIR
+from data.scripts.fitness_standards import GRADE_CUTS
 
 PERSONNEL_PATH = SYNTHETIC_DIR / "SOLDIER_PERSONNEL.csv"
 FITNESS_PATH = PROCESSED_DIR / "KS_NFA_PROCESSED.csv"
@@ -18,6 +19,21 @@ FITNESS_COLUMNS = {
     "MESURE_DE", "STRENGTH", "ENDURANCE", "CARDIO", "FLEXIBILITY",
 }
 INJURY_COLUMNS = {"INJURY_ID", "SOLDIER_ID", "INJURY_CATEGORY", "INJURY_LOCATION", "PREVENTABILITY", "SEVERITY"}
+FITNESS_ITEM_COLUMNS = ("STRENGTH", "ENDURANCE", "CARDIO", "FLEXIBILITY")
+
+
+def add_fitness_deficiency_flags(data: pd.DataFrame) -> pd.DataFrame:
+    """4개 체력 종목 중 2개 이상이 3등급 기준 미만인지 판정합니다."""
+    result = data.copy()
+    deficiency_columns = []
+    for column in FITNESS_ITEM_COLUMNS:
+        flag_column = f"미달_{column}"
+        result[flag_column] = pd.to_numeric(result[column], errors="coerce").lt(
+            GRADE_CUTS[column][3]
+        )
+        deficiency_columns.append(flag_column)
+    result["체력미달"] = result[deficiency_columns].sum(axis=1).ge(2)
+    return result
 
 
 @st.cache_data(show_spinner=False)
@@ -55,7 +71,10 @@ def _load_measurements(
     if fitness["MESURE_DE"].isna().any():
         raise ValueError("측정 데이터에 형식이 잘못된 측정일(MESURE_DE)이 있습니다.")
 
-    numeric_columns = ["AGE", "HEIGHT", "WEIGHT", "BMI", "BODY_FAT_PERCENTAGE"]
+    numeric_columns = [
+        "AGE", "HEIGHT", "WEIGHT", "BMI", "BODY_FAT_PERCENTAGE",
+        *FITNESS_ITEM_COLUMNS,
+    ]
     for column in numeric_columns:
         fitness[column] = pd.to_numeric(fitness[column], errors="coerce")
     invalid = fitness[numeric_columns].isna().any(axis=1)
@@ -70,6 +89,7 @@ def _load_measurements(
 
     merged = fitness.merge(personnel, on="SOLDIER_ID", how="left", validate="many_to_one")
     merged["BMI구간"] = classify_bmi(merged["BMI"])
+    merged = add_fitness_deficiency_flags(merged)
     return merged.sort_values(["MESURE_DE", "MESURE_ID"], kind="stable").reset_index(drop=True)
 
 

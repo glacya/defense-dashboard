@@ -74,13 +74,19 @@ def render_home_overview(filters, measurements: pd.DataFrame) -> None:
     )
     round_deficiency = (
         add_deficiency_flags(scoped_history).groupby("측정회차", as_index=False)
-        .agg(미달인원=("체력미달", "sum"), 관리대상=("관리대상", "sum"))
+        .agg(
+            미달인원=("체력미달", "sum"),
+            판정가능인원=("체력판정가능", "sum"),
+            관리대상=("관리대상", "sum"),
+        )
     )
     round_summary = round_summary.merge(round_deficiency, on="측정회차", how="left")
     recent = set(round_summary["측정회차"].sort_values().tail(3))
     round_summary = round_summary.loc[round_summary["측정회차"].isin(recent)].copy()
     round_summary["회차"] = round_summary["측정회차"].astype(int).map(lambda v: f"{v}회차")
-    round_summary["미달비율"] = round_summary["미달인원"] / round_summary["측정인원"].clip(lower=1) * 100
+    round_summary["미달비율"] = (
+        round_summary["미달인원"] / round_summary["판정가능인원"].clip(lower=1) * 100
+    )
 
     chart_columns = st.columns([1.15, 0.85])
     with chart_columns[0]:

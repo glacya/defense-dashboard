@@ -75,7 +75,7 @@ def summarize(data: pd.DataFrame, personnel: pd.DataFrame) -> tuple[pd.DataFrame
     totals, events = [], []
     for number, current in data.groupby('ROUND', sort=True):
         valid = current.loc[current.EVALUATED_COUNT.eq(4)]
-        failed = int(valid.FAIL_COUNT.ge(1).sum())
+        failed = int(valid.FAIL_COUNT.ge(2).sum())
         totals.append({'회차': int(number), '전체장병수': ids.nunique(),
             '측정인원': len(current), '판정가능인원': len(valid),
             '판정불완전인원': len(current)-len(valid), '미달인원': failed,

@@ -41,7 +41,7 @@ def render() -> None:
         ('집중관리 대상',f'{int(row["관리대상인원"]):,}명')]
     for column,(label,value) in zip(st.columns(5), metrics):
         column.metric(label,value,border=True)
-    st.caption(f'4종목 판정 가능 {int(row["판정가능인원"]):,}명 · 판정 불완전 {int(row["판정불완전인원"]):,}명. 전체 미달률은 4종목 모두 판정 가능한 인원 중 1종목 이상 미달 비율입니다.')
+    st.caption(f'4종목 판정 가능 {int(row["판정가능인원"]):,}명 · 판정 불완전 {int(row["판정불완전인원"]):,}명. 전체 미달률은 4종목 모두 판정 가능한 인원 중 2종목 이상 미달 비율입니다.')
     if row['측정인원']==0:
         st.info('선택한 조건에서 측정한 장병이 없습니다.')
     left,right=st.columns(2)

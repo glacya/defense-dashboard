@@ -68,8 +68,11 @@ def add_deficiency_flags(data: pd.DataFrame) -> pd.DataFrame:
         upper_failed = values.gt(upper) if upper_inclusive else values.ge(upper)
         result[f"미달_{column}"] = lower_failed | upper_failed
     fitness_flags = [f"미달_{column}" for column in FITNESS_ITEM_LABELS]
+    fitness_values = result[list(FITNESS_ITEM_LABELS)].apply(pd.to_numeric, errors="coerce")
+    result["체력판정가능"] = fitness_values.notna().all(axis=1)
     management_flags = fitness_flags + ["미달_BMI", "미달_BODY_FAT_PERCENTAGE"]
-    result["체력미달"] = result[fitness_flags].any(axis=1)
+    # 체력 미달은 4개 종목 중 2개 이상이 기준 미만인 경우로 판정합니다.
+    result["체력미달"] = result["체력판정가능"] & result[fitness_flags].sum(axis=1).ge(2)
     result["관리대상"] = result[management_flags].any(axis=1)
     return result
 

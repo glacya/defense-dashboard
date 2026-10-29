@@ -1,6 +1,93 @@
 /* ==========================================
    1. 색상 변수 (라이트 테마 / 팔레트 기준)
    ========================================== */
+
+/* ==========================================
+   10. 홈 대시보드 준비태세 배너
+   기존 밝은 팔레트 위에서 사용할 수 있는 다크 배너
+   ========================================== */
+.home-readiness-banner {
+    display: flex;
+    align-items: stretch;
+    gap: 1rem;
+    min-height: 142px;
+    margin: 0.8rem 0 1.25rem;
+    padding: 1rem;
+    overflow: hidden;
+    border: 1px solid #304962;
+    border-radius: 0.8rem;
+    background:
+        radial-gradient(circle at 18% 35%, rgba(70, 102, 132, 0.45), transparent 30%),
+        linear-gradient(115deg, #172d45 0%, #243c55 45%, #526372 100%);
+    box-shadow: 0 10px 28px rgba(24, 43, 64, 0.16);
+}
+.home-readiness-banner__copy {
+    display: flex;
+    flex: 0 0 30%;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.8rem 1rem;
+    color: #ffffff;
+}
+.home-readiness-banner__eyebrow {
+    color: #b7c8d9;
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+}
+.home-readiness-banner__title {
+    margin-top: 0.35rem;
+    font-size: 1.35rem;
+    font-weight: 800;
+    line-height: 1.25;
+}
+.home-readiness-banner__description {
+    margin-top: 0.45rem;
+    color: #d8e3ed;
+    font-size: 0.78rem;
+}
+.home-readiness-banner__cards {
+    display: grid;
+    flex: 1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: center;
+    gap: 0.7rem;
+}
+.home-readiness-card {
+    min-height: 104px;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-top: 5px solid var(--card-accent);
+    border-radius: 0.55rem;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 5px 14px rgba(0, 0, 0, 0.16);
+}
+.home-readiness-card__label {
+    color: #42556b;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+.home-readiness-card__value {
+    margin-top: 0.35rem;
+    color: var(--card-accent);
+    font-size: 1.55rem;
+    font-weight: 800;
+    line-height: 1.1;
+}
+.home-readiness-card__detail {
+    margin-top: 0.45rem;
+    color: #718196;
+    font-size: 0.7rem;
+}
+@media (max-width: 900px) {
+    .home-readiness-banner {
+        flex-direction: column;
+    }
+    .home-readiness-banner__copy {
+        flex-basis: auto;
+        min-height: 80px;
+    }
+}
 :root {
     color-scheme: light;
 

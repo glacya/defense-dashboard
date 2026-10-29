@@ -85,7 +85,6 @@ def render_filters(
         ranks = [rank for rank in RANK_ORDER if rank in population["RANK_NAME"].unique()]
         age_range = (int(population["AGE"].min()), int(population["AGE"].max()))
         scoped = population.copy()
-        st.caption(f"전체 측정 기록 기준 · 장병별 최신 측정 · 현재 조건 {len(scoped):,}명")
         return FilterResult(
             date_start=date_start,
             date_end=date_end,

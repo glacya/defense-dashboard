@@ -11,12 +11,12 @@ import streamlit as st
 
 from dashboard.common.charts import CHART_CONTINUOUS_SCALE, CHART_PALETTE, show_plotly
 from dashboard.common.filters import render_filters
-from dashboard.common.formatting import FITNESS_ITEM_LABELS, GRADE_LABELS, NAV_STATE_KEY, add_deficiency_flags
+from dashboard.common.formatting import FITNESS_ITEM_LABELS, GRADE_LABELS, add_deficiency_flags
 from dashboard.common.widgets import PieChartWidget, RadarChartWidget
 from dashboard.main_data import load_main_data
+from dashboard.py.followup_probability import load_probabilities
 from dashboard.py.management_store import load_records
 
-HOME_TITLE = "대시보드 홈"
 PALETTE = list(CHART_PALETTE)
 REGION_GEOJSON_PATH = Path(__file__).resolve().parents[1] / "assets" / "geojson" / "korea_provinces.geojson"
 # 지도는 9개 도 단위로 그립니다. 특별시·광역시·특별자치시는 둘러싼 도에 편입합니다.
@@ -103,18 +103,6 @@ def _region_geojson() -> dict:
         return json.load(file)
 
 
-def _render_page_links() -> None:
-    links = [item for item in st.session_state.get(NAV_STATE_KEY, []) if item[0] != HOME_TITLE]
-    if not links:
-        return
-    with st.container(border=True):
-        st.markdown("**바로가기**")
-        for start in range(0, len(links), 4):
-            for column, (title, icon, page) in zip(st.columns(4), links[start:start + 4]):
-                with column:
-                    st.page_link(page, label=title, icon=icon)
-
-
 def _completion_rate(records: pd.DataFrame, ids: set[str], denominator: int) -> str:
     if denominator == 0 or records.empty:
         return "기록 없음"
@@ -131,21 +119,52 @@ def _injury_completion_rate(records: pd.DataFrame, injury_ids: set[str], denomin
     return f"{completed / denominator * 100:.1f}%"
 
 
+def _non_safe_count(soldier_ids: set[str]) -> int:
+    """다음 체력검정 미달 확률이 안전(30% 미만)이 아닌 장병 수를 계산합니다."""
+    probabilities = load_probabilities()
+    scoped = probabilities.loc[probabilities["SOLDIER_ID"].isin(soldier_ids)]
+    return int(scoped.loc[scoped["RISK_LEVEL"].ne("안전"), "SOLDIER_ID"].nunique())
+
+
 def _render_kpis(total: int, managed: int, latest: pd.DataFrame, injuries: pd.DataFrame) -> None:
     ids = set(latest["SOLDIER_ID"])
     scoped_injuries = injuries.loc[injuries["SOLDIER_ID"].isin(ids)]
     followups = load_records("followup_records")
     injury_followups = load_records("injury_followup")
+    try:
+        non_safe = _non_safe_count(ids)
+        risk_value = f"{non_safe / max(total, 1) * 100:.1f}%"
+        risk_detail = f"{non_safe:,}명 · 안전 제외"
+    except (OSError, ValueError, KeyError, UnicodeDecodeError, pd.errors.ParserError):
+        risk_value = "기록 없음"
+        risk_detail = "미달 확률 자료 확인 필요"
     values = [
         ("체력 후속조치 완료율", _completion_rate(followups, ids, managed), "관리 대상 기준"),
         ("부상 후속조치 완료율", _injury_completion_rate(injury_followups, set(scoped_injuries["INJURY_ID"]), len(scoped_injuries)), "부상 건수 기준"),
-        ("체력관리 위험인원 비율", f"{managed / max(total, 1) * 100:.1f}%", f"{managed:,}명"),
+        ("체력관리 위험인원 비율", risk_value, risk_detail),
     ]
-    for column, (label, value, detail) in zip(st.columns(3), values):
-        with column:
-            with st.container(border=True):
-                st.metric(label, value)
-                st.caption(detail)
+    cards = []
+    card_colors = ["#F15B70", "#16C79A", "#2589FF"]
+    for (label, value, detail), color in zip(values, card_colors):
+        cards.append(
+            f"<article class='home-readiness-card' style='--card-accent:{color}'>"
+            f"<div class='home-readiness-card__label'>{html.escape(label)}</div>"
+            f"<div class='home-readiness-card__value'>{html.escape(value)}</div>"
+            f"<div class='home-readiness-card__detail'>{html.escape(detail)}</div>"
+            "</article>"
+        )
+    st.markdown(
+        "<section class='home-readiness-banner'>"
+        "<div class='home-readiness-banner__copy'>"
+        "<div class='home-readiness-banner__eyebrow'>DEFENSE READINESS</div>"
+        "<div class='home-readiness-banner__title'>전투준비태세 종합 현황</div>"
+        "<div class='home-readiness-banner__description'>준비된 오늘, 더 안전한 내일입니다.</div>"
+        "</div>"
+        "<div class='home-readiness-banner__cards'>"
+        + "".join(cards)
+        + "</div></section>",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_fitness_variance(unit: pd.DataFrame) -> None:
@@ -191,7 +210,33 @@ def _render_fitness_variance(unit: pd.DataFrame) -> None:
         )
         chart.update_layout(height=470, margin=dict(t=20, b=20, l=10, r=10),
                             coloraxis_colorbar=dict(title="충족률(%)"))
-        show_plotly(chart)
+        selection = st.plotly_chart(
+            chart,
+            width="stretch",
+            key="home-region-map",
+            on_select="rerun",
+            selection_mode="points",
+            config={"displayModeBar": False},
+        )
+        points = getattr(getattr(selection, "selection", None), "points", [])
+        if points:
+            selected = points[0].get("location")
+            if selected is None:
+                customdata = points[0].get("customdata", [])
+                selected = customdata[0] if customdata else None
+            if selected in set(region["지역"]):
+                if st.session_state.get("home_selected_region") != selected:
+                    st.session_state["home_selected_region"] = selected
+                    st.session_state["home_selected_unit"] = None
+                    st.session_state["home_unit_page"] = 0
+                return selected
+        stored_region = st.session_state.get("home_selected_region")
+        if stored_region not in set(region["지역"]):
+            st.session_state["home_selected_region"] = None
+            st.session_state["home_selected_unit"] = None
+            st.session_state["home_unit_page"] = 0
+            return None
+        return stored_region
 
 
 def _pie(data: pd.DataFrame, names: str, title: str, colors=None, show_legend: bool = False) -> None:
@@ -230,16 +275,95 @@ def _pie(data: pd.DataFrame, names: str, title: str, colors=None, show_legend: b
         st.markdown("<div style='font-size:.78rem'>" + "".join(legend) + "</div>", unsafe_allow_html=True)
 
 
-def _render_people_grade(latest: pd.DataFrame) -> None:
+def _fitness_level_distribution(data: pd.DataFrame) -> pd.DataFrame:
+    """네 종목 중 가장 낮은 등급을 장병별 체력수준(1~4등급)으로 집계합니다."""
+    grade_order = ["1등급", "2등급", "3등급", "미달"]
+    grade_rank = {grade: index for index, grade in enumerate(grade_order)}
+    grade_columns = [f"등급_{column}" for column in FITNESS_ITEM_LABELS]
+    levels = data[grade_columns].apply(
+        lambda row: max(row.map(grade_rank).tolist()), axis=1
+    ).map({index: label for index, label in enumerate(["1등급", "2등급", "3등급", "4등급"])})
+    counts = levels.value_counts().reindex(["1등급", "2등급", "3등급", "4등급"], fill_value=0)
+    return counts.rename_axis("등급").reset_index(name="인원")
+
+
+def _two_or_more_deficiencies(data: pd.DataFrame) -> int:
+    deficiency_columns = [f"미달_{column}" for column in FITNESS_ITEM_LABELS]
+    return int(data[deficiency_columns].sum(axis=1).ge(2).sum())
+
+
+def _render_people_grade(
+    latest: pd.DataFrame,
+    unit: pd.DataFrame,
+    selected_region: str | None,
+) -> None:
     with st.container(border=True):
-        st.subheader("전체 장병 정보")
-        people = latest.drop_duplicates("SOLDIER_ID")
-        total = len(people)
-        st.metric("전체 장병 수", f"{total:,}명", border=True)
-        rows = [{"등급": grade, "인원": sum(
-            int((latest[f"등급_{column}"] == grade).sum()) for column in FITNESS_ITEM_LABELS
-        )} for grade in GRADE_LABELS]
-        _pie(pd.DataFrame(rows), "등급", "전체 등급 비율")
+        region_units = unit.copy()
+        region_units["지역"] = region_units["REGION_NAME"].map(_province_of)
+        visible_units = sorted(
+            region_units.loc[region_units["지역"].eq(selected_region), "UNIT_NAME"].dropna().unique()
+        ) if selected_region else []
+
+        selected_unit = st.session_state.get("home_selected_unit")
+        if selected_region and selected_unit not in visible_units:
+            selected_unit = None
+            st.session_state["home_selected_unit"] = None
+
+        if selected_region:
+            st.subheader(selected_region)
+            page_size = 4
+            page_count = max((len(visible_units) + page_size - 1) // page_size, 1)
+            page = min(max(int(st.session_state.get("home_unit_page", 0)), 0), page_count - 1)
+            st.session_state["home_unit_page"] = page
+            start = page * page_size
+            page_units = visible_units[start:start + page_size]
+            navigation = st.columns([0.25, 3.5, 0.25])
+            with navigation[0]:
+                if st.button("‹", key="home-unit-prev", disabled=page == 0):
+                    st.session_state["home_unit_page"] = page - 1
+                    st.session_state["home_selected_unit"] = None
+                    st.rerun()
+            with navigation[1]:
+                unit_columns = st.columns(max(len(page_units), 1))
+                for column, unit_name in zip(unit_columns, page_units):
+                    with column:
+                        if st.button(
+                            unit_name,
+                            key=f"home-unit-{selected_region}-{unit_name}",
+                            type="primary" if unit_name == selected_unit else "secondary",
+                            width="stretch",
+                        ):
+                            st.session_state["home_selected_unit"] = unit_name
+                            st.rerun()
+            with navigation[2]:
+                if st.button("›", key="home-unit-next", disabled=page >= page_count - 1):
+                    st.session_state["home_unit_page"] = page + 1
+                    st.session_state["home_selected_unit"] = None
+                    st.rerun()
+            st.caption(
+                f"{selected_unit or selected_region} 기준 · 부대 {start + 1}~{min(start + page_size, len(visible_units))}"
+                f" / {len(visible_units)}"
+            )
+            if selected_unit:
+                scoped = latest.loc[
+                    latest["UNIT_NAME"].eq(selected_unit)
+                    & latest["REGION_NAME"].map(_province_of).eq(selected_region)
+                ]
+            else:
+                scoped = latest.loc[latest["REGION_NAME"].map(_province_of).eq(selected_region)]
+        else:
+            st.subheader("전체 장병 정보")
+            scoped = latest
+
+        total = int(scoped["SOLDIER_ID"].nunique())
+        st.metric("대상 장병 수", f"{total:,}명", border=True)
+        grade_columns = st.columns(2)
+        with grade_columns[0]:
+            _pie(_fitness_level_distribution(scoped), "등급", "체력수준 등급 비율")
+        with grade_columns[1]:
+            under = _two_or_more_deficiencies(scoped)
+            under_ratio = pd.DataFrame({"구분": ["2개 이상 미달", "기준 충족"], "인원": [under, max(total - under, 0)]})
+            _pie(under_ratio, "구분", "2개 이상 미달 비율", colors=[CHART_PALETTE[4], CHART_PALETTE[2]], show_legend=True)
 
 
 def _render_injuries(injuries: pd.DataFrame, ids: set[str]) -> None:
@@ -294,17 +418,14 @@ def render_home_overview(filters, measurements: pd.DataFrame, injuries: pd.DataF
     _render_kpis(total, managed, latest, injuries)
     overview_columns = st.columns([2, 1])
     with overview_columns[0]:
-        _render_fitness_variance(unit)
+        selected_region = _render_fitness_variance(unit)
     with overview_columns[1]:
-        _render_people_grade(latest)
+        _render_people_grade(latest, unit, selected_region)
     _render_injuries(injuries, set(latest["SOLDIER_ID"]))
     _render_exercise_and_shortlist(latest)
 
 
 def render() -> None:
-    st.caption("장병 체력관리 / 홈")
-    st.title("대시보드 홈")
-    st.write("부대별 체력·부상 현황과 후속조치 진행 상황을 확인합니다.")
     try:
         measurements, injuries = load_main_data()
     except (FileNotFoundError, ValueError, UnicodeDecodeError, pd.errors.ParserError) as error:
@@ -312,7 +433,6 @@ def render() -> None:
         st.info("먼저 프로젝트 루트에서 데이터 파이프라인의 합성 단계를 실행해 장병 명단과 최종 측정 데이터를 생성하세요.")
         st.stop()
 
-    _render_page_links()
     filters = render_filters(measurements, prefix="home", show_bmi=False, show_date=False, show_controls=False)
     if filters.scoped.empty:
         st.info("현재 필터 조건에 해당하는 장병이 없습니다.")

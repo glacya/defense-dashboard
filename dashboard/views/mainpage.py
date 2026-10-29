@@ -1,6 +1,8 @@
 """대시보드 홈: 체력·부상·후속조치 현황을 native Streamlit으로 표시합니다."""
 
 import html
+import json
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
@@ -9,19 +11,48 @@ import streamlit as st
 
 from dashboard.common.filters import render_filters
 from dashboard.common.formatting import FITNESS_ITEM_LABELS, GRADE_LABELS, NAV_STATE_KEY, add_deficiency_flags
+from dashboard.common.widgets import PieChartWidget, RadarChartWidget
 from dashboard.main_data import load_main_data
 from dashboard.py.management_store import load_records
 
 HOME_TITLE = "대시보드 홈"
 PALETTE = ["#2589FF", "#16C79A", "#F2A93B", "#F15B70", "#6E7F95"]
-REGION_COORDS = {
-    "서울": (37.5665, 126.9780), "부산": (35.1796, 129.0756), "대구": (35.8714, 128.6014),
-    "인천": (37.4563, 126.7052), "광주": (35.1595, 126.8526), "대전": (36.3504, 127.3845),
-    "울산": (35.5384, 129.3114), "세종": (36.4800, 127.2890), "경기": (37.2750, 127.0095),
-    "강원": (37.8228, 128.1555), "충북": (36.8000, 127.7000), "충남": (36.5184, 126.8000),
-    "전북": (35.7175, 127.1530), "전남": (34.8679, 126.9910), "경북": (36.4919, 128.8889),
-    "경남": (35.4606, 128.2132), "제주": (33.4996, 126.5312),
+REGION_GEOJSON_PATH = Path(__file__).resolve().parents[1] / "assets" / "geojson" / "korea_provinces.geojson"
+# 지도는 9개 도 단위로 그립니다. 특별시·광역시·특별자치시는 둘러싼 도에 편입합니다.
+# (경도 최소, 경도 최대, 위도 최소, 위도 최대) — 서로 겹치지 않는 도식 지도용 사각형
+PROVINCE_BOXES = {
+    "경기": (126.4, 127.7, 36.9, 38.0),
+    "강원": (127.7, 129.2, 36.9, 38.5),
+    "충남": (125.9, 127.3, 35.95, 36.9),
+    "충북": (127.3, 128.4, 35.7, 36.9),
+    "경북": (128.4, 129.6, 35.7, 36.9),
+    "전북": (126.3, 127.3, 35.0, 35.95),
+    "경남": (127.3, 129.3, 34.7, 35.7),
+    "전남": (125.9, 127.3, 34.2, 35.0),
+    "제주": (126.1, 126.9, 33.1, 33.65),
 }
+# REGION_NAME에 키워드가 포함되면 해당 도로 묶습니다. 위에서부터 먼저 맞는 항목을 사용하므로 순서를 바꾸지 마세요.
+# 정식 명칭(경기도, 서울특별시 …)과 줄임말(경기, 서울 …)을 모두 처리합니다.
+PROVINCE_KEYWORDS = (
+    ("전남광주", "전남"),  # 전남광주통합특별시: '광주'보다 먼저 확인
+    ("서울", "경기"), ("인천", "경기"), ("경기", "경기"),
+    ("강원", "강원"),
+    ("충청북", "충북"), ("충북", "충북"),
+    ("충청남", "충남"), ("충남", "충남"), ("대전", "충남"), ("세종", "충남"),
+    ("전라북", "전북"), ("전북", "전북"),
+    ("전라남", "전남"), ("전남", "전남"), ("광주", "전남"),
+    ("경상북", "경북"), ("경북", "경북"), ("대구", "경북"),
+    ("경상남", "경남"), ("경남", "경남"), ("부산", "경남"), ("울산", "경남"),
+    ("제주", "제주"),
+)
+
+
+class MainPieChart(PieChartWidget):
+    """메인 대시보드에서 사용하는 파이차트 위젯."""
+
+
+class MainRadarChart(RadarChartWidget):
+    """메인 대시보드에서 사용하는 개인 운동유형 위젯."""
 
 
 def _metrics(filters, measurements: pd.DataFrame):
@@ -40,6 +71,35 @@ def _unit_table(latest: pd.DataFrame) -> pd.DataFrame:
     unit["미달률"] = unit["미달"] / unit["인원"].clip(lower=1) * 100
     unit["충족률"] = 100 - unit["미달률"]
     return unit
+
+
+def _province_of(region_name: str) -> str | None:
+    """원본 지역명을 GeoJSON의 시·도 이름으로 정규화합니다."""
+    name = str(region_name)
+    province_keywords = (
+        ("전남광주", "전라남도"),
+        ("서울", "서울특별시"), ("부산", "부산광역시"), ("대구", "대구광역시"),
+        ("인천", "인천광역시"), ("광주", "광주광역시"), ("대전", "대전광역시"),
+        ("울산", "울산광역시"), ("세종", "세종특별자치시"), ("경기", "경기도"),
+        ("강원", "강원도"), ("충청북", "충청북도"), ("충북", "충청북도"),
+        ("충청남", "충청남도"), ("충남", "충청남도"), ("전라북", "전라북도"),
+        ("전북", "전라북도"), ("전라남", "전라남도"), ("전남", "전라남도"),
+        ("경상북", "경상북도"), ("경북", "경상북도"), ("경상남", "경상남도"),
+        ("경남", "경상남도"), ("제주", "제주특별자치도"),
+    )
+    for keyword, province in province_keywords:
+        if keyword in name:
+            return province
+    return None
+
+
+@st.cache_data
+def _region_geojson() -> dict:
+    """dashboard/assets/geojson의 실제 시·도 경계를 읽습니다."""
+    if not REGION_GEOJSON_PATH.exists():
+        raise FileNotFoundError(f"GeoJSON 파일을 찾을 수 없습니다: {REGION_GEOJSON_PATH}")
+    with REGION_GEOJSON_PATH.open("r", encoding="utf-8") as file:
+        return json.load(file)
 
 
 def _render_page_links() -> None:
@@ -90,34 +150,61 @@ def _render_kpis(total: int, managed: int, latest: pd.DataFrame, injuries: pd.Da
 def _render_fitness_variance(unit: pd.DataFrame) -> None:
     with st.container(border=True):
         st.subheader("부대·지역별 체력 편차")
-        st.caption("지역별 체력 충족률을 표시합니다. 낮을수록 빨강, 정상 수준은 초록, 높을수록 파랑입니다.")
-        region = unit.assign(충족인원=unit["충족률"] * unit["인원"]).groupby("REGION_NAME", as_index=False).agg(
-            인원=("인원", "sum"), 충족인원=("충족인원", "sum")
+        st.caption(
+            "전체 평균 대비 편차입니다. 평균 근처는 초록, 평균보다 낮으면 빨강, 높으면 파랑입니다. "
+            "실제 시·도 경계 GeoJSON을 사용합니다."
+        )
+        unit = unit.assign(
+            지역=unit["REGION_NAME"].map(_province_of),
+            충족인원=unit["충족률"] / 100 * unit["인원"],
+        )
+        unmapped = sorted(unit.loc[unit["지역"].isna(), "REGION_NAME"].astype(str).unique())
+        if unmapped:
+            st.warning(f"시·도 경계에 매칭되지 않은 지역이 있어 지도에서 제외했습니다: {', '.join(unmapped)}")
+            unit = unit.dropna(subset=["지역"])
+        if unit.empty:
+            st.info("지도에 표시할 지역 데이터가 없습니다.")
+            return
+        region = unit.groupby("지역", as_index=False).agg(
+            인원=("인원", "sum"),
+            충족인원=("충족인원", "sum"),
+            포함지역=("REGION_NAME", lambda names: "·".join(sorted(set(map(str, names))))),
         )
         region["충족률"] = region["충족인원"] / region["인원"].clip(lower=1) * 100
-        region["위도"] = region["REGION_NAME"].map(lambda name: next((v[0] for k, v in REGION_COORDS.items() if k in name), None))
-        region["경도"] = region["REGION_NAME"].map(lambda name: next((v[1] for k, v in REGION_COORDS.items() if k in name), None))
-        region = region.dropna(subset=["위도", "경도"])
-        chart = px.scatter_geo(
-            region, lat="위도", lon="경도", size="인원", color="충족률", text="REGION_NAME",
-            hover_name="REGION_NAME", hover_data={"충족률": ":.1f", "인원": ":,", "위도": False, "경도": False},
+        overall_rate = region["충족인원"].sum() / max(region["인원"].sum(), 1) * 100
+        region["편차"] = region["충족률"] - overall_rate
+        max_deviation = max(float(region["편차"].abs().max()), 1.0)
+        chart = px.choropleth(
+            region,
+            geojson=_region_geojson(),
+            locations="지역",
+            featureidkey="properties.name",
+            color="편차",
+            hover_name="지역",
+            hover_data={"편차": ":+.1f", "충족률": ":.1f", "인원": ":,", "포함지역": True},
             color_continuous_scale=[(0.0, "#F15B70"), (0.5, "#16C79A"), (1.0, "#2589FF")],
-            range_color=(0, 100), labels={"충족률": "체력 충족률(%)", "인원": "인원(명)"},
+            range_color=(-max_deviation, max_deviation),
+            labels={"편차": "전체 평균 대비 편차(%p)", "충족률": "지역 충족률(%)", "인원": "인원(명)", "포함지역": "포함 지역"},
         )
-        chart.update_traces(marker=dict(line=dict(width=1, color="#EFF5FB"), sizemin=8), textposition="top center")
         chart.update_geos(
-            projection_type="mercator", showland=True, landcolor="#10243A", showocean=True,
-            oceancolor="#071321", showcountries=True, countrycolor="#244666",
-            lonaxis_range=[124, 130], lataxis_range=[33, 39],
+            fitbounds="locations", visible=False, bgcolor="#071321",
+            projection_type="mercator", showcountries=False,
         )
-        chart.update_layout(height=470, margin=dict(t=20, b=20, l=10, r=10), coloraxis_colorbar=dict(title="충족률(%)"))
+        chart.update_layout(height=470, margin=dict(t=10, b=10, l=0, r=0),
+                            coloraxis_colorbar=dict(title="평균 대비 편차(%p)"))
         st.plotly_chart(chart, width="stretch")
-        st.dataframe(region[["REGION_NAME", "인원", "충족률"]].sort_values("충족률").rename(columns={
-            "REGION_NAME": "지역", "인원": "인원(명)", "충족률": "체력 충족률(%)",
-        }), hide_index=True, width="stretch")
 
 
 def _pie(data: pd.DataFrame, names: str, title: str, colors=None, show_legend: bool = False) -> None:
+    MainPieChart(
+        data=data,
+        names=names,
+        title=title,
+        colors=colors,
+        show_legend=show_legend,
+    ).render()
+    return
+
     st.subheader(title)
     palette = colors or PALETTE
     labels = data[names].astype(str).tolist()
@@ -184,26 +271,10 @@ def _render_exercise_and_shortlist(latest: pd.DataFrame) -> None:
     with left:
         with st.container(border=True):
             st.subheader("개인 운동유형")
-            labels = rates["종목"].tolist()
-            values = rates["충족률"].tolist()
-            figure = go.Figure(go.Scatterpolar(
-                r=values + [values[0]],
-                theta=labels + [labels[0]],
-                fill="toself",
-                line=dict(color="#2589FF", width=2),
-                fillcolor="rgba(37, 137, 255, 0.25)",
-                name="현재 조건",
-            ))
-            figure.update_layout(
-                height=360,
-                margin=dict(t=25, b=20, l=35, r=35),
-                showlegend=False,
-                polar=dict(
-                    radialaxis=dict(visible=True, range=[0, 100], ticksuffix="%"),
-                    angularaxis=dict(direction="clockwise"),
-                ),
-            )
-            st.plotly_chart(figure, width="stretch")
+            MainRadarChart(
+                labels=rates["종목"].tolist(),
+                values=rates["충족률"].tolist(),
+            ).render()
     with middle:
         with st.container(border=True):
             st.subheader("운동추천리스트")
@@ -222,12 +293,12 @@ def render_home_overview(filters, measurements: pd.DataFrame, injuries: pd.DataF
     latest, total, under, managed, _ = _metrics(filters, measurements)
     unit = _unit_table(latest)
     _render_kpis(total, managed, latest, injuries)
-    _render_fitness_variance(unit)
-    people_columns = st.columns(2)
-    with people_columns[0]:
+    overview_columns = st.columns([2, 1])
+    with overview_columns[0]:
+        _render_fitness_variance(unit)
+    with overview_columns[1]:
         _render_people_grade(latest)
-    with people_columns[1]:
-        _render_injuries(injuries, set(latest["SOLDIER_ID"]))
+    _render_injuries(injuries, set(latest["SOLDIER_ID"]))
     _render_exercise_and_shortlist(latest)
 
 

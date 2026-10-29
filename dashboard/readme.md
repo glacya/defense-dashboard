@@ -11,7 +11,7 @@ dashboard/
 │  ├─ charts.py               # Plotly·Altair 색상과 공통 레이아웃
 │  ├─ filters.py              # 측정 기간·지역·부대·계급·나이 조건 UI
 │  ├─ formatting.py           # 상수, BMI 분류, 미달 플래그, 기간 마스크
-│  └─ widgets.py              # 장병 상세 패널(모달)
+│  └─ widgets.py              # 공통 장병 상세 패널·Plotly 차트 위젯
 ├─ dashboard/py/              # 데이터 로더 (파일 읽기·검증·캐시)
 │  ├─ main_data.py
 │  ├─ fitness_overview_data.py
@@ -102,6 +102,9 @@ dashboard/
 **`widgets.py`**
 
 - `render_soldier_details(soldier, history, injuries)`: 장병 기본 정보, 회차별 변화, 부상 이력을 그립니다.
+- `PieChartWidget`: 범주별 파이/도넛 차트의 기본 정의입니다.
+- `RadarChartWidget`: 항목별 스파이더 차트의 기본 정의입니다.
+- 메인 페이지는 `MainPieChart`, `MainRadarChart`로 위젯을 상속해 사용합니다.
 - `show_soldier_detail_dialog(...)`: 위 내용을 `st.dialog` 모달로 엽니다.
 - 모달을 닫은 뒤 같은 장병이 자동으로 다시 열리지 않도록 `soldier_detail_dismissed_id` 세션 값을 사용합니다.
 

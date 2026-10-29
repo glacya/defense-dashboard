@@ -1,9 +1,132 @@
 """여러 페이지에서 쓰는 장병 상세 패널입니다."""
 
+import html
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard.common.formatting import FITNESS_ITEM_LABELS, add_deficiency_flags
+
+
+class PlotlyWidget:
+    """Streamlit에서 재사용하는 Plotly 위젯의 기본 정의."""
+
+    def __init__(self, title: str | None = None, height: int = 330) -> None:
+        self.title = title
+        self.height = height
+
+    def build_figure(self):
+        raise NotImplementedError
+
+    def render(self) -> None:
+        if self.title:
+            st.subheader(self.title)
+        st.plotly_chart(self.build_figure(), width="stretch")
+
+
+class PieChartWidget(PlotlyWidget):
+    """범주별 건수/비율을 도넛 파이차트로 보여주는 공통 위젯."""
+
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        names: str,
+        title: str | None = None,
+        values: str = "인원",
+        colors: list[str] | None = None,
+        show_legend: bool = False,
+        height: int = 330,
+    ) -> None:
+        super().__init__(title=title, height=height)
+        self.data = data
+        self.names = names
+        self.values = values
+        self.colors = colors
+        self.show_legend = show_legend
+
+    def build_figure(self):
+        labels = self.data[self.names].astype(str).tolist()
+        palette = self.colors or ["#2589FF", "#16C79A", "#F2A93B", "#F15B70", "#6E7F95"]
+        color_map = {label: palette[index % len(palette)] for index, label in enumerate(labels)}
+        figure = px.pie(
+            self.data,
+            names=self.names,
+            values=self.values,
+            hole=0.55,
+            color=self.names,
+            color_discrete_map=color_map,
+        )
+        figure.update_traces(textinfo="none")
+        figure.update_layout(
+            height=self.height,
+            margin=dict(t=10, b=10, l=10, r=10),
+            showlegend=False,
+        )
+        return figure
+
+    def render(self) -> None:
+        super().render()
+        if not self.show_legend:
+            return
+
+        palette = self.colors or ["#2589FF", "#16C79A", "#F2A93B", "#F15B70", "#6E7F95"]
+        total = max(float(self.data[self.values].sum()), 1.0)
+        legend = []
+        for index, row in self.data.reset_index(drop=True).iterrows():
+            label = str(row[self.names])
+            count = int(row[self.values])
+            color = palette[index % len(palette)]
+            legend.append(
+                f"<div style='display:flex;justify-content:space-between;gap:8px;line-height:1.7'>"
+                f"<span><span style='display:inline-block;width:10px;height:10px;background:{color};"
+                f"border-radius:2px;margin-right:6px'></span>{html.escape(label)}</span>"
+                f"<span>{count:,}명({count / total * 100:.1f}%)</span></div>"
+            )
+        st.markdown("<div style='font-size:.78rem'>" + "".join(legend) + "</div>", unsafe_allow_html=True)
+
+
+class RadarChartWidget(PlotlyWidget):
+    """항목별 점수/충족률을 스파이더 차트로 보여주는 공통 위젯."""
+
+    def __init__(
+        self,
+        labels: list[str],
+        values: list[float],
+        title: str | None = None,
+        name: str = "현재 조건",
+        line_color: str = "#2589FF",
+        fill_color: str = "rgba(37, 137, 255, 0.25)",
+        height: int = 360,
+    ) -> None:
+        super().__init__(title=title, height=height)
+        self.labels = labels
+        self.values = values
+        self.name = name
+        self.line_color = line_color
+        self.fill_color = fill_color
+
+    def build_figure(self):
+        labels = self.labels + [self.labels[0]] if self.labels else []
+        values = self.values + [self.values[0]] if self.values else []
+        figure = go.Figure(go.Scatterpolar(
+            r=values,
+            theta=labels,
+            fill="toself",
+            line=dict(color=self.line_color, width=2),
+            fillcolor=self.fill_color,
+            name=self.name,
+        ))
+        figure.update_layout(
+            height=self.height,
+            margin=dict(t=25, b=20, l=35, r=35),
+            showlegend=False,
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0, 100], ticksuffix="%"),
+                angularaxis=dict(direction="clockwise"),
+            ),
+        )
+        return figure
 
 
 def reset_soldier_detail_dismissal() -> None:

@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from config import DASHBOARD_DIR
 from dashboard.py.personal_detail_data import load_personal
 from dashboard.py.followup_fitness_types import load_fitness_types
 from dashboard.py.personal_fitness_profile import load_personal_profile
@@ -85,14 +86,52 @@ def render() -> None:
     person_injuries=injuries.loc[injuries.SOLDIER_ID.eq(soldier)]
     date=pd.to_datetime(str(row.MESURE_DE).removesuffix('.0'),format='%Y%m%d',errors='coerce')
     date_label=date.strftime('%Y-%m-%d') if pd.notna(date) else '날짜 확인 필요'
-    st.subheader(f'{row.SOLDIER_NAME} · {row.RANK_NAME} · {row.UNIT_NAME}')
-    st.caption(f'장병 식별자 {soldier} · 선택 측정일 {date_label} · 측정 당시 나이 {formatted(row.AGE,0)}세 · 신상·부상은 합성 자료')
+    identity,body_summary=st.columns([1,3],vertical_alignment='center')
+    with identity,st.container(border=True):
+        st.image(str(DASHBOARD_DIR / 'img' / 'soldier_profile.svg'),width=90)
+        st.subheader(f'{row.SOLDIER_NAME} · {row.RANK_NAME}')
+        st.caption(f'장병번호 {soldier} · {row.UNIT_NAME}')
+        st.caption(f'선택 측정일 {date_label} · {formatted(row.AGE,0)}세')
+    with body_summary:
+        st.subheader(f'{number}차 신체 정보')
+        entries=[('키','HEIGHT','cm'),('체중','WEIGHT','kg'),('BMI','BMI','kg/m²'),('체지방률','BODY_FAT_PERCENTAGE','%')]
+        for col,(label,key,unit) in zip(st.columns(4),entries):
+            col.metric(label,f'{formatted(row.get(key))} {unit}',border=True)
+        st.write('BMI 구간: **'+row.BMI_GROUP+'**')
+        st.caption('낮음 <18.5 · 보통 18.5 이상 25 미만 · 높음 25 이상. 보통에는 정상·비만전단계가 포함됩니다.')
+    st.caption('신상·부상은 합성 자료입니다. 이미지는 공통 장병 프로필입니다.')
     for column,label,value in zip(st.columns(4),['선택 회차','미달 종목 수','집중관리 조건','전체 부상 기록'],
         [f'{number}차',f'{int(row.FAIL_COUNT)}개' if pd.notna(row.FAIL_COUNT) else '판정 불완전',
          '해당' if row.MANAGED else '확인된 조건 없음',f'{len(person_injuries)}건' if injury_present else '자료 없음']):
         column.metric(label,value,border=True)
     st.caption('부상 기록은 전체 보유 이력입니다. 발생일이 없어 선택 측정 회차의 부상으로 해석하지 않습니다.')
-    st.subheader(f'{number}차 체력유형')
+    cols=['ROUND','MESURE_DE','AGE','HEIGHT','WEIGHT','BMI','BODY_FAT_PERCENTAGE']
+    body_table,body_chart=st.columns([2,1],vertical_alignment='top')
+    with body_table:
+        st.dataframe(history[[c for c in cols if c in history]].rename(columns={'ROUND':'회차','MESURE_DE':'측정일','AGE':'나이','HEIGHT':'키 (cm)','WEIGHT':'체중 (kg)','BODY_FAT_PERCENTAGE':'체지방률 (%)'}),hide_index=True,width='stretch')
+    with body_chart,st.container(border=True):
+        body_options={'체중':('WEIGHT','kg'),'키':('HEIGHT','cm'),
+                      'BMI':('BMI','kg/m²'),'체지방률':('BODY_FAT_PERCENTAGE','%')}
+        body_label=st.selectbox('신체 변화',list(body_options),key='personal_body_chart_event')
+        body_event,body_unit=body_options[body_label]
+        values=pd.to_numeric(history[body_event],errors='coerce').replace([float('inf'),float('-inf')],float('nan'))
+        if values.notna().any():
+            trend=go.Figure(go.Scatter(
+                x=history.ROUND,y=values,mode='lines+markers',connectgaps=False,
+                line={'color':'#0f766e','width':2},marker={'size':7},
+                hovertemplate=f'%{{x}}차<br>{body_label} %{{y:.2f}} {body_unit}<extra></extra>',
+            ))
+            trend.add_vline(x=number,line_color='#94a3b8',line_dash='dot')
+            trend.update_layout(height=210,showlegend=False,
+                                margin={'t':10,'b':30,'l':45,'r':15},
+                                xaxis={'title':'측정 회차','dtick':1},
+                                yaxis={'title':body_unit})
+            st.plotly_chart(trend,width='stretch',key='personal_body_trend',
+                            config={'displayModeBar':False})
+            st.caption('점선은 선택 회차입니다.')
+        else:
+            st.info('해당 항목의 신체 측정 기록이 없습니다.')
+    type_panel,recommendation_panel=st.columns([1,1.4],gap='large')
     try:
         classified,_=load_fitness_types(history[['SOLDIER_ID','MESURE_ID','ROUND']])
     except (OSError,ValueError,KeyError,pd.errors.EmptyDataError) as error:
@@ -102,49 +141,43 @@ def render() -> None:
         if pd.isna(classification.TYPE_NAME):
             st.info('선택 회차의 체력유형 분류 정보가 없습니다.')
         else:
-            with st.container(border=True):
-                st.markdown(f'**{classification.TYPE_NAME}**')
-                st.caption(
-                    f'평균 백분위 {int(classification.AVERAGE_PERCENTILE_GRADE)}등급 · '
-                    f'군집 {int(classification.CLUSTER)} · {number}차 측정 기준'
-                )
-                try:
-                    personal_profile,cluster_profile,member_count=load_personal_profile(row.MESURE_ID)
-                except (OSError,ValueError,KeyError,pd.errors.EmptyDataError) as error:
-                    st.info(f'클러스터 비교 차트를 표시할 수 없습니다: {error}')
-                else:
-                    axes=[EVENTS[event][0] for event in personal_profile.index]
-                    radar=go.Figure()
-                    for name,values,color in [
-                        ('선택 장병',personal_profile,'#2563eb'),
-                        ('같은 체력유형 평균',cluster_profile,'#ea580c'),
-                    ]:
-                        scores=[float(value) if pd.notna(value) else None for value in values]
-                        radar.add_trace(go.Scatterpolar(
-                            r=scores+scores[:1],theta=axes+axes[:1],
-                            mode='lines+markers',name=name,
-                            line={'color':color,'width':3},
-                            hovertemplate='%{theta}<br>백분위 %{r:.1f}<extra>%{fullData.name}</extra>',
-                        ))
-                    radar.update_layout(
-                        polar={'radialaxis':{'visible':True,'range':[0,100],'dtick':20},
-                               'angularaxis':{'direction':'clockwise'},'gridshape':'linear'},
-                        height=380,margin={'t':35,'b':45,'l':65,'r':65},
-                        legend={'orientation':'h','y':-0.12,'x':0.5,'xanchor':'center'},
+            with type_panel:
+                st.subheader(f'{number}차 체력유형')
+                with st.container(border=True):
+                    st.markdown(f'**{classification.TYPE_NAME}**')
+                    st.caption(
+                        f'평균 백분위 {int(classification.AVERAGE_PERCENTILE_GRADE)}등급 · '
+                        f'군집 {int(classification.CLUSTER)} · {number}차 측정 기준'
                     )
-                    st.plotly_chart(radar,width='stretch',key='personal_cluster_radar')
-                    st.caption(f'바깥쪽일수록 종목 백분위가 높습니다. 같은 등급·클러스터의 전체 회차 측정 {member_count:,}건 평균이며 선택 측정도 포함합니다. 백분위는 전체 측정 기준으로 계산합니다.')
-            render_recommendation(int(classification.AVERAGE_PERCENTILE_GRADE),int(classification.CLUSTER))
-    body,fitness,changes,injury=st.tabs(['기본·신체 정보','체력측정·등급','회차별 변화','부상 이력'])
-    with body:
-        st.subheader(f'{number}차 신체 정보')
-        entries=[('키','HEIGHT','cm'),('체중','WEIGHT','kg'),('BMI','BMI','kg/m²'),('체지방률','BODY_FAT_PERCENTAGE','%')]
-        for col,(label,key,unit) in zip(st.columns(4),entries):
-            col.metric(label,f'{formatted(row.get(key))} {unit}',border=True)
-        st.write('BMI 구간: **'+row.BMI_GROUP+'**')
-        st.caption('낮음 <18.5 · 보통 18.5 이상 25 미만 · 높음 25 이상. 보통에는 정상·비만전단계가 포함됩니다.')
-        cols=['ROUND','MESURE_DE','AGE','HEIGHT','WEIGHT','BMI','BODY_FAT_PERCENTAGE']
-        st.dataframe(history[[c for c in cols if c in history]].rename(columns={'ROUND':'회차','MESURE_DE':'측정일','AGE':'나이','HEIGHT':'키 (cm)','WEIGHT':'체중 (kg)','BODY_FAT_PERCENTAGE':'체지방률 (%)'}),hide_index=True,width='stretch')
+                    try:
+                        personal_profile,cluster_profile,member_count=load_personal_profile(row.MESURE_ID)
+                    except (OSError,ValueError,KeyError,pd.errors.EmptyDataError) as error:
+                        st.info(f'클러스터 비교 차트를 표시할 수 없습니다: {error}')
+                    else:
+                        axes=[EVENTS[event][0] for event in personal_profile.index]
+                        radar=go.Figure()
+                        for name,values,color in [
+                            ('선택 장병',personal_profile,'#2563eb'),
+                            ('같은 체력유형 평균',cluster_profile,'#ea580c'),
+                        ]:
+                            scores=[float(value) if pd.notna(value) else None for value in values]
+                            radar.add_trace(go.Scatterpolar(
+                                r=scores+scores[:1],theta=axes+axes[:1],
+                                mode='lines+markers',name=name,
+                                line={'color':color,'width':3},
+                                hovertemplate='%{theta}<br>백분위 %{r:.1f}<extra>%{fullData.name}</extra>',
+                            ))
+                        radar.update_layout(
+                            polar={'radialaxis':{'visible':True,'range':[0,100],'dtick':20},
+                                   'angularaxis':{'direction':'clockwise'},'gridshape':'linear'},
+                            height=380,margin={'t':35,'b':45,'l':65,'r':65},
+                            legend={'orientation':'h','y':-0.12,'x':0.5,'xanchor':'center'},
+                        )
+                        st.plotly_chart(radar,width='stretch',key='personal_cluster_radar')
+                        st.caption(f'바깥쪽일수록 종목 백분위가 높습니다. 같은 등급·클러스터의 전체 회차 측정 {member_count:,}건 평균이며 선택 측정도 포함합니다. 백분위는 전체 측정 기준으로 계산합니다.')
+            with recommendation_panel:
+                render_recommendation(int(classification.AVERAGE_PERCENTILE_GRADE),int(classification.CLUSTER))
+    fitness,changes,injury=st.tabs(['체력측정·등급','회차별 변화','부상 이력'])
     with fitness:
         rows=[]
         for event,(label,unit) in EVENTS.items():

@@ -184,7 +184,7 @@ def _render_kpis(total: int, managed: int, latest: pd.DataFrame, injuries: pd.Da
 
 
 def _render_fitness_variance(unit: pd.DataFrame) -> None:
-    with st.container(border=True, height="content"):
+    with st.container(border=True, height=455):
         st.subheader("부대·지역별 체력 편차")
         unit = unit.assign(
             지역=unit["REGION_NAME"].map(_province_of),
@@ -261,6 +261,7 @@ def _pie(
     height: int = 160,
     legend_position: str = "left",
     title_size: str | None = None,
+    show_percent: bool = True,
 ) -> None:
     MainPieChart(
         data=data,
@@ -272,6 +273,7 @@ def _pie(
         height=height,
         legend_position=legend_position,
         title_size=title_size,
+        show_percent=show_percent,
     ).render()
     return
 
@@ -529,7 +531,7 @@ def _recommendations_for_type(type_data: pd.DataFrame) -> pd.DataFrame:
 def _render_exercise_type(latest: pd.DataFrame) -> tuple[int, int] | None:
     typed, types = _attach_fitness_types(latest)
     with st.container(border=True, height="content"):
-        st.subheader("개인 운동유형")
+        st.subheader("운동유형")
         selector_columns = st.columns(2)
         with selector_columns[0]:
             selected_grade = st.selectbox(
@@ -557,7 +559,7 @@ def _render_exercise_type(latest: pd.DataFrame) -> tuple[int, int] | None:
         MainRadarChart(
             labels=rates["종목"].tolist(),
             values=rates["운동능력"].tolist(),
-            height=220,
+            height=270,
         ).render()
     return selected_grade, selected_cluster
 
@@ -582,9 +584,11 @@ def _render_recommendations(latest: pd.DataFrame, selected_type: tuple[int, int]
         if recommendations.empty:
             st.info("선택한 유형에 연결된 추천 운동 기록이 없습니다.")
             return
-        for _, row in recommendations.iterrows():
-            st.markdown(f"**{row['운동']}**")
-            st.caption(f"해당 유형 처방 {int(row['인원']):,}건")
+        recommendation_columns = st.columns(2)
+        for index, (_, row) in enumerate(recommendations.iterrows()):
+            with recommendation_columns[index % 2]:
+                st.markdown(f"**{row['운동']}**")
+                st.caption(f"해당 유형 처방 {int(row['인원']):,}건")
 
 
 def render_home_overview(filters, measurements: pd.DataFrame, injuries: pd.DataFrame) -> None:

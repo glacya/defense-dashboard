@@ -1,6 +1,7 @@
 """여러 페이지에서 쓰는 장병 상세 패널입니다."""
 
 import html
+import math
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -40,6 +41,7 @@ class PieChartWidget(PlotlyWidget):
         height: int = 160,
         legend_position: str = "left",
         title_size: str | None = None,
+        show_percent: bool = False,
     ) -> None:
         super().__init__(title=title, height=height)
         self.data = data
@@ -50,11 +52,17 @@ class PieChartWidget(PlotlyWidget):
         self.center_text = center_text
         self.legend_position = legend_position
         self.title_size = title_size
+        self.show_percent = show_percent
 
     def build_figure(self):
         labels = self.data[self.names].astype(str).tolist()
         palette = self.colors or ["#2589FF", "#16C79A", "#F2A93B", "#F15B70", "#6E7F95"]
         color_map = {label: palette[index % len(palette)] for index, label in enumerate(labels)}
+        total = max(float(self.data[self.values].sum()), 1.0)
+        display_percent = [
+            min(100, max(0, int(5 * math.floor((float(value) / total * 100) / 5 + 0.5))))
+            for value in self.data[self.values]
+        ]
         figure = px.pie(
             self.data,
             names=self.names,
@@ -64,7 +72,11 @@ class PieChartWidget(PlotlyWidget):
             color_discrete_map=color_map,
         )
         figure.update_traces(
-            textinfo="none",
+            text=[str(value) for value in display_percent],
+            textinfo="text" if self.show_percent else "none",
+            texttemplate="%{text}%" if self.show_percent else None,
+            textposition="inside",
+            insidetextorientation="horizontal",
             domain=(
                 dict(x=[0.12, 0.88], y=[0.08, 0.92])
                 if self.legend_position == "bottom"
@@ -125,7 +137,13 @@ class PieChartWidget(PlotlyWidget):
         )
         if self.legend_position == "bottom":
             st.plotly_chart(self.build_figure(), width="stretch", config={"displayModeBar": False})
-            st.markdown(legend_html, unsafe_allow_html=True)
+            compact_legend_html = (
+                "<div style='font-size:.62rem;display:flex;flex-direction:column;align-items:flex-start;"
+                "gap:2px;line-height:1.2;margin:-.9rem auto 0;padding-bottom:.5rem;width:max-content'>"
+                + "".join(legend)
+                + "</div>"
+            )
+            st.markdown(compact_legend_html, unsafe_allow_html=True)
             return
 
         legend_column, chart_column = st.columns([1.2, 1.3], gap="small")
@@ -168,7 +186,7 @@ class RadarChartWidget(PlotlyWidget):
         ))
         figure.update_layout(
             height=self.height,
-            margin=dict(t=10, b=8, l=24, r=24),
+            margin=dict(t=22, b=24, l=34, r=34),
             showlegend=False,
             polar=dict(
                 radialaxis=dict(visible=True, range=[0, 100], ticksuffix="%"),

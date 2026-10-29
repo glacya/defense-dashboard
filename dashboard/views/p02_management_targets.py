@@ -45,20 +45,21 @@ def render() -> None:
         st.caption('2차 기준 · 악화는 1차와 비교합니다. 3회 지속 미달은 아직 판정하지 않습니다.')
     else:
         st.caption(f'{number}차 기준 · 악화는 1차와 비교하고, 지속 미달은 최근 세 회차를 확인합니다.')
-    st.sidebar.header('조회 조건')
+    st.subheader('조회 조건')
+    reason_filter,event_filter,search_filter=st.columns(3)
     if 'management_reasons' in st.session_state:
         st.session_state['management_reasons']=[v for v in st.session_state['management_reasons'] if v in available.values()]
-    chosen=st.sidebar.multiselect('관리 사유',list(available.values()),key='management_reasons',
+    chosen=reason_filter.multiselect('관리 사유',list(available.values()),key='management_reasons',
                                   help='선택하지 않으면 전체 사유, 여러 개 선택하면 하나 이상 해당하는 장병을 표시합니다.')
     if available['PERSISTENT_FAIL'] in chosen and number<3:
-        st.sidebar.info('동일 종목 지속 미달은 세 회차 기록이 필요합니다. 상단에서 3차 이상을 선택하세요.')
+        reason_filter.info('동일 종목 지속 미달은 세 회차 기록이 필요합니다. 상단에서 3차 이상을 선택하세요.')
     if available['WORSENED'] in chosen and number==1:
-        st.sidebar.info('미달 종목 수 증가는 1차와 비교하므로 2차 이상을 선택하세요.')
+        reason_filter.info('미달 종목 수 증가는 1차와 비교하므로 2차 이상을 선택하세요.')
     fail_count='전체'
     if '복수 종목 미달' in chosen:
-        fail_count=st.sidebar.selectbox(f'{number}차 미달 종목 수',['전체','2개','3개','4개'],key='management_count')
-    events=st.sidebar.multiselect('미달 종목',[v[0] for v in EVENTS.values()],help='여러 개 선택하면 하나 이상 미달한 장병을 표시합니다.')
-    search=st.sidebar.text_input('이름·장병번호 검색')
+        fail_count=reason_filter.selectbox(f'{number}차 미달 종목 수',['전체','2개','3개','4개'],key='management_count')
+    events=event_filter.multiselect('미달 종목',[v[0] for v in EVENTS.values()],help='여러 개 선택하면 하나 이상 미달한 장병을 표시합니다.')
+    search=search_filter.text_input('이름·장병번호 검색')
     current=data.loc[data.ROUND.eq(number)]
     targets=current.loc[current.MANAGED]
     shown=targets.copy()

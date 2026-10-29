@@ -115,6 +115,41 @@ def save_record(kind: str, record: dict, directory: Path=MANAGEMENT_DIR,
         lock.unlink(missing_ok=True)
 
 
+def save_followups_batch(soldier_ids: list[str], values: dict,
+                         directory: Path=MANAGEMENT_DIR) -> int:
+    """그룹 전체를 검증한 뒤 기존 후속조치 파일에 한 번에 추가합니다."""
+    targets=list(dict.fromkeys(soldier_ids))
+    if not targets:
+        raise ValueError('후속조치를 등록할 장병이 없습니다.')
+    for soldier in targets:
+        validate('followup_records',dict(values,SOLDIER_ID=soldier))
+    directory.mkdir(parents=True,exist_ok=True)
+    lock=directory/'.write.lock'
+    try:
+        descriptor=os.open(lock,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
+    except FileExistsError as error:
+        raise ValueError('다른 저장이 진행 중입니다. 잠시 후 다시 시도하세요.') from error
+    temp=None
+    try:
+        os.close(descriptor)
+        frame=load_records('followup_records',directory)
+        now=datetime.now(ZoneInfo('Asia/Seoul')).isoformat(timespec='microseconds')
+        rows=[]
+        for soldier in targets:
+            row={field:str(values.get(field,'')) for field in FIELDS['followup_records']}
+            row.update(RECORD_ID=uuid4().hex,SOLDIER_ID=soldier,CREATED_AT=now,UPDATED_AT=now)
+            rows.append(row)
+        frame=pd.concat([frame,pd.DataFrame(rows)],ignore_index=True)[COMMON+FIELDS['followup_records']]
+        temp=directory/f'.{uuid4().hex}.tmp'
+        frame.to_csv(temp,index=False,encoding='utf-8-sig')
+        os.replace(temp,directory/'followup_records.csv')
+        return len(targets)
+    finally:
+        if temp is not None and temp.exists():
+            temp.unlink()
+        lock.unlink(missing_ok=True)
+
+
 def followup_metrics(frame: pd.DataFrame) -> dict:
     """취소를 제외한 후속조치 건수를 분모로 완료율을 계산합니다."""
     active=frame.loc[frame.STATUS.ne('취소')]

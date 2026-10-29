@@ -36,7 +36,10 @@ class PieChartWidget(PlotlyWidget):
         values: str = "인원",
         colors: list[str] | None = None,
         show_legend: bool = False,
-        height: int = 330,
+        center_text: str | None = None,
+        height: int = 160,
+        legend_position: str = "left",
+        title_size: str | None = None,
     ) -> None:
         super().__init__(title=title, height=height)
         self.data = data
@@ -44,6 +47,9 @@ class PieChartWidget(PlotlyWidget):
         self.values = values
         self.colors = colors
         self.show_legend = show_legend
+        self.center_text = center_text
+        self.legend_position = legend_position
+        self.title_size = title_size
 
     def build_figure(self):
         labels = self.data[self.names].astype(str).tolist()
@@ -57,18 +63,45 @@ class PieChartWidget(PlotlyWidget):
             color=self.names,
             color_discrete_map=color_map,
         )
-        figure.update_traces(textinfo="none")
+        figure.update_traces(
+            textinfo="none",
+            domain=(
+                dict(x=[0.12, 0.88], y=[0.08, 0.92])
+                if self.legend_position == "bottom"
+                else dict(x=[0.28, 0.72], y=[0.12, 0.88])
+            ),
+        )
         figure.update_layout(
             height=self.height,
-            margin=dict(t=10, b=10, l=10, r=10),
+            margin=dict(t=0, b=0, l=0, r=0),
             showlegend=False,
         )
+        if self.center_text:
+            figure.add_annotation(
+                x=0.5,
+                y=0.5,
+                xref="paper",
+                yref="paper",
+                text=self.center_text,
+                showarrow=False,
+                font=dict(size=15, color="#1F344A"),
+            )
         return figure
 
     def render(self) -> None:
-        super().render()
         if not self.show_legend:
+            super().render()
             return
+
+        if self.title:
+            if self.title_size:
+                st.markdown(
+                    f"<div style='font-size:{self.title_size};font-weight:700;"
+                    f"line-height:1.25;margin:0 0 .35rem'>{html.escape(self.title)}</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.subheader(self.title)
 
         palette = self.colors or ["#2589FF", "#16C79A", "#F2A93B", "#F15B70", "#6E7F95"]
         total = max(float(self.data[self.values].sum()), 1.0)
@@ -78,12 +111,28 @@ class PieChartWidget(PlotlyWidget):
             count = int(row[self.values])
             color = palette[index % len(palette)]
             legend.append(
-                f"<div style='display:flex;justify-content:space-between;gap:8px;line-height:1.7'>"
-                f"<span><span style='display:inline-block;width:10px;height:10px;background:{color};"
-                f"border-radius:2px;margin-right:6px'></span>{html.escape(label)}</span>"
-                f"<span>{count:,}명({count / total * 100:.1f}%)</span></div>"
+                f"<div style='display:flex;justify-content:space-between;gap:6px;line-height:1.35'>"
+                f"<span style='white-space:nowrap'><span style='display:inline-block;width:9px;height:9px;"
+                f"background:{color};border-radius:2px;margin-right:5px'></span>{html.escape(label)}</span>"
+                f"<span style='white-space:nowrap'>{count:,}명({count / total * 100:.1f}%)</span></div>"
             )
-        st.markdown("<div style='font-size:.78rem'>" + "".join(legend) + "</div>", unsafe_allow_html=True)
+
+        legend_html = (
+            f"<div style='font-size:.68rem;height:{self.height}px;display:flex;"
+            "flex-direction:column;justify-content:center'>"
+            + "".join(legend)
+            + "</div>"
+        )
+        if self.legend_position == "bottom":
+            st.plotly_chart(self.build_figure(), width="stretch", config={"displayModeBar": False})
+            st.markdown(legend_html, unsafe_allow_html=True)
+            return
+
+        legend_column, chart_column = st.columns([1.2, 1.3], gap="small")
+        with legend_column:
+            st.markdown(legend_html, unsafe_allow_html=True)
+        with chart_column:
+            st.plotly_chart(self.build_figure(), width="stretch", config={"displayModeBar": False})
 
 
 class RadarChartWidget(PlotlyWidget):
@@ -119,7 +168,7 @@ class RadarChartWidget(PlotlyWidget):
         ))
         figure.update_layout(
             height=self.height,
-            margin=dict(t=25, b=20, l=35, r=35),
+            margin=dict(t=10, b=8, l=24, r=24),
             showlegend=False,
             polar=dict(
                 radialaxis=dict(visible=True, range=[0, 100], ticksuffix="%"),

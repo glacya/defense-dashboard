@@ -16,6 +16,12 @@ from dashboard.common.widgets import PieChartWidget, RadarChartWidget
 from dashboard.main_data import load_main_data
 from dashboard.py.followup_probability import load_probabilities
 from dashboard.py.management_store import load_records
+from data.scripts.paths import (
+    PROCESSED_FITNESS_TYPE_PATH,
+    PROCESSED_MEASUREMENT_CLASSIFICATION_PATH,
+    PROCESSED_PRESCRIPTION_DETAIL_PATH,
+    PROCESSED_PRESCRIPTION_PATH,
+)
 
 PALETTE = list(CHART_PALETTE)
 REGION_GEOJSON_PATH = Path(__file__).resolve().parents[1] / "assets" / "geojson" / "korea_provinces.geojson"
@@ -168,12 +174,8 @@ def _render_kpis(total: int, managed: int, latest: pd.DataFrame, injuries: pd.Da
 
 
 def _render_fitness_variance(unit: pd.DataFrame) -> None:
-    with st.container(border=True):
+    with st.container(border=True, height="content"):
         st.subheader("부대·지역별 체력 편차")
-        st.caption(
-            "지역별 체력 충족률을 표시합니다. 낮은 값은 연한 파랑, 높은 값은 짙은 청록·남색으로 구분합니다. "
-            "실제 시·도 경계 GeoJSON을 사용합니다."
-        )
         unit = unit.assign(
             지역=unit["REGION_NAME"].map(_province_of),
             충족인원=unit["충족률"] / 100 * unit["인원"],
@@ -208,7 +210,7 @@ def _render_fitness_variance(unit: pd.DataFrame) -> None:
             fitbounds="locations", visible=False, bgcolor="#EAF2F9",
             projection_type="mercator", showcountries=False,
         )
-        chart.update_layout(height=470, margin=dict(t=20, b=20, l=10, r=10),
+        chart.update_layout(height=360, margin=dict(t=8, b=8, l=4, r=4),
                             coloraxis_colorbar=dict(title="충족률(%)"))
         selection = st.plotly_chart(
             chart,
@@ -239,13 +241,27 @@ def _render_fitness_variance(unit: pd.DataFrame) -> None:
         return stored_region
 
 
-def _pie(data: pd.DataFrame, names: str, title: str, colors=None, show_legend: bool = False) -> None:
+def _pie(
+    data: pd.DataFrame,
+    names: str,
+    title: str,
+    colors=None,
+    show_legend: bool = False,
+    center_text: str | None = None,
+    height: int = 160,
+    legend_position: str = "left",
+    title_size: str | None = None,
+) -> None:
     MainPieChart(
         data=data,
         names=names,
         title=title,
         colors=colors,
         show_legend=show_legend,
+        center_text=center_text,
+        height=height,
+        legend_position=legend_position,
+        title_size=title_size,
     ).render()
     return
 
@@ -292,12 +308,34 @@ def _two_or_more_deficiencies(data: pd.DataFrame) -> int:
     return int(data[deficiency_columns].sum(axis=1).ge(2).sum())
 
 
+def _scope_summary(data: pd.DataFrame) -> dict:
+    return {
+        "total": int(data["SOLDIER_ID"].nunique()),
+        "grades": _fitness_level_distribution(data),
+        "under": _two_or_more_deficiencies(data),
+    }
+
+
+@st.cache_data(show_spinner=False)
+def _precompute_scope_summaries(latest: pd.DataFrame) -> dict[str, dict]:
+    """전체·지역·부대 차트 집계를 미리 계산해 선택 시 재집계를 피합니다."""
+    prepared = latest.copy()
+    prepared["_지역"] = prepared["REGION_NAME"].map(_province_of)
+    summaries = {"전체": _scope_summary(prepared)}
+    for region_name, region_data in prepared.dropna(subset=["_지역"]).groupby("_지역"):
+        summaries[f"지역::{region_name}"] = _scope_summary(region_data)
+        for unit_name, unit_data in region_data.groupby("UNIT_NAME"):
+            summaries[f"부대::{region_name}::{unit_name}"] = _scope_summary(unit_data)
+    return summaries
+
+
 def _render_people_grade(
     latest: pd.DataFrame,
     unit: pd.DataFrame,
     selected_region: str | None,
 ) -> None:
-    with st.container(border=True):
+    with st.container(border=True, height="content"):
+        summaries = _precompute_scope_summaries(latest)
         region_units = unit.copy()
         region_units["지역"] = region_units["REGION_NAME"].map(_province_of)
         visible_units = sorted(
@@ -344,33 +382,49 @@ def _render_people_grade(
                 f"{selected_unit or selected_region} 기준 · 부대 {start + 1}~{min(start + page_size, len(visible_units))}"
                 f" / {len(visible_units)}"
             )
-            if selected_unit:
-                scoped = latest.loc[
-                    latest["UNIT_NAME"].eq(selected_unit)
-                    & latest["REGION_NAME"].map(_province_of).eq(selected_region)
-                ]
-            else:
-                scoped = latest.loc[latest["REGION_NAME"].map(_province_of).eq(selected_region)]
+            summary_key = (
+                f"부대::{selected_region}::{selected_unit}"
+                if selected_unit else f"지역::{selected_region}"
+            )
         else:
             st.subheader("전체 장병 정보")
-            scoped = latest
+            summary_key = "전체"
 
-        total = int(scoped["SOLDIER_ID"].nunique())
-        st.metric("대상 장병 수", f"{total:,}명", border=True)
+        summary = summaries.get(summary_key, summaries["전체"])
+        total = summary["total"]
         grade_columns = st.columns(2)
         with grade_columns[0]:
-            _pie(_fitness_level_distribution(scoped), "등급", "체력수준 등급 비율")
+            _pie(
+                summary["grades"],
+                "등급",
+                "체력수준 등급 비율",
+                colors=["#2563EB", "#14B8A6", "#F59E0B", "#F15B70"],
+                show_legend=True,
+                height=220,
+                legend_position="bottom",
+                title_size="0.9rem",
+                center_text=f"{total:,}<br>명",
+            )
         with grade_columns[1]:
-            under = _two_or_more_deficiencies(scoped)
+            under = summary["under"]
             under_ratio = pd.DataFrame({"구분": ["2개 이상 미달", "기준 충족"], "인원": [under, max(total - under, 0)]})
-            _pie(under_ratio, "구분", "2개 이상 미달 비율", colors=[CHART_PALETTE[4], CHART_PALETTE[2]], show_legend=True)
+            _pie(
+                under_ratio,
+                "구분",
+                "2개 이상 미달 비율",
+                colors=[CHART_PALETTE[4], CHART_PALETTE[2]],
+                show_legend=True,
+                height=220,
+                legend_position="bottom",
+                title_size="0.9rem",
+                center_text=f"{total:,}<br>명",
+            )
 
 
 def _render_injuries(injuries: pd.DataFrame, ids: set[str]) -> None:
     scoped = injuries.loc[injuries["SOLDIER_ID"].isin(ids)]
-    with st.container(border=True):
+    with st.container(border=True, height="content"):
         st.subheader("부상 현황")
-        st.caption(f"현재 조건의 부상 {len(scoped):,}건 · 부상 장병 {scoped['SOLDIER_ID'].nunique():,}명")
         total = max(len(ids), 1)
         overall = pd.DataFrame({"구분": ["부상", "정상"], "인원": [scoped["SOLDIER_ID"].nunique(), max(total - scoped["SOLDIER_ID"].nunique(), 0)]})
         part_counts = scoped["INJURY_LOCATION"].value_counts()
@@ -380,49 +434,162 @@ def _render_injuries(injuries: pd.DataFrame, ids: set[str]) -> None:
         if minor:
             part = pd.concat([part, pd.DataFrame([{"부상 부위": "기타", "인원": int(minor)}])], ignore_index=True)
         severity = scoped["SEVERITY"].value_counts().rename_axis("심각도").reset_index(name="인원")
-        columns = st.columns(3)
-        for column, data, name, title in zip(columns, [overall, part, severity], ["구분", "부상 부위", "심각도"],
-                                              ["전체 대비 부상 비율", "부상 부위별 비율", "부상 심각도 비율"]):
-            with column:
-                _pie(data, name, title, show_legend=True)
+        for data, name, title in zip(
+            [overall, part, severity],
+            ["구분", "부상 부위", "심각도"],
+            ["전체 대비 부상 비율", "부상 부위별 비율", "부상 심각도 비율"],
+        ):
+            _pie(
+                data,
+                name,
+                title,
+                show_legend=True,
+                center_text=f"{total:,}<br>&#47749;",
+                title_size="0.9rem",
+            )
 
 
-def _render_exercise_and_shortlist(latest: pd.DataFrame) -> None:
-    rates = pd.DataFrame([{"종목": label, "충족률": 100 - latest[f"미달_{column}"].astype(bool).mean() * 100}
-                         for column, label in FITNESS_ITEM_LABELS.items()])
-    left, middle, right = st.columns(3)
-    with left:
-        with st.container(border=True):
-            st.subheader("개인 운동유형")
-            MainRadarChart(
-                labels=rates["종목"].tolist(),
-                values=rates["충족률"].tolist(),
-            ).render()
-    with middle:
-        with st.container(border=True):
-            st.subheader("운동추천리스트")
-            for _, row in rates.sort_values("충족률").head(4).iterrows():
-                st.markdown(f"**{row['종목']} 보강 운동**")
-                st.caption(f"충족률 {row['충족률']:.1f}% · 전문 지도자와 세부 운동을 상의하세요.")
-    with right:
-        with st.container(border=True):
-            under = int(latest["체력미달"].sum())
-            total = max(latest["SOLDIER_ID"].nunique(), 1)
-            ratio = pd.DataFrame({"구분": ["미달", "기준 충족"], "인원": [under, max(total - under, 0)]})
-            _pie(ratio, "구분", "미달 인원 비율", colors=[CHART_PALETTE[4], CHART_PALETTE[2]], show_legend=True)
+@st.cache_data(show_spinner=False)
+def _load_fitness_type_links() -> tuple[pd.DataFrame, pd.DataFrame]:
+    classifications = pd.read_csv(
+        PROCESSED_MEASUREMENT_CLASSIFICATION_PATH,
+        usecols=["MESURE_ID", "AVERAGE_PERCENTILE_GRADE", "CLUSTER"],
+    )
+    types = pd.read_csv(
+        PROCESSED_FITNESS_TYPE_PATH,
+        usecols=["AVERAGE_PERCENTILE_GRADE", "CLUSTER", "TYPE_NAME"],
+    )
+    return classifications, types
+
+
+@st.cache_data(show_spinner=False)
+def _load_prescription_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+    prescriptions = pd.read_csv(
+        PROCESSED_PRESCRIPTION_PATH,
+        usecols=["MESURE_ID", "PRESCRIPTION_TYPE_ID"],
+    )
+    details = pd.read_csv(
+        PROCESSED_PRESCRIPTION_DETAIL_PATH,
+        usecols=["PRESCRIPTION_TYPE_ID", "PRESCRIPTION"],
+    )
+    return prescriptions, details
+
+
+def _attach_fitness_types(latest: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    classifications, types = _load_fitness_type_links()
+    linked = classifications.merge(
+        types,
+        on=["AVERAGE_PERCENTILE_GRADE", "CLUSTER"],
+        how="left",
+        validate="many_to_one",
+    )
+    return latest.merge(linked, on="MESURE_ID", how="left", validate="one_to_one"), types
+
+
+def _exercise_profile(data: pd.DataFrame, reference: pd.DataFrame | None = None) -> pd.DataFrame:
+    if data.empty:
+        return pd.DataFrame({"종목": list(FITNESS_ITEM_LABELS.values()), "운동능력": [0.0] * 4})
+    source = reference if reference is not None else data
+    percentiles = source[list(FITNESS_ITEM_LABELS)].apply(pd.to_numeric, errors="coerce").rank(pct=True) * 100
+    percentiles = percentiles.loc[data.index]
+    return pd.DataFrame(
+        {
+            "종목": [FITNESS_ITEM_LABELS[column] for column in FITNESS_ITEM_LABELS],
+            "운동능력": [float(percentiles[column].mean()) for column in FITNESS_ITEM_LABELS],
+        }
+    )
+
+
+def _recommendations_for_type(type_data: pd.DataFrame) -> pd.DataFrame:
+    if type_data.empty:
+        return pd.DataFrame(columns=["운동", "인원"])
+    prescriptions, details = _load_prescription_data()
+    selected = prescriptions.loc[prescriptions["MESURE_ID"].isin(type_data["MESURE_ID"])]
+    selected = selected.merge(details, on="PRESCRIPTION_TYPE_ID", how="left", validate="many_to_one")
+    return (
+        selected.dropna(subset=["PRESCRIPTION"])
+        .groupby("PRESCRIPTION", as_index=False)
+        .size()
+        .rename(columns={"PRESCRIPTION": "운동", "size": "인원"})
+        .sort_values(["인원", "운동"], ascending=[False, True])
+        .head(6)
+    )
+
+
+def _render_exercise_type(latest: pd.DataFrame) -> tuple[int, int] | None:
+    typed, types = _attach_fitness_types(latest)
+    with st.container(border=True, height="content"):
+        st.subheader("개인 운동유형")
+        selector_columns = st.columns(2)
+        with selector_columns[0]:
+            selected_grade = st.selectbox(
+                "등급",
+                [1, 2, 3, 4],
+                format_func=lambda value: f"{value}등급",
+                key="home-exercise-grade",
+            )
+        grade_types = types.loc[types["AVERAGE_PERCENTILE_GRADE"].eq(selected_grade)].sort_values("CLUSTER")
+        type_options = grade_types["CLUSTER"].astype(int).tolist()
+        type_names = dict(zip(grade_types["CLUSTER"].astype(int), grade_types["TYPE_NAME"]))
+        with selector_columns[1]:
+            selected_cluster = st.selectbox(
+                "유형",
+                type_options,
+                format_func=lambda value: type_names.get(value, f"유형 {value}"),
+                key=f"home-exercise-type-{selected_grade}",
+            )
+        selected_data = typed.loc[
+            typed["AVERAGE_PERCENTILE_GRADE"].eq(selected_grade)
+            & typed["CLUSTER"].eq(selected_cluster)
+        ]
+        rates = _exercise_profile(selected_data, typed)
+        st.caption(type_names.get(selected_cluster, "선택 유형"))
+        MainRadarChart(
+            labels=rates["종목"].tolist(),
+            values=rates["운동능력"].tolist(),
+            height=220,
+        ).render()
+    return selected_grade, selected_cluster
+
+
+def _render_recommendations(latest: pd.DataFrame, selected_type: tuple[int, int] | None) -> None:
+    typed, types = _attach_fitness_types(latest)
+    with st.container(border=True, height="content"):
+        st.subheader("운동추천리스트")
+        if selected_type is None:
+            st.info("운동 유형을 선택하면 해당 유형의 추천 운동이 표시됩니다.")
+            return
+        grade, cluster = selected_type
+        selected_data = typed.loc[
+            typed["AVERAGE_PERCENTILE_GRADE"].eq(grade)
+            & typed["CLUSTER"].eq(cluster)
+        ]
+        selected_name = types.loc[
+            types["AVERAGE_PERCENTILE_GRADE"].eq(grade) & types["CLUSTER"].eq(cluster), "TYPE_NAME"
+        ].iloc[0]
+        st.caption(selected_name)
+        recommendations = _recommendations_for_type(selected_data)
+        if recommendations.empty:
+            st.info("선택한 유형에 연결된 추천 운동 기록이 없습니다.")
+            return
+        for _, row in recommendations.iterrows():
+            st.markdown(f"**{row['운동']}**")
+            st.caption(f"해당 유형 처방 {int(row['인원']):,}건")
 
 
 def render_home_overview(filters, measurements: pd.DataFrame, injuries: pd.DataFrame) -> None:
     latest, total, under, managed, _ = _metrics(filters, measurements)
     unit = _unit_table(latest)
     _render_kpis(total, managed, latest, injuries)
-    overview_columns = st.columns([2, 1])
+    overview_columns = st.columns(3)
     with overview_columns[0]:
         selected_region = _render_fitness_variance(unit)
+        selected_type = _render_exercise_type(latest)
     with overview_columns[1]:
         _render_people_grade(latest, unit, selected_region)
-    _render_injuries(injuries, set(latest["SOLDIER_ID"]))
-    _render_exercise_and_shortlist(latest)
+        _render_recommendations(latest, selected_type)
+    with overview_columns[2]:
+        _render_injuries(injuries, set(latest["SOLDIER_ID"]))
 
 
 def render() -> None:

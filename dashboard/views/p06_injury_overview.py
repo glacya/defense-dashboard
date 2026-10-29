@@ -4,12 +4,111 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from dashboard.py.injury_overview_data import load_injury_overview
+from dashboard.py.injury_overview_data import filter_injuries_by_personnel, load_injury_overview
 from data.scripts.analysis.analysis2.fitness_overview import EVENTS
 from data.scripts.analysis.analysis2.injury_overview import GRADE_LABELS
 
 INJURY_LABELS={'INJURY_ID':'부상 식별자','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류',
                'INJURY_LOCATION':'부상 부위','SEVERITY':'심각도','PREVENTABILITY':'예방 가능 여부'}
+
+SEVERITY_COLORS = {'경증': '#0F766E', '중등증': '#0891B2', '중증': '#2563EB'}
+GROUP_COLUMNS = {'지역별': 'REGION_NAME', '부대별': 'UNIT_NAME', '계급별': 'RANK_NAME'}
+
+
+def _style_injury_chart(chart):
+    chart.update_layout(
+        template='plotly_white',
+        paper_bgcolor='#FFFFFF',
+        plot_bgcolor='#FFFFFF',
+        font=dict(color='#182B40'),
+        legend=dict(font=dict(color='#182B40')),
+        hoverlabel=dict(bgcolor='#FFFFFF', font=dict(color='#182B40')),
+        margin=dict(l=12, r=20, t=24, b=12),
+    )
+    chart.update_traces(textfont_color='#182B40')
+    chart.update_xaxes(
+        tickfont_color='#182B40',
+        title_font_color='#182B40',
+        gridcolor='#E2E8F0',
+        linecolor='#CBD5E1',
+    )
+    chart.update_yaxes(
+        tickfont_color='#182B40',
+        title_font_color='#182B40',
+        gridcolor='#E2E8F0',
+        linecolor='#CBD5E1',
+    )
+    return chart
+
+
+def _render_injury_distributions(injuries: pd.DataFrame) -> None:
+    """필터된 부상 기록으로 부위·심각도·조직별 그래프를 표시합니다."""
+    left, right = st.columns(2)
+    location_counts = (
+        injuries.groupby('INJURY_LOCATION', dropna=False)
+        .size()
+        .rename('건수')
+        .reset_index()
+        .rename(columns={'INJURY_LOCATION': '부위'})
+        .sort_values('건수', ascending=False)
+    )
+    with left, st.container(border=True):
+        st.subheader('부위별 부상 건수')
+        chart = px.bar(
+            location_counts,
+            x='부위',
+            y='건수',
+            text='건수',
+            color_discrete_sequence=['#0F766E'],
+        )
+        st.plotly_chart(_style_injury_chart(chart), width='stretch', theme=None)
+
+    severity_counts = (
+        injuries.groupby('SEVERITY', dropna=False)
+        .size()
+        .rename('건수')
+        .reset_index()
+        .rename(columns={'SEVERITY': '심각도'})
+    )
+    severity_counts['비율'] = severity_counts['건수'] / severity_counts['건수'].sum() * 100
+    with right, st.container(border=True):
+        st.subheader('심각도별 부상 건수 비율')
+        chart = px.bar(
+            severity_counts,
+            x='심각도',
+            y='비율',
+            text='비율',
+            hover_data={'건수': True, '비율': ':.1f'},
+            color='심각도',
+            color_discrete_map=SEVERITY_COLORS,
+        )
+        chart.update_traces(texttemplate='%{text:.1f}%')
+        chart.update_layout(yaxis_range=[0, 100], yaxis_title='부상 건수 비율 (%)')
+        st.plotly_chart(_style_injury_chart(chart), width='stretch', theme=None)
+
+    group_label = st.selectbox('부상 건수 비교 기준', list(GROUP_COLUMNS), key='injury_group_by')
+    group_column = GROUP_COLUMNS[group_label]
+    group_label_name = group_label.removesuffix('별')
+    grouped_counts = (
+        injuries.groupby(group_column, dropna=False)
+        .size()
+        .rename('부상 건수')
+        .reset_index()
+        .rename(columns={group_column: group_label_name})
+        .sort_values('부상 건수', ascending=True)
+    )
+    with st.container(border=True):
+        st.subheader(f'{group_label} 부상 건수')
+        chart = px.bar(
+            grouped_counts,
+            x='부상 건수',
+            y=group_label_name,
+            orientation='h',
+            text='부상 건수',
+            color_discrete_sequence=['#2563EB'],
+        )
+        st.plotly_chart(_style_injury_chart(chart), width='stretch', theme=None)
+    st.caption('분포 그래프는 부상 건수 기준입니다. 같은 장병의 반복 부상도 각각 포함됩니다.')
 
 
 def render() -> None:
@@ -38,13 +137,38 @@ def render() -> None:
         if injuries.empty:
             st.info('부상 파일에 기록이 없습니다.')
         else:
-            left,right=st.columns(2)
-            for container,column,title in [(left,'INJURY_LOCATION','부위별 부상 건수'),(right,'SEVERITY','심각도별 부상 건수')]:
-                counts=injuries.groupby(column,dropna=False).size().rename('건수').reset_index().rename(columns={column:'구분'})
-                with container,st.container(border=True):
-                    st.subheader(title)
-                    st.plotly_chart(px.bar(counts,x='구분',y='건수',text='건수',color_discrete_sequence=['#d47746']),width='stretch')
-            st.caption('분포 그래프는 부상 건수 기준입니다. 같은 장병이 여러 번 포함될 수 있습니다.')
+            st.caption('지역·부대·계급 필터는 아래 분포 그래프에 적용됩니다. 상단 요약 지표는 전체 자료 기준입니다.')
+            region_filter, unit_filter, rank_filter = st.columns(3)
+            regions = region_filter.multiselect(
+                '지역',
+                options=sorted(people['REGION_NAME'].dropna().unique().tolist()),
+                key='injury_filter_region',
+                placeholder='전체',
+            )
+            units = unit_filter.multiselect(
+                '부대',
+                options=sorted(people['UNIT_NAME'].dropna().unique().tolist()),
+                key='injury_filter_unit',
+                placeholder='전체',
+            )
+            ranks = rank_filter.multiselect(
+                '계급',
+                options=sorted(people['RANK_NAME'].dropna().unique().tolist()),
+                key='injury_filter_rank',
+                placeholder='전체',
+            )
+            filtered_injuries = filter_injuries_by_personnel(
+                injuries,
+                people,
+                regions=regions,
+                units=units,
+                ranks=ranks,
+            )
+            st.caption(f'선택 조건에 해당하는 부상 기록 {len(filtered_injuries):,}건')
+            if filtered_injuries.empty:
+                st.info('선택한 지역·부대·계급 조건에 해당하는 부상 기록이 없습니다.')
+            else:
+                _render_injury_distributions(filtered_injuries)
     with comparison:
         event=st.selectbox('비교할 체력 종목',list(EVENTS),format_func=lambda key:EVENTS[key][0])
         grade_table=grades.loc[grades['종목'].eq(EVENTS[event][0])]
@@ -54,7 +178,7 @@ def render() -> None:
                 category_orders={'등급':list(GRADE_LABELS.values())},hover_data=['전체인원','부상인원','부상건수'],color_discrete_sequence=['#2563eb'])
             chart.update_traces(texttemplate='%{text:.1f}%')
             chart.update_layout(yaxis_range=[0,100],yaxis_title='부상자 비율 (%)',title='최신 종목 등급별 부상자 비율')
-            st.plotly_chart(chart,width='stretch')
+            st.plotly_chart(_style_injury_chart(chart),width='stretch',theme=None)
         with right:
             st.dataframe(grade_table.drop(columns='종목'),hide_index=True,width='stretch',
                 column_config={'부상자비율':st.column_config.NumberColumn(format='%.1f%%')})

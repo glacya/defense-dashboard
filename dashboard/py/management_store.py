@@ -15,7 +15,7 @@ FIELDS={
     'exercise_plans':['ASSIGNEE','EXERCISE','START_DATE','END_DATE','PLANNED_SESSIONS','STATUS','NOTE'],
     'exercise_participation':['PLAN_ID','SESSION_DATE','ATTENDED','DURATION_MINUTES','ACTUAL_CONTENT','NOTE'],
     'followup_records':['ASSIGNEE','COUNSELING_DATE','COUNSELING_CONTENT','ACTION_CONTENT','NEXT_CHECK_DATE','STATUS','COMPLETED_DATE'],
-    'injury_followup':['INJURY_ID','CHECK_DATE','RECOVERY_STATUS','RESTRICTION','RESTRICTION_START','RESTRICTION_END','NOTE'],
+    'injury_followup':['INJURY_ID','CHECK_DATE','STATUS','ACTION_CONTENT','RECOVERY_STATUS','RESTRICTION','RESTRICTION_START','RESTRICTION_END','NOTE'],
 }
 STATUSES=['점검 대기','진행 중','완료','취소']
 
@@ -27,6 +27,8 @@ def load_records(kind: str, directory: Path=MANAGEMENT_DIR) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame(columns=columns)
     frame=pd.read_csv(path,dtype=str,keep_default_na=False,encoding='utf-8-sig')
+    if kind=='injury_followup' and list(frame.columns)==[c for c in columns if c not in ['STATUS','ACTION_CONTENT']]:
+        frame=frame.assign(STATUS='점검 대기',ACTION_CONTENT='')[columns]
     if list(frame.columns)!=columns or frame.RECORD_ID.duplicated().any():
         raise ValueError(f'{path.name}: 컬럼 또는 기록 식별자 오류')
     return frame
@@ -54,6 +56,8 @@ def validate(kind: str, record: dict) -> None:
             raise ValueError('종료일이 시작일보다 빠릅니다.')
     if 'STATUS' in FIELDS[kind] and record.get('STATUS') not in STATUSES:
         raise ValueError('잘못된 진행 상태입니다.')
+    if kind=='injury_followup' and record.get('STATUS')=='완료' and not str(record.get('ACTION_CONTENT','')).strip():
+        raise ValueError('완료 처리하려면 후속조치 내용을 입력하세요.')
     if kind=='exercise_plans' and int(record['PLANNED_SESSIONS'])<1:
         raise ValueError('예정 횟수는 1회 이상이어야 합니다.')
     if kind=='exercise_participation':

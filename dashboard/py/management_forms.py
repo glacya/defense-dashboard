@@ -48,8 +48,12 @@ def editor(kind: str, soldier: str, all_records: dict, injuries: pd.DataFrame) -
         st.info('보유 부상 이력이 없어 연결할 기록이 없습니다. 부상 원본을 확인하세요.');return
     with st.form(f'form_{kind}_{soldier}_{selected}'):
         values={'SOLDIER_ID':soldier}
-        for field in FIELDS[kind]:
-            label=LABELS[field]; value=old.get(field,'')
+        fields=FIELDS[kind]
+        if kind=='injury_followup':
+            fields=[field for field in fields if field!='STATUS']+['STATUS']
+        for field in fields:
+            label='후속조치 상태' if kind=='injury_followup' and field=='STATUS' else LABELS[field]
+            value=old.get(field,'')
             key=f'{kind}_{soldier}_{selected}_{field}'
             if field=='STATUS':
                 values[field]=st.selectbox(label,STATUSES,index=STATUSES.index(value) if value in STATUSES else 0,key=key)
@@ -80,6 +84,8 @@ def editor(kind: str, soldier: str, all_records: dict, injuries: pd.DataFrame) -
                 values[field]=st.text_area(label,value=value,key=key).strip()
         if kind=='followup_records':
             st.caption('완료 상태이면 완료일을 입력하세요. 진행 중·대기·취소이면 완료일을 비워 두세요. 다음 점검일은 상담일 이후로 지정합니다.')
+        if kind=='injury_followup':
+            st.caption('부상 확인 및 조치 방침 기록을 마쳤으면 후속조치 상태를 완료로 선택하세요. 완료 시 후속조치 내용이 필요하며, 회복 상태는 별도로 기록합니다.')
         submitted=st.form_submit_button('새 기록 저장' if selected=='새 기록' else '수정 저장',type='primary')
         if submitted:
             try:

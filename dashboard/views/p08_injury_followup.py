@@ -42,9 +42,10 @@ def render() -> None:
     visible_records=records.loc[records.SOLDIER_ID.isin(people.SOLDIER_ID)] if selected_units else records
     st.caption('조회 부대: '+(' · '.join(selected_units) if selected_units else '전체 부대'))
     latest=active.sort_values(['CHECK_DATE','UPDATED_AT']).drop_duplicates('INJURY_ID',keep='last')
-    for col,label,value in zip(st.columns(4),['부상 이력 장병','부상 건수','확인 기록이 있는 부상','최신 기록상 회복 확인'],
-        [f'{injuries.SOLDIER_ID.nunique():,}명',f'{len(injuries):,}건',f'{latest.INJURY_ID.nunique():,}건',f'{int(latest.RECOVERY_STATUS.eq("회복 확인").sum()):,}건']):
-        col.metric(label,value,border=True)
+    with st.container(key='injury-followup-summary'):
+        for col,label,value in zip(st.columns(4),['부상 이력 장병','부상 건수','확인 기록이 있는 부상','최신 기록상 회복 확인'],
+            [f'{injuries.SOLDIER_ID.nunique():,}명',f'{len(injuries):,}건',f'{latest.INJURY_ID.nunique():,}건',f'{int(latest.RECOVERY_STATUS.eq("회복 확인").sum()):,}건']):
+            col.metric(label,value,border=True)
     st.caption('회복 상태는 부상별 최신 확인 기록 기준입니다. 확인 기록이 없으면 회복 여부를 알 수 없습니다.')
     if has_archived_records:
         st.warning('현재 부상 원본과 연결되지 않는 과거 관리 기록이 있습니다. 기록을 보존하고 아래에서 제공합니다.')

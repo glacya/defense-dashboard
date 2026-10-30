@@ -118,10 +118,13 @@ def _completion_rate(records: pd.DataFrame, ids: set[str], denominator: int) -> 
 
 
 def _injury_completion_rate(records: pd.DataFrame, injury_ids: set[str], denominator: int) -> str:
-    if denominator == 0 or records.empty:
-        return "기록 없음"
+    if denominator == 0:
+        return "대상 없음"
+    if records.empty:
+        return "0.0%"
     scoped = records.loc[records["INJURY_ID"].isin(injury_ids)]
-    completed = scoped.loc[scoped["RECOVERY_STATUS"].eq("회복 확인"), "INJURY_ID"].nunique()
+    latest = scoped.sort_values(["CHECK_DATE", "UPDATED_AT"]).drop_duplicates("INJURY_ID", keep="last")
+    completed = latest.loc[latest["STATUS"].eq("완료"), "INJURY_ID"].nunique()
     return f"{completed / denominator * 100:.1f}%"
 
 
@@ -156,7 +159,7 @@ def _render_kpis(total: int, managed: int, latest: pd.DataFrame, injuries: pd.Da
         fitness_detail = "미달 확률 자료 확인 필요"
     values = [
         ("체력 후속조치 완료율", fitness_completion, fitness_detail),
-        ("부상 후속조치 완료율", _injury_completion_rate(injury_followups, set(scoped_injuries["INJURY_ID"]), len(scoped_injuries)), "부상 건수 기준"),
+        ("부상 후속조치 완료율", _injury_completion_rate(injury_followups, set(scoped_injuries["INJURY_ID"]), len(scoped_injuries)), "부상별 최신 후속조치 완료 상태 기준"),
         ("체력관리 위험인원 비율", risk_value, risk_detail),
     ]
     cards = []

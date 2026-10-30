@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.common.charts import (
     BMI_COLORS, LIGHT_TEXT, NAVY_BACKGROUND, NAVY_BORDER, NAVY_SURFACE, MUTED_TEXT,
@@ -13,9 +14,7 @@ from dashboard.common.charts import (
 from dashboard.common.filters import render_filters
 from dashboard.common.formatting import BMI_CATEGORY_ORDER, RANK_ORDER, filter_signature
 from dashboard.common.widgets import render_soldier_details
-from dashboard.main_data import load_main_data
-from dashboard.py.followup_fitness_types import load_fitness_types
-from dashboard.py.personal_fitness_profile import load_personal_profile
+from dashboard.py import queries
 from dashboard.py.fitness_judgment import EVENTS
 
 
@@ -102,18 +101,7 @@ def show_bmi_soldiers_panel(group_name: str, category: str, soldiers: pd.DataFra
 def render_soldier_fitness_type(soldier: pd.Series) -> None:
     """선택 장병의 체력유형과 개인 상세 화면과 같은 백분위 레이더를 표시합니다."""
     st.subheader("체력유형")
-    try:
-        classified, _ = load_fitness_types(
-            pd.DataFrame([{
-                "SOLDIER_ID": soldier["SOLDIER_ID"],
-                "MESURE_ID": soldier["MESURE_ID"],
-            }])
-        )
-    except (OSError, ValueError, KeyError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
-        st.info(f"체력유형 자료를 확인할 수 없습니다: {error}")
-        return
-
-    classification = classified.iloc[0]
+    classification = soldier  # 목록 행에 그 측정의 체력유형(등급·군집·유형명)이 들어 있다.
     if pd.isna(classification.TYPE_NAME):
         st.info("선택 측정의 체력유형 분류 정보가 없습니다.")
         return
@@ -124,8 +112,8 @@ def render_soldier_fitness_type(soldier: pd.Series) -> None:
         f"군집 {int(classification.CLUSTER)} · 측정일 {soldier['MESURE_DE']:%Y-%m-%d} 기준"
     )
     try:
-        personal_profile, cluster_profile, member_count = load_personal_profile(soldier["MESURE_ID"])
-    except (OSError, ValueError, KeyError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
+        personal_profile, cluster_profile, member_count = queries.load_measurement_profile(soldier["MESURE_ID"])
+    except (ValueError, KeyError, SQLAlchemyError) as error:
         st.info(f"체력유형 비교 차트를 표시할 수 없습니다: {error}")
         return
 
@@ -291,12 +279,10 @@ def render() -> None:
     st.title("🪖 부대 현황")
     st.caption("지역·부대별 BMI 구성과 체지방률을 비교하고, 구간별 장병 명단을 확인합니다.")
     try:
-        measurements, _ = load_main_data()
-    except (FileNotFoundError, ValueError, UnicodeDecodeError, pd.errors.ParserError) as error:
+        filters = render_filters(prefix="unit")
+    except (ValueError, SQLAlchemyError) as error:
         st.error(f"부대 현황 데이터를 불러오지 못했습니다: {error}")
         st.stop()
-
-    filters = render_filters(measurements, prefix="unit")
     if filters.scoped.empty:
         st.info("현재 필터 조건에 해당하는 장병이 없습니다.")
         st.stop()

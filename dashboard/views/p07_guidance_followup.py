@@ -11,13 +11,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from config import MANAGEMENT_DIR
 from dashboard.py.management_store import DB_TABLES, load_records, uses_db
 from dashboard.py.management_forms import editor, LABELS
-from dashboard.py.followup_probability import RISK_LEVELS, RISK_RANGES, load_probabilities
-from dashboard.py.followup_fitness_types import load_fitness_types
+from dashboard.py.followup_probability import RISK_LEVELS, RISK_RANGES, load_followup_population
 from dashboard.py.group_followup import render_group_followup
 from dashboard.py.fitness_judgment import EVENTS
 from data.scripts.fitness_standards import grade_cut
-from dashboard.py.roster_data import load_latest_measurements, load_personnel_text
-from data.scripts.utils import require_columns
 
 KINDS=['followup_records']
 
@@ -53,19 +50,13 @@ def render() -> None:
     if notice:=st.session_state.pop('management_notice',None):
         st.success(notice)
     try:
-        people=load_personnel_text()
-        require_columns(people,['SOLDIER_ID','SOLDIER_NAME','RANK_NAME','UNIT_NAME'])
-        if people.SOLDIER_ID.duplicated().any():
-            raise ValueError('장병 명단 식별자 중복')
-        probabilities=load_probabilities()
-        missing=int((~people.SOLDIER_ID.isin(probabilities.SOLDIER_ID)).sum())
-        unmatched=int((~probabilities.SOLDIER_ID.isin(people.SOLDIER_ID)).sum())
-        population=people.merge(probabilities,on='SOLDIER_ID',how='inner',validate='one_to_one')
+        # 장병별 1행(신상·미달 확률·최신 측정·체력유형)을 쿼리 하나로 받는다.
+        population,type_catalog,missing=load_followup_population()
         current_ids=population.SOLDIER_ID
         records={kind:load_records(kind) for kind in KINDS}
     except (OSError,ValueError,KeyError,SQLAlchemyError) as error:
         st.error(f'관리 자료를 읽을 수 없습니다: {error}')
-        st.caption('장병 명단과 SOLDIER_FAILURE_PROBABILITY.csv를 확인하세요.')
+        st.caption('DB의 장병 명단과 미달 확률(soldier_failure_probabilities)을 확인하세요.')
         st.stop()
     if 'followup_selected_grades' not in st.session_state:
         active_grade=st.session_state.pop('followup_selected_grade',None)
@@ -122,26 +113,15 @@ def render() -> None:
                 key=f'followup-grade-{"selected" if selected else "idle"}-{RISK_LEVELS.index(label)}',
                 width='stretch',on_click=_select_grade,args=(label,))
     st.caption('카드를 여러 개 선택하면 선택한 등급의 장병을 합쳐 표시합니다. 다시 누르면 해당 등급만 해제하며, 선택이 없으면 전체 등급을 표시합니다.')
-    if missing or unmatched:
-        st.warning(f'예측 누락 장병 {missing:,}명 · 명단에 없는 예측 {unmatched:,}명은 제외했습니다. 예측 누락을 안전으로 분류하지 않습니다.')
+    if missing:
+        st.warning(f'예측 누락 장병 {missing:,}명은 제외했습니다. 예측 누락을 안전으로 분류하지 않습니다.')
     if chosen:
         eligible &= set(population.loc[population.RISK_LEVEL.isin(chosen),'SOLDIER_ID'])
     st.caption(f'현재 조회: {" / ".join(chosen) if chosen else "전체 등급"} · {len(eligible):,}명')
+    # 측정값은 참고 정보(장병별 최신 측정)이며, 유형은 그 측정의 체력유형이다.
     people=population.loc[population.SOLDIER_ID.isin(eligible)].sort_values('FAILURE_PROBABILITY',ascending=False).copy()
-    # 측정값은 참고 정보일 뿐이며, 기존 미달·악화 대상 분석 파일은 사용하지 않습니다.
-    try:
-        people=people.merge(load_latest_measurements(),on='SOLDIER_ID',how='left',validate='one_to_one')
-    except (OSError,ValueError,KeyError):
-        st.warning('참고용 측정 정보를 읽지 못했습니다. 확률 등급에 따른 대상 조회와 관리 기록은 이용할 수 있습니다.')
-        for field in ['MESURE_ID','MESURE_DE','AGE','BMI',*EVENTS]:
-            people[field]=pd.NA
     st.subheader('운동유형 (16)')
     st.caption('장병별 최신 측정의 백분위 4등급 × 군집 4개입니다. 등급별 유형 버튼을 여러 개 선택할 수 있습니다. 인원은 위에서 선택한 확률 등급 기준입니다.')
-    try:
-        people,type_catalog=load_fitness_types(people)
-    except (OSError,ValueError,KeyError) as error:
-        st.error(f'운동유형 자료를 연결할 수 없습니다: {error}')
-        st.stop()
     counts=people.groupby('FITNESS_TYPE_KEY').SOLDIER_ID.nunique()
     selected_types=[key for key in st.session_state.get('followup_fitness_types', [])
                     if key in set(type_catalog.FITNESS_TYPE_KEY) and counts.get(key,0)>0]

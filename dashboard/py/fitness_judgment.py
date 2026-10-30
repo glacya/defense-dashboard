@@ -77,6 +77,8 @@ def load_judged_measurements() -> pd.DataFrame:
 def join_labels(conditions: dict[str, pd.Series], labels: dict[str, str]) -> pd.Series:
     """행마다 조건이 참인 항목의 이름을 ' · '로 잇습니다(conditions와 labels는 같은 키)."""
     frame = pd.DataFrame(conditions)
+    if frame.empty:
+        return pd.Series("", index=frame.index, dtype=object)
     return frame.apply(lambda row: JOIN_SEPARATOR.join(labels[key] for key, hit in row.items() if hit), axis=1)
 
 

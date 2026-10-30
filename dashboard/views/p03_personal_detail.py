@@ -3,11 +3,11 @@
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
 from config import DASHBOARD_DIR
-from dashboard.py.personal_detail_data import load_personal
-from dashboard.py.followup_fitness_types import load_fitness_types
-from dashboard.py.personal_fitness_profile import load_personal_profile
+from dashboard.py import queries
+from dashboard.py.personal_detail_data import load_soldier_history, personal_metadata
 from dashboard.py.personal_exercise_recommendations import render_recommendation
 from dashboard.py.fitness_judgment import EVENTS
 from data.scripts.fitness_standards import grade_cut
@@ -35,15 +35,11 @@ def render() -> None:
     st.title('개인 장병 상세')
     st.write('한 장병의 신체·체력 변화와 부상 기록을 함께 확인합니다.')
     try:
-        data,injuries,metadata,injury_present=load_personal()
-    except FileNotFoundError:
-        st.warning('개인 상세용 분석 파일 또는 원본이 없습니다. 분석을 먼저 실행하세요.')
-        st.code('python -m data.scripts.main analysis',language='powershell');st.stop()
-    except (ValueError,KeyError,pd.errors.EmptyDataError) as error:
+        people=queries.load_roster()[['SOLDIER_ID','SOLDIER_NAME','REGION_NAME','RANK_NAME','UNIT_NAME']]
+    except (ValueError,SQLAlchemyError) as error:
         st.error(f'자료 확인이 필요합니다: {error}');st.stop()
     st.subheader('장병 찾기')
     region_filter,unit_filter,search_filter=st.columns(3)
-    people=data[['SOLDIER_ID','SOLDIER_NAME','REGION_NAME','RANK_NAME','UNIT_NAME']].drop_duplicates('SOLDIER_ID')
     region_key='personal_region_filter'
     unit_key='personal_unit_filter'
     units_by_region=people.groupby('REGION_NAME')['UNIT_NAME'].unique().map(list).to_dict()
@@ -79,11 +75,12 @@ def render() -> None:
     labels=people.set_index('SOLDIER_ID')
     soldier=st.selectbox('장병 선택',people.SOLDIER_ID.tolist(),
         format_func=lambda value:f'{labels.loc[value,"SOLDIER_NAME"]} · {labels.loc[value,"RANK_NAME"]} · {value}')
-    history=data.loc[data.SOLDIER_ID.eq(soldier)].sort_values('ROUND')
+    # 선택한 장병 한 명의 판정·변화·부상만 따로 조회한다.
+    history=load_soldier_history(soldier)
     rounds=history.ROUND.astype(int).tolist()
     number=st.radio('상세 측정 회차',rounds,index=len(rounds)-1,horizontal=True,format_func=lambda value:f'{value}차')
     row=history.loc[history.ROUND.eq(number)].iloc[0]
-    person_injuries=injuries.loc[injuries.SOLDIER_ID.eq(soldier)]
+    person_injuries=queries.load_soldier_injuries(soldier)
     date=pd.to_datetime(str(row.MESURE_DE).removesuffix('.0'),format='%Y%m%d',errors='coerce')
     date_label=date.strftime('%Y-%m-%d') if pd.notna(date) else '날짜 확인 필요'
     identity,body_summary=st.columns([1,3],vertical_alignment='center')
@@ -102,7 +99,7 @@ def render() -> None:
     st.caption('신상·부상은 합성 자료입니다. 이미지는 공통 장병 프로필입니다.')
     for column,label,value in zip(st.columns(4),['선택 회차','미달 종목 수','집중관리 조건','전체 부상 기록'],
         [f'{number}차',f'{int(row.FAIL_COUNT)}개' if pd.notna(row.FAIL_COUNT) else '판정 불완전',
-         '해당' if row.MANAGED else '확인된 조건 없음',f'{len(person_injuries)}건' if injury_present else '자료 없음']):
+         '해당' if row.MANAGED else '확인된 조건 없음',f'{len(person_injuries)}건']):
         column.metric(label,value,border=True)
     st.caption('부상 기록은 전체 보유 이력입니다. 발생일이 없어 선택 측정 회차의 부상으로 해석하지 않습니다.')
     cols=['ROUND','MESURE_DE','AGE','HEIGHT','WEIGHT','BMI','BODY_FAT_PERCENTAGE']
@@ -132,51 +129,46 @@ def render() -> None:
         else:
             st.info('해당 항목의 신체 측정 기록이 없습니다.')
     type_panel,recommendation_panel=st.columns([1,1.4],gap='large')
-    try:
-        classified,_=load_fitness_types(history[['SOLDIER_ID','MESURE_ID','ROUND']])
-    except (OSError,ValueError,KeyError,pd.errors.EmptyDataError) as error:
-        st.warning(f'체력유형 자료를 확인할 수 없습니다: {error}')
+    classification=row  # 이력 행에 체력유형(등급·군집·유형명)이 들어 있다.
+    if pd.isna(classification.TYPE_NAME):
+        st.info('선택 회차의 체력유형 분류 정보가 없습니다.')
     else:
-        classification=classified.loc[classified.ROUND.eq(number)].iloc[0]
-        if pd.isna(classification.TYPE_NAME):
-            st.info('선택 회차의 체력유형 분류 정보가 없습니다.')
-        else:
-            with type_panel:
-                st.subheader(f'{number}차 체력유형')
-                with st.container(border=True):
-                    st.markdown(f'**{classification.TYPE_NAME}**')
-                    st.caption(
-                        f'평균 백분위 {int(classification.AVERAGE_PERCENTILE_GRADE)}등급 · '
-                        f'군집 {int(classification.CLUSTER)} · {number}차 측정 기준'
+        with type_panel:
+            st.subheader(f'{number}차 체력유형')
+            with st.container(border=True):
+                st.markdown(f'**{classification.TYPE_NAME}**')
+                st.caption(
+                    f'평균 백분위 {int(classification.AVERAGE_PERCENTILE_GRADE)}등급 · '
+                    f'군집 {int(classification.CLUSTER)} · {number}차 측정 기준'
+                )
+                try:
+                    personal_profile,cluster_profile,member_count=queries.load_measurement_profile(row.MESURE_ID)
+                except (ValueError,KeyError,SQLAlchemyError) as error:
+                    st.info(f'클러스터 비교 차트를 표시할 수 없습니다: {error}')
+                else:
+                    axes=[EVENTS[event][0] for event in personal_profile.index]
+                    radar=go.Figure()
+                    for name,values,color in [
+                        ('선택 장병',personal_profile,'#2563eb'),
+                        ('같은 체력유형 평균',cluster_profile,'#ea580c'),
+                    ]:
+                        scores=[float(value) if pd.notna(value) else None for value in values]
+                        radar.add_trace(go.Scatterpolar(
+                            r=scores+scores[:1],theta=axes+axes[:1],
+                            mode='lines+markers',name=name,
+                            line={'color':color,'width':3},
+                            hovertemplate='%{theta}<br>백분위 %{r:.1f}<extra>%{fullData.name}</extra>',
+                        ))
+                    radar.update_layout(
+                        polar={'radialaxis':{'visible':True,'range':[0,100],'dtick':20},
+                               'angularaxis':{'direction':'clockwise'},'gridshape':'linear'},
+                        height=380,margin={'t':35,'b':45,'l':65,'r':65},
+                        legend={'orientation':'h','y':-0.12,'x':0.5,'xanchor':'center'},
                     )
-                    try:
-                        personal_profile,cluster_profile,member_count=load_personal_profile(row.MESURE_ID)
-                    except (OSError,ValueError,KeyError,pd.errors.EmptyDataError) as error:
-                        st.info(f'클러스터 비교 차트를 표시할 수 없습니다: {error}')
-                    else:
-                        axes=[EVENTS[event][0] for event in personal_profile.index]
-                        radar=go.Figure()
-                        for name,values,color in [
-                            ('선택 장병',personal_profile,'#2563eb'),
-                            ('같은 체력유형 평균',cluster_profile,'#ea580c'),
-                        ]:
-                            scores=[float(value) if pd.notna(value) else None for value in values]
-                            radar.add_trace(go.Scatterpolar(
-                                r=scores+scores[:1],theta=axes+axes[:1],
-                                mode='lines+markers',name=name,
-                                line={'color':color,'width':3},
-                                hovertemplate='%{theta}<br>백분위 %{r:.1f}<extra>%{fullData.name}</extra>',
-                            ))
-                        radar.update_layout(
-                            polar={'radialaxis':{'visible':True,'range':[0,100],'dtick':20},
-                                   'angularaxis':{'direction':'clockwise'},'gridshape':'linear'},
-                            height=380,margin={'t':35,'b':45,'l':65,'r':65},
-                            legend={'orientation':'h','y':-0.12,'x':0.5,'xanchor':'center'},
-                        )
-                        st.plotly_chart(radar,width='stretch',key='personal_cluster_radar')
-                        st.caption(f'바깥쪽일수록 종목 백분위가 높습니다. 같은 등급·클러스터의 전체 회차 측정 {member_count:,}건 평균이며 선택 측정도 포함합니다. 백분위는 전체 측정 기준으로 계산합니다.')
-            with recommendation_panel:
-                render_recommendation(int(classification.AVERAGE_PERCENTILE_GRADE),int(classification.CLUSTER))
+                    st.plotly_chart(radar,width='stretch',key='personal_cluster_radar')
+                    st.caption(f'바깥쪽일수록 종목 백분위가 높습니다. 같은 등급·클러스터의 전체 회차 측정 {member_count:,}건 평균이며 선택 측정도 포함합니다. 백분위는 전체 측정 기준으로 계산합니다.')
+        with recommendation_panel:
+            render_recommendation(int(classification.AVERAGE_PERCENTILE_GRADE),int(classification.CLUSTER))
     fitness,changes,injury=st.tabs(['체력측정·등급','회차별 변화','부상 이력'])
     with fitness:
         rows=[]
@@ -202,12 +194,11 @@ def render() -> None:
         st.caption('미측정·연령 범위 밖은 판정 불가입니다. 개선·신규 미달은 두 시점 모두 판정 가능한 종목에서만 확인합니다.')
         st.subheader('종목별 개인 변화와 전체 평균')
         st.caption('파랑: 개인 측정값 · 회색: 같은 회차 전체 평균 · 주황 점선: 3등급 하한. 평균에는 선택 장병도 포함합니다.')
+        round_means=queries.load_round_means().set_index('ROUND')
         for offset in (0,2):
             for container,(event,(label,unit)) in zip(st.columns(2),list(EVENTS.items())[offset:offset+2]):
                 with container,st.container(border=True):
-                    reference=data[['ROUND',event]].copy()
-                    reference[event]=pd.to_numeric(reference[event],errors='coerce').replace([float('inf'),float('-inf')],float('nan'))
-                    reference=reference.groupby('ROUND')[event].agg(['mean','count']).sort_index()
+                    reference=pd.DataFrame({'mean':round_means[event],'count':round_means['MEASURED']})
                     average=reference.loc[number,'mean'] if number in reference.index else float('nan')
                     value=pd.to_numeric(row[event],errors='coerce')
                     if pd.notna(value) and pd.notna(average):
@@ -237,9 +228,7 @@ def render() -> None:
     with injury:
         st.subheader('개인 부상 이력')
         st.caption('발생일·회복 상태·운동 제한 자료는 현재 원본에 없습니다. 회차별 부상이나 현재 회복 여부를 추정하지 않습니다.')
-        if not injury_present:
-            st.warning('부상 원본 파일이 없습니다. 부상 없음으로 판단하지 않습니다.')
-        elif person_injuries.empty:
+        if person_injuries.empty:
             st.info('보유 부상 자료에서 이 장병의 기록이 없습니다.')
         else:
             shown=person_injuries.rename(columns={'INJURY_ID':'부상 식별자','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류','INJURY_LOCATION':'부위','PREVENTABILITY':'예방 가능 여부','SEVERITY':'심각도'})
@@ -248,5 +237,6 @@ def render() -> None:
             st.download_button('부상 이력 CSV',shown.to_csv(index=False).encode('utf-8-sig'),f'{soldier}_부상이력.csv','text/csv')
     with st.expander('개인 측정 자료 다운로드·기준'):
         st.download_button('개인 전체 측정·판정·변화 CSV',history.to_csv(index=False).encode('utf-8-sig'),f'{soldier}_체력상세.csv','text/csv')
+        metadata=personal_metadata()
         st.write(metadata['비교']);st.write(metadata['주의'])
         st.caption('측정 당시 남성 19~24세 기준 · 종목별 등급이며 종합 인증등급이 아닙니다. 생성일: '+metadata['생성일시'])

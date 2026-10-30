@@ -15,7 +15,7 @@ FIELDS={
     'exercise_plans':['ASSIGNEE','EXERCISE','START_DATE','END_DATE','PLANNED_SESSIONS','STATUS','NOTE'],
     'exercise_participation':['PLAN_ID','SESSION_DATE','ATTENDED','DURATION_MINUTES','ACTUAL_CONTENT','NOTE'],
     'followup_records':['ASSIGNEE','COUNSELING_DATE','COUNSELING_CONTENT','ACTION_CONTENT','NEXT_CHECK_DATE','STATUS','COMPLETED_DATE'],
-    'injury_followup':['INJURY_ID','CHECK_DATE','RECOVERY_STATUS','RESTRICTION','RESTRICTION_START','RESTRICTION_END','NOTE'],
+    'injury_followup':['INJURY_ID','CHECK_DATE','STATUS','ACTION_CONTENT','RECOVERY_STATUS','RESTRICTION','RESTRICTION_START','RESTRICTION_END','NOTE'],
 }
 STATUSES=['점검 대기','진행 중','완료','취소']
 
@@ -27,6 +27,8 @@ def load_records(kind: str, directory: Path=MANAGEMENT_DIR) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame(columns=columns)
     frame=pd.read_csv(path,dtype=str,keep_default_na=False,encoding='utf-8-sig')
+    if kind=='injury_followup' and list(frame.columns)==[c for c in columns if c not in ['STATUS','ACTION_CONTENT']]:
+        frame=frame.assign(STATUS='점검 대기',ACTION_CONTENT='')[columns]
     if list(frame.columns)!=columns or frame.RECORD_ID.duplicated().any():
         raise ValueError(f'{path.name}: 컬럼 또는 기록 식별자 오류')
     return frame
@@ -54,6 +56,8 @@ def validate(kind: str, record: dict) -> None:
             raise ValueError('종료일이 시작일보다 빠릅니다.')
     if 'STATUS' in FIELDS[kind] and record.get('STATUS') not in STATUSES:
         raise ValueError('잘못된 진행 상태입니다.')
+    if kind=='injury_followup' and record.get('STATUS')=='완료' and not str(record.get('ACTION_CONTENT','')).strip():
+        raise ValueError('완료 처리하려면 후속조치 내용을 입력하세요.')
     if kind=='exercise_plans' and int(record['PLANNED_SESSIONS'])<1:
         raise ValueError('예정 횟수는 1회 이상이어야 합니다.')
     if kind=='exercise_participation':
@@ -109,6 +113,41 @@ def save_record(kind: str, record: dict, directory: Path=MANAGEMENT_DIR,
         frame.to_csv(temp,index=False,encoding='utf-8-sig')
         os.replace(temp,directory/f'{kind}.csv')
         return record_id
+    finally:
+        if temp is not None and temp.exists():
+            temp.unlink()
+        lock.unlink(missing_ok=True)
+
+
+def save_followups_batch(soldier_ids: list[str], values: dict,
+                         directory: Path=MANAGEMENT_DIR) -> int:
+    """그룹 전체를 검증한 뒤 기존 후속조치 파일에 한 번에 추가합니다."""
+    targets=list(dict.fromkeys(soldier_ids))
+    if not targets:
+        raise ValueError('후속조치를 등록할 장병이 없습니다.')
+    for soldier in targets:
+        validate('followup_records',dict(values,SOLDIER_ID=soldier))
+    directory.mkdir(parents=True,exist_ok=True)
+    lock=directory/'.write.lock'
+    try:
+        descriptor=os.open(lock,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
+    except FileExistsError as error:
+        raise ValueError('다른 저장이 진행 중입니다. 잠시 후 다시 시도하세요.') from error
+    temp=None
+    try:
+        os.close(descriptor)
+        frame=load_records('followup_records',directory)
+        now=datetime.now(ZoneInfo('Asia/Seoul')).isoformat(timespec='microseconds')
+        rows=[]
+        for soldier in targets:
+            row={field:str(values.get(field,'')) for field in FIELDS['followup_records']}
+            row.update(RECORD_ID=uuid4().hex,SOLDIER_ID=soldier,CREATED_AT=now,UPDATED_AT=now)
+            rows.append(row)
+        frame=pd.concat([frame,pd.DataFrame(rows)],ignore_index=True)[COMMON+FIELDS['followup_records']]
+        temp=directory/f'.{uuid4().hex}.tmp'
+        frame.to_csv(temp,index=False,encoding='utf-8-sig')
+        os.replace(temp,directory/'followup_records.csv')
+        return len(targets)
     finally:
         if temp is not None and temp.exists():
             temp.unlink()

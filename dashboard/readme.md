@@ -11,7 +11,7 @@ dashboard/
 │  ├─ charts.py               # Plotly·Altair 색상과 공통 레이아웃
 │  ├─ filters.py              # 측정 기간·지역·부대·계급·나이 조건 UI
 │  ├─ formatting.py           # 상수, BMI 분류, 미달 플래그, 기간 마스크
-│  └─ widgets.py              # 장병 상세 패널(모달)
+│  └─ widgets.py              # 공통 장병 상세 패널·Plotly 차트 위젯
 ├─ dashboard/py/              # 데이터 로더 (파일 읽기·검증·캐시)
 │  ├─ main_data.py
 │  ├─ fitness_overview_data.py
@@ -83,7 +83,7 @@ dashboard/
 
 **`filters.py`**
 
-- `render_filters(measurements, prefix, show_bmi=False)`: 측정 기간, 지역, 부대, 계급, 나이 조건을 그리고 `FilterResult`를 반환합니다.
+- `render_filters(measurements, prefix, show_bmi=False, show_date=True)`: 측정 기간(선택), 지역, 부대, 계급, 나이 조건을 그리고 `FilterResult`를 반환합니다. 홈 화면은 `show_date=False`로 전체 기간을 사용합니다.
 - `prefix`가 세션 키의 접두어입니다. 같은 prefix를 쓰면 페이지 사이에서 조건이 공유되고, 다른 prefix를 쓰면 독립입니다.
   - 현재 구현: `mainpage`는 `"home"`, 부대 현황은 `"unit"`을 씁니다.
 - 지역을 바꾸면 `_reset_units`가 부대 선택을 새 지역 범위로 다시 맞춥니다.
@@ -102,8 +102,17 @@ dashboard/
 **`widgets.py`**
 
 - `render_soldier_details(soldier, history, injuries)`: 장병 기본 정보, 회차별 변화, 부상 이력을 그립니다.
+- `PieChartWidget`: 범주별 파이/도넛 차트의 기본 정의입니다.
+- `RadarChartWidget`: 항목별 스파이더 차트의 기본 정의입니다.
+- 메인 페이지는 `MainPieChart`, `MainRadarChart`로 위젯을 상속해 사용합니다.
 - `show_soldier_detail_dialog(...)`: 위 내용을 `st.dialog` 모달로 엽니다.
 - 모달을 닫은 뒤 같은 장병이 자동으로 다시 열리지 않도록 `soldier_detail_dismissed_id` 세션 값을 사용합니다.
+
+### 전체 체력 현황
+
+- 기본 전체 조회 외에 지역별·부대별 분석 기준을 선택할 수 있습니다.
+- 조직 비교 화면은 회차별 전체 미달률과 종목별 미달률을 비교하고, 특정 지역·부대를 선택하면 해당 조직의 지표와 회차 추이를 확인할 수 있습니다.
+- 조직별 결과는 장병의 현재 소속으로 묶으며, 판정·등급 기준은 전체 현황 분석과 동일하게 적용합니다.
 
 ### 4.3 로더 (`dashboard/py/`)
 
@@ -116,3 +125,5 @@ dashboard/
 | `injury_overview_data.py` | `load_injury_overview()` | 부상 현황 분석 결과 | 파일 수정 시각 |
 | `management_store.py` | `load_records(kind)` | `MANAGEMENT_DIR/*.csv` | 캐시하지 않음 (입력 기록은 즉시 반영) |
 | `management_forms.py` | `editor(...)`, `LABELS` | 관리 기록 | - |
+
+개인 장병 상세 화면의 `장병 찾기`에서는 지역을 먼저 선택한 뒤 해당 지역의 부대를 선택해 장병 목록을 좁힐 수 있습니다. 두 필터를 비워 두면 전체를 조회합니다.

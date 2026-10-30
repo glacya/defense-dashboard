@@ -3,6 +3,7 @@
 import altair as alt
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard.common.charts import (
@@ -13,6 +14,9 @@ from dashboard.common.filters import render_filters
 from dashboard.common.formatting import BMI_CATEGORY_ORDER, RANK_ORDER, filter_signature
 from dashboard.common.widgets import render_soldier_details
 from dashboard.main_data import load_main_data
+from dashboard.py.followup_fitness_types import load_fitness_types
+from dashboard.py.personal_fitness_profile import load_personal_profile
+from data.scripts.analysis.analysis2.fitness_overview import EVENTS
 
 
 def clear_bmi_chart_selection() -> None:
@@ -81,13 +85,75 @@ def show_bmi_soldiers_panel(group_name: str, category: str, soldiers: pd.DataFra
             rows = event.selection.rows
             if rows and 0 <= rows[0] < len(soldiers):
                 st.divider()
-                render_soldier_details(soldiers.iloc[rows[0]])
+                soldier = soldiers.iloc[rows[0]]
+                details_column, fitness_type_column = st.columns([1.15, 1], gap="medium")
+                with details_column:
+                    render_soldier_details(soldier)
+                with fitness_type_column:
+                    render_soldier_fitness_type(soldier)
         if st.button("닫기", width="stretch", type="primary"):
             st.session_state["bmi_chart_selected_category"] = None
             st.session_state["bmi_chart_dismissed_selection_key"] = st.session_state.get("bmi_chart_selection_key")
             st.rerun()
 
     _panel()
+
+
+def render_soldier_fitness_type(soldier: pd.Series) -> None:
+    """선택 장병의 체력유형과 개인 상세 화면과 같은 백분위 레이더를 표시합니다."""
+    st.subheader("체력유형")
+    try:
+        classified, _ = load_fitness_types(
+            pd.DataFrame([{
+                "SOLDIER_ID": soldier["SOLDIER_ID"],
+                "MESURE_ID": soldier["MESURE_ID"],
+            }])
+        )
+    except (OSError, ValueError, KeyError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
+        st.info(f"체력유형 자료를 확인할 수 없습니다: {error}")
+        return
+
+    classification = classified.iloc[0]
+    if pd.isna(classification.TYPE_NAME):
+        st.info("선택 측정의 체력유형 분류 정보가 없습니다.")
+        return
+
+    st.markdown(f"**{classification.TYPE_NAME}**")
+    st.caption(
+        f"평균 백분위 {int(classification.AVERAGE_PERCENTILE_GRADE)}등급 · "
+        f"군집 {int(classification.CLUSTER)} · 측정일 {soldier['MESURE_DE']:%Y-%m-%d} 기준"
+    )
+    try:
+        personal_profile, cluster_profile, member_count = load_personal_profile(soldier["MESURE_ID"])
+    except (OSError, ValueError, KeyError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
+        st.info(f"체력유형 비교 차트를 표시할 수 없습니다: {error}")
+        return
+
+    axes = [EVENTS[event][0] for event in personal_profile.index]
+    radar = go.Figure()
+    for name, values, color in [
+        ("선택 장병", personal_profile, "#2563eb"),
+        ("같은 체력유형 평균", cluster_profile, "#ea580c"),
+    ]:
+        scores = [float(value) if pd.notna(value) else None for value in values]
+        radar.add_trace(go.Scatterpolar(
+            r=scores + scores[:1], theta=axes + axes[:1],
+            mode="lines+markers", name=name,
+            line={"color": color, "width": 3},
+            hovertemplate="%{theta}<br>백분위 %{r:.1f}<extra>%{fullData.name}</extra>",
+        ))
+    radar.update_layout(
+        polar={"radialaxis": {"visible": True, "range": [0, 100], "dtick": 20},
+               "angularaxis": {"direction": "clockwise"}, "gridshape": "linear"},
+        height=310, margin={"t": 20, "b": 35, "l": 35, "r": 35},
+        legend={"orientation": "h", "y": -0.08, "x": 0.5, "xanchor": "center", "font": {"size": 10}},
+    )
+    st.plotly_chart(radar, width="stretch", key=f"unit_soldier_fitness_type_{soldier['MESURE_ID']}",
+                    config={"displayModeBar": False})
+    st.caption(
+        f"바깥쪽일수록 종목 백분위가 높습니다. 같은 체력유형의 전체 회차 측정 "
+        f"{member_count:,}건 평균이며 선택 측정도 포함합니다. 백분위는 전체 측정 기준입니다."
+    )
 
 
 def _render_summary(scoped: pd.DataFrame) -> str:

@@ -3,11 +3,16 @@
 실제 모델 파일 대신 작은 가상 측정으로 모델을 학습해 등급 나누기 -> 학습 -> 적용 흐름을 확인합니다.
 """
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from data.scripts.analysis.clustering.assign_grade_and_cluster import run as assign_run
+from data.scripts.analysis.clustering.assign_grade_and_cluster import save_relative_profiles
+from data.scripts.analysis.clustering.assign_grade_and_cluster import build_fitness_types
+from data.scripts.analysis.clustering.cluster_features import build_gap_features, gap_feature_columns
 from data.scripts.analysis.clustering.classify_measurements_by_percentile import assign_grades, split_by_grade
 from data.scripts.analysis.clustering.classify_measurements_by_percentile import add_percentiles
 from data.scripts.analysis.clustering.classify_measurements_by_percentile import run as classify_run
@@ -91,3 +96,29 @@ def test_assign_requires_trained_models(tmp_path):
             DEFINITION_MEASUREMENT_CLASSIFICATION, DEFINITION_FITNESS_TYPE,
             tmp_path / "classification.csv", tmp_path / "fitness_type.csv",
         )
+
+
+def test_relative_profile_outputs_match_pairwise_differences(tmp_path):
+    """모든 등급의 표와 그림을 저장하고 다른 세 종목 대비 편차인지 확인합니다."""
+    measurements = pd.DataFrame({
+        'STRENGTH_PERCENTILE': [80.0], 'ENDURANCE_PERCENTILE': [40.0],
+        'CARDIO_PERCENTILE': [50.0], 'FLEXIBILITY_PERCENTILE': [30.0],
+    })
+    bundle = {
+        'kmeans': SimpleNamespace(cluster_centers_=build_gap_features(measurements).to_numpy()),
+        'feature_columns': gap_feature_columns(), 'type_names': {0: '유형0'},
+    }
+    names = build_fitness_types({grade: bundle for grade in (1, 2, 3, 4)})
+    assert names.TYPE_NAME.tolist() == [
+        '유형0: 유연성 약점형', '유형0: 유연성 약점형',
+        '유형0: 근력 강점형', '유형0: 근력 강점형',
+    ]
+    save_relative_profiles({grade: bundle for grade in (1, 2, 3, 4)}, tmp_path)
+    for grade in (1, 2, 3, 4):
+        table = pd.read_csv(tmp_path / f'grade_{grade}_relative_profile.csv')
+        assert table.loc[0, 'AVERAGE_PERCENTILE_GRADE'] == grade
+        assert table.loc[0, 'TYPE_NAME'] == names.loc[grade - 1, 'TYPE_NAME']
+        assert table.loc[0, 'STRENGTH_RELATIVE'] == 40.0
+        assert table.loc[0, 'ENDURANCE_RELATIVE'] == pytest.approx(-13.33)
+        assert abs(table.filter(like='_RELATIVE').iloc[0].sum()) < .02
+        assert (tmp_path / f'grade_{grade}_relative_profile.png').stat().st_size > 0

@@ -1,25 +1,29 @@
+[server]
+runOnSave = true
+fileWatcherType = "poll"
+
 [theme]
-base = "dark"
-primaryColor = "#2589FF"
-backgroundColor = "#071321"
-secondaryBackgroundColor = "#10243A"
-textColor = "#EFF5FB"
-borderColor = "#244666"
-dataframeBorderColor = "#244666"
-dataframeHeaderBackgroundColor = "#142D49"
+base = "light"
+primaryColor = "#0F766E"
+backgroundColor = "#F7FAFC"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1F3349"
+borderColor = "#D9E3EC"
+dataframeBorderColor = "#D9E3EC"
+dataframeHeaderBackgroundColor = "#EAF2F7"
 showWidgetBorder = true
 showSidebarBorder = true
-blueColor = "#4C9FFF"
-greenColor = "#20C8A3"
-orangeColor = "#E8A93D"
-redColor = "#F15D70"
-yellowColor = "#E8A93D"
-grayColor = "#C6D3E0"
-chartCategoricalColors = ["#438DFF", "#16C79A", "#F2A93B", "#F15B70", "#9A78F4", "#29B8D0"]
+blueColor = "#2563EB"
+greenColor = "#0F766E"
+orangeColor = "#D97706"
+redColor = "#DC5C6A"
+yellowColor = "#CA8A04"
+grayColor = "#64748B"
+chartCategoricalColors = ["#0F766E", "#0891B2", "#2563EB", "#38BDF8", "#14B8A6", "#6366F1"]
 
 [theme.sidebar]
-backgroundColor = "#09192B"
-secondaryBackgroundColor = "#10243A"
-primaryColor = "#2589FF"
-textColor = "#EFF5FB"
-borderColor = "#244666"
+backgroundColor = "#F1F7FA"
+secondaryBackgroundColor = "#FFFFFF"
+primaryColor = "#0F766E"
+textColor = "#1F3349"
+borderColor = "#D9E3EC"

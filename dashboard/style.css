@@ -1,22 +1,132 @@
 /* ==========================================
-   1. 색상 변수
-   (sample_dashboard.py의 NAVY_*, LIGHT_TEXT, MUTED_TEXT, CYAN_ACCENT, BLUE_ACCENT 상수와 같은 값)
+   1. 색상 변수 (라이트 테마 / 팔레트 기준)
    ========================================== */
+
+/* ==========================================
+   10. 홈 대시보드 준비태세 배너
+   기존 밝은 팔레트 위에서 사용할 수 있는 다크 배너
+   ========================================== */
+.home-readiness-banner {
+    display: flex;
+    align-items: stretch;
+    gap: 1rem;
+    min-height: 142px;
+    margin: 0.8rem 0 1.25rem;
+    padding: 1rem;
+    overflow: hidden;
+    border: 1px solid #304962;
+    border-radius: 0.8rem;
+    background:
+        radial-gradient(circle at 18% 35%, rgba(70, 102, 132, 0.45), transparent 30%),
+        linear-gradient(115deg, #172d45 0%, #243c55 45%, #526372 100%);
+    box-shadow: 0 10px 28px rgba(24, 43, 64, 0.16);
+}
+.home-readiness-banner__copy {
+    display: flex;
+    flex: 0 0 30%;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.8rem 1rem;
+    color: #ffffff;
+}
+.home-readiness-banner__eyebrow {
+    color: #b7c8d9;
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+}
+.home-readiness-banner__title {
+    margin-top: 0.35rem;
+    font-size: 1.35rem;
+    font-weight: 800;
+    line-height: 1.25;
+}
+.home-readiness-banner__description {
+    margin-top: 0.45rem;
+    color: #d8e3ed;
+    font-size: 0.78rem;
+}
+.home-readiness-banner__cards {
+    display: grid;
+    flex: 1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: center;
+    gap: 0.7rem;
+}
+.home-readiness-card {
+    min-height: 104px;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-top: 5px solid var(--card-accent);
+    border-radius: 0.55rem;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 5px 14px rgba(0, 0, 0, 0.16);
+}
+.home-readiness-card__label {
+    color: #42556b;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+.home-readiness-card__value {
+    margin-top: 0.35rem;
+    color: var(--card-accent);
+    font-size: 1.55rem;
+    font-weight: 800;
+    line-height: 1.1;
+}
+.home-readiness-card__detail {
+    margin-top: 0.45rem;
+    color: #718196;
+    font-size: 0.7rem;
+}
+@media (max-width: 900px) {
+    .home-readiness-banner {
+        flex-direction: column;
+    }
+    .home-readiness-banner__copy {
+        flex-basis: auto;
+        min-height: 80px;
+    }
+}
 :root {
-    color-scheme: dark;
-    --navy-background: #071321;                 /* 앱 전체 배경: 페이지 바탕과 Plotly 차트의 어두운 기본 배경 */
-    --navy-surface: #10243A;                    /* 표면/카드 배경: 사이드바 내부와 어두운 패널 */
-    --navy-border: #244666;                     /* 어두운 경계선: 카드·표·차트 그리드 구분 */
-    --light-text: #EFF5FB;                      /* 기본 밝은 글자: 제목·본문·수치 */
-    --muted-text: #C6D3E0;                      /* 보조 밝은 글자: caption·설명·범례 */
-    --cyan-accent: #25C6D8;                     /* 청록 강조: 선택 탭·슬라이더·활성 상태 */
-    --blue-accent: #2589FF;                    /* 파랑 강조: 기본 버튼·링크·주요 데이터 */
-    --st-background-color: #071321;             /* Streamlit 기본 배경: 앱 바깥 영역 */
-    --st-secondary-background-color: #10243A;   /* Streamlit 보조 배경: 입력창·카드 표면 */
-    --st-text-color: #EFF5FB;                  /* Streamlit 기본 글자색 */
-    --st-primary-color: #2589FF;               /* Streamlit 기본 상호작용 색상 */
-    --st-border-color: #244666;                /* Streamlit 기본 경계선 색상 */
-    --st-dataframe-header-background-color: #142D49; /* 데이터프레임 헤더 배경 */
+    color-scheme: light;
+
+    /* --- 팔레트 원본 --- */
+    --c-ink: #182B40;            /* 제목·본문 진한 글자 */
+    --c-navy: #193B60;           /* 진한 네이비 (사이드바 강조, 보조 데이터) */
+    --c-blue: #2C65B7;           /* 주요 파랑 (버튼·막대·선택 상태) */
+    --c-blue-light: #84A9D6;     /* 연한 파랑 (보조 막대·차트) */
+    --c-blue-tint: #ECF3FC;      /* 파랑 틴트 (선택 배경·호버) */
+    --c-teal: #238F91;           /* 청록 (정상·긍정 데이터) */
+    --c-teal-light: #6AB8BC;     /* 연한 청록 (보조 데이터) */
+    --c-teal-tint: #EAF6F4;      /* 청록 틴트 */
+    --c-gold: #CB9B50;           /* 골드 (주의·위험) */
+    --c-gold-tint: #FAF4E9;      /* 골드 틴트 */
+    --c-slate: #68798B;          /* 보조 글자 */
+    --c-gray: #8A98A7;           /* 비활성·캡션 */
+    --c-gray-2: #8999AE;         /* 보조 회색 (차트 축 등) */
+    --c-border: #DFE6ED;         /* 경계선 */
+    --c-bg-soft: #EDF1F5;        /* 입력창·표 헤더 배경 */
+    --c-bg-page: #F8FAFC;        /* 페이지 바탕 */
+    --c-bg-muted: #F4F6F9;       /* 보조 바탕 */
+    --c-white: #FFFFFF;          /* 카드 표면 */
+
+    /* --- 기존 변수명 유지 (다른 코드에서 참조 가능) --- */
+    --navy-background: var(--c-bg-page);
+    --navy-surface: var(--c-white);
+    --navy-border: var(--c-border);
+    --light-text: var(--c-ink);
+    --muted-text: var(--c-slate);
+    --cyan-accent: var(--c-teal);
+    --blue-accent: var(--c-blue);
+
+    /* --- Streamlit 테마 값 --- */
+    --st-background-color: #F8FAFC;
+    --st-secondary-background-color: #FFFFFF;
+    --st-text-color: #182B40;
+    --st-primary-color: #2C65B7;
+    --st-border-color: #DFE6ED;
+    --st-dataframe-header-background-color: #EDF1F5;
 }
 
 /* ==========================================
@@ -24,10 +134,8 @@
    ========================================== */
 .stApp,
 [data-testid="stAppViewContainer"] {
-    background:
-        radial-gradient(ellipse at 76% -18%, rgba(24, 91, 154, 0.34), transparent 46%),
-        linear-gradient(145deg, #09192B 0%, var(--navy-background) 58%, #050D18 100%);
-    color: var(--light-text);
+    background: var(--c-bg-page);
+    color: var(--c-ink);
 }
 [data-testid="stMain"] {
     background: transparent;
@@ -36,16 +144,17 @@
     padding-top: 2rem;
 }
 [data-testid="stHeader"] {
-    background: rgba(7, 19, 33, 0.92);
+    background: rgba(248, 250, 252, 0.92);
+    border-bottom: 1px solid var(--c-border);
 }
 
 /* ==========================================
    3. 사이드바
    ========================================== */
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0A1D33 0%, #09192B 58%, #06101C 100%);
-    border-right: 1px solid rgba(47, 91, 132, 0.48);
-    box-shadow: 12px 0 36px rgba(0, 0, 0, 0.16);
+    background: var(--c-white);
+    border-right: 1px solid var(--c-border);
+    box-shadow: none;
 }
 [data-testid="stSidebar"] [data-testid="stImage"] {
     margin-bottom: -0.5rem;
@@ -54,10 +163,15 @@
     justify-content: flex-start;
     border-radius: 0.55rem;
     font-weight: 600;
+    color: var(--c-slate);
+}
+.st-key-sidebar-navigation button:hover {
+    background: var(--c-blue-tint);
+    color: var(--c-blue);
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] {
-    background: rgba(16, 36, 58, 0.68);
-    border: 1px solid rgba(47, 91, 132, 0.48);
+    background: var(--c-blue-tint);
+    border: 1px solid var(--c-border);
     border-radius: 0.65rem;
 }
 
@@ -65,61 +179,86 @@
    4. 지표 카드 (metric)
    ========================================== */
 [data-testid="stMetric"] {
-    background: linear-gradient(145deg, #142F4B 0%, #0D2035 100%);
-    border: 1px solid #285073;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
     border-radius: 0.8rem;
-    box-shadow: inset 0 1px 0 rgba(151, 203, 242, 0.045), 0 8px 22px rgba(0, 0, 0, 0.14);
+    box-shadow: 0 2px 8px rgba(24, 43, 64, 0.05);
     padding: 0.55rem 0.25rem;
 }
+.st-key-injury-followup-summary [data-testid="stColumn"]:nth-child(1) {
+    --injury-card-bg: #ECF3FC;
+    --injury-card-accent: #2C65B7;
+}
+.st-key-injury-followup-summary [data-testid="stColumn"]:nth-child(2) {
+    --injury-card-bg: #FFF3E8;
+    --injury-card-accent: #B45309;
+}
+.st-key-injury-followup-summary [data-testid="stColumn"]:nth-child(3) {
+    --injury-card-bg: #F3EEFC;
+    --injury-card-accent: #7351A8;
+}
+.st-key-injury-followup-summary [data-testid="stColumn"]:nth-child(4) {
+    --injury-card-bg: #EAF6F0;
+    --injury-card-accent: #237A50;
+}
+.st-key-injury-followup-summary [data-testid="stMetric"] {
+    background: var(--injury-card-bg);
+    border-color: var(--injury-card-accent);
+    box-shadow: inset 0 3px 0 var(--injury-card-accent), 0 2px 8px rgba(24, 43, 64, 0.05);
+}
+.st-key-injury-followup-summary [data-testid="stMetricLabel"] p,
+.st-key-injury-followup-summary [data-testid="stMetricValue"] {
+    color: var(--injury-card-accent);
+}
 [data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-total) {
-    background: linear-gradient(145deg, rgba(37, 137, 255, 0.25), rgba(13, 32, 53, 0.98));
-    border-color: rgba(67, 141, 255, 0.78);
-    box-shadow: inset 0 3px 0 #438DFF, 0 8px 24px rgba(27, 105, 207, 0.16);
+    background: var(--c-white);
+    border-color: var(--c-border);
+    box-shadow: inset 0 3px 0 var(--c-blue), 0 2px 8px rgba(24, 43, 64, 0.05);
 }
 [data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-normal) {
-    background: linear-gradient(145deg, rgba(22, 199, 154, 0.22), rgba(10, 38, 42, 0.98));
-    border-color: rgba(22, 199, 154, 0.72);
-    box-shadow: inset 0 3px 0 #16C79A, 0 8px 24px rgba(22, 199, 154, 0.12);
+    background: var(--c-white);
+    border-color: var(--c-border);
+    box-shadow: inset 0 3px 0 var(--c-teal), 0 2px 8px rgba(24, 43, 64, 0.05);
 }
 [data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-risk) {
-    background: linear-gradient(145deg, rgba(242, 169, 59, 0.22), rgba(43, 34, 28, 0.98));
-    border-color: rgba(242, 169, 59, 0.76);
-    box-shadow: inset 0 3px 0 #F2A93B, 0 8px 24px rgba(242, 169, 59, 0.12);
+    background: var(--c-white);
+    border-color: var(--c-border);
+    box-shadow: inset 0 3px 0 var(--c-gold), 0 2px 8px rgba(24, 43, 64, 0.05);
 }
 [data-testid="stLayoutWrapper"]:has(> .st-key-summary-card-underweight) {
-    background: linear-gradient(145deg, rgba(241, 91, 112, 0.23), rgba(43, 27, 41, 0.98));
-    border-color: rgba(241, 91, 112, 0.78);
-    box-shadow: inset 0 3px 0 #F15B70, 0 8px 24px rgba(241, 91, 112, 0.12);
+    background: var(--c-white);
+    border-color: var(--c-border);
+    box-shadow: inset 0 3px 0 var(--c-navy), 0 2px 8px rgba(24, 43, 64, 0.05);
 }
 .st-key-summary-card-total [data-testid="stMetricLabel"] p,
 .st-key-summary-card-total [data-testid="stMetricValue"] {
-    color: #A9CFFF;
+    color: var(--c-blue);
 }
 .st-key-summary-card-normal [data-testid="stMetricLabel"] p,
 .st-key-summary-card-normal [data-testid="stMetricValue"] {
-    color: #8FE5C9;
+    color: var(--c-teal);
 }
 .st-key-summary-card-risk [data-testid="stMetricLabel"] p,
 .st-key-summary-card-risk [data-testid="stMetricValue"] {
-    color: #FFD28B;
+    color: var(--c-gold);
 }
 .st-key-summary-card-underweight [data-testid="stMetricLabel"] p,
 .st-key-summary-card-underweight [data-testid="stMetricValue"] {
-    color: #FFADB7;
+    color: var(--c-navy);
 }
 [data-testid="stVerticalBlockBorderWrapper"] {
-    background: linear-gradient(150deg, rgba(17, 39, 62, 0.94), rgba(10, 27, 46, 0.98));
-    border-color: rgba(42, 78, 114, 0.92);
+    background: var(--c-white);
+    border-color: var(--c-border);
     border-radius: 0.8rem;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 2px 8px rgba(24, 43, 64, 0.05);
 }
 [data-testid="stMetricValue"] {
-    color: var(--light-text);
+    color: var(--c-ink);
     font-size: clamp(0.95rem, 1.3vw, 1.35rem);
     overflow-wrap: anywhere;
 }
 [data-testid="stMetricLabel"] p {
-    color: #E0E9F2;
+    color: var(--c-slate);
     font-size: 0.68rem !important;
     white-space: nowrap;
 }
@@ -128,83 +267,83 @@
    5. 텍스트·표
    ========================================== */
 [data-testid="stCaptionContainer"] p {
-    color: var(--muted-text);
+    color: var(--c-slate);
 }
 [data-testid="stMarkdownContainer"] p,
 [data-testid="stMarkdownContainer"] li,
 label,
 h1, h2, h3, h4 {
-    color: var(--light-text);
+    color: var(--c-ink);
 }
 h1 {
-    text-shadow: 0 0 26px rgba(33, 183, 213, 0.14);
+    text-shadow: none;
 }
 [data-testid="stDataFrame"] {
-    border: 1px solid #244666;
+    border: 1px solid var(--c-border);
     border-radius: 0.65rem;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+    box-shadow: 0 2px 8px rgba(24, 43, 64, 0.05);
 }
 
 /* ==========================================
    6. 입력 위젯
    ========================================== */
 [data-testid="stTextInputRootElement"] {
-    background: #0D2035 !important;
-    border: 1px solid #2B5278 !important;
+    background: var(--c-white) !important;
+    border: 1px solid var(--c-border) !important;
     border-radius: 0.55rem !important;
 }
 [data-testid="stTextInputField"] {
     background: transparent !important;
-    color: var(--light-text) !important;
+    color: var(--c-ink) !important;
 }
 [data-testid="stTextInputField"]::placeholder {
-    color: var(--muted-text) !important;
+    color: var(--c-gray) !important;
     opacity: 1;
 }
 [data-testid="stSelectbox"] [role="group"],
 [data-testid="stMultiSelect"] [role="group"],
 [data-testid="stDateInput"] [role="group"] {
-    background: #0D2035 !important;
-    border-color: #2B5278 !important;
+    background: var(--c-white) !important;
+    border-color: var(--c-border) !important;
     border-radius: 0.55rem !important;
-    color: var(--light-text) !important;
+    color: var(--c-ink) !important;
 }
 [data-testid="stSelectbox"] input,
 [data-testid="stMultiSelect"] input,
 [data-testid="stDateInput"] input {
-    color: var(--light-text) !important;
+    color: var(--c-ink) !important;
 }
 [data-testid="stSelectbox"] input::placeholder,
 [data-testid="stMultiSelect"] input::placeholder,
 [data-testid="stDateInput"] input::placeholder {
-    color: var(--muted-text) !important;
+    color: var(--c-gray) !important;
     opacity: 1;
 }
 [data-testid="stSlider"] input[type="range"] {
-    accent-color: var(--cyan-accent);
+    accent-color: var(--c-blue);
 }
 [data-testid="stSlider"] [role="slider"] {
-    background: var(--cyan-accent);
-    border-color: var(--cyan-accent);
-    box-shadow: 0 0 12px rgba(32, 200, 163, 0.34);
+    background: var(--c-white);
+    border: 2px solid var(--c-blue);
+    box-shadow: 0 0 0 3px rgba(44, 101, 183, 0.15);
 }
 [data-testid="stMultiSelectTagsContainer"] span[role="group"] > span:not([role]) {
-    background: #153956 !important;
-    color: #DCEAF6 !important;
-    border: 1px solid #32658D !important;
+    background: var(--c-blue-tint) !important;
+    color: var(--c-navy) !important;
+    border: 1px solid var(--c-blue-light) !important;
     border-radius: 999px;
 }
 [data-testid="stMultiSelectTagsContainer"] span[role="group"] > span:not([role]) button svg {
-    fill: #A8C6D9 !important;
+    fill: var(--c-slate) !important;
 }
 
 /* ==========================================
    7. 버튼·탭
    ========================================== */
 button[kind="secondary"] {
-    background: linear-gradient(145deg, #17334F, #10243A);
-    border: 1px solid #2B5278;
-    color: var(--light-text);
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    color: var(--c-ink);
     border-radius: 0.55rem;
     font-size: 0.8rem;
     padding-left: 0.35rem;
@@ -213,53 +352,59 @@ button[kind="secondary"] {
     transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
 }
 button[kind="secondary"]:hover {
-    background: #1B3D5D;
-    border-color: var(--cyan-accent);
-    color: #EFF5FB;
+    background: var(--c-blue-tint);
+    border-color: var(--c-blue);
+    color: var(--c-blue);
     transform: translateY(-1px);
 }
 button[kind="primary"] {
-    background: linear-gradient(115deg, #2589FF, #176BD3);
-    border-color: #4199FF;
-    color: #EFF5FB;
+    background: var(--c-blue);
+    border-color: var(--c-blue);
+    color: var(--c-white);
     border-radius: 0.55rem;
-    box-shadow: 0 5px 16px rgba(25, 118, 232, 0.22);
+    box-shadow: 0 2px 8px rgba(44, 101, 183, 0.22);
 }
 button[kind="primary"]:hover {
-    background: linear-gradient(115deg, #4098FF, #2581E8);
-    border-color: #70B0FF;
+    background: var(--c-navy);
+    border-color: var(--c-navy);
 }
 [data-testid="stTab"][aria-selected="true"] {
-    color: var(--cyan-accent) !important;
-    border-bottom-color: var(--cyan-accent) !important;
+    color: var(--c-blue) !important;
+    border-bottom-color: var(--c-blue) !important;
 }
 [data-testid="stTab"][aria-selected="true"]::after {
-    background-color: var(--cyan-accent) !important;
+    background-color: var(--c-blue) !important;
 }
 [data-testid="stTab"][role="tab"] {
-    color: #C2D2E2;
+    color: var(--c-slate);
 }
 [data-testid="stTab"][role="tab"]:hover {
-    color: #EFF5FB;
+    color: var(--c-ink);
 }
 [data-testid="stButtonGroup"] button[role="radio"][aria-checked="true"] {
-    background: rgba(37, 137, 255, 0.16) !important;
-    border-color: var(--cyan-accent) !important;
-    color: #C2E8E2 !important;
+    background: var(--c-blue-tint) !important;
+    border-color: var(--c-blue) !important;
+    color: var(--c-blue) !important;
 }
 
 /* ==========================================
    8. 모달·알림·구분선
    ========================================== */
 [data-testid="stDialog"] {
-    background: #0A1929;
-    border: 1px solid #2B5278;
-    box-shadow: 0 18px 70px rgba(0, 0, 0, 0.52);
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    box-shadow: 0 18px 50px rgba(24, 43, 64, 0.18);
 }
 [data-testid="stAlert"] {
-    background: linear-gradient(135deg, #142F4B, #0D2035);
-    border-color: #2B5278;
+    background: var(--c-blue-tint);
+    border-color: var(--c-border);
 }
 hr {
-    border-color: rgba(47, 86, 122, 0.5);
+    border-color: var(--c-border);
 }
+
+/* ==========================================
+   9. 차트 팔레트 참고 (Plotly 등에서 사용)
+   막대·도넛: #2C65B7, #84A9D6, #6AB8BC, #238F91
+   보조선·축: #8999AE / 그리드: #DFE6ED / 강조(주의): #CB9B50
+   ========================================== */

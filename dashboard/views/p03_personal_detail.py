@@ -20,6 +20,14 @@ def _reset_personal_unit_filter(unit_key: str) -> None:
     st.session_state[unit_key] = []
 
 
+def _clear_personal_filters() -> None:
+    st.session_state['personal_region_filter']=[]
+    st.session_state['personal_unit_filter']=[]
+    st.session_state['personal_rank_filter']=[]
+    st.session_state['personal_search']=''
+    st.session_state.pop('personal_soldier',None)
+
+
 def formatted(value, digits=2) -> str:
     """누락된 숫자는 미측정으로 표시합니다."""
     number=pd.to_numeric(value,errors='coerce')
@@ -43,44 +51,57 @@ def render() -> None:
         st.code('python -m data.scripts.main analysis',language='powershell');st.stop()
     except (ValueError,KeyError,pd.errors.EmptyDataError) as error:
         st.error(f'자료 확인이 필요합니다: {error}');st.stop()
-    st.subheader('장병 찾기')
-    region_filter,unit_filter,search_filter=st.columns(3)
-    people=data[['SOLDIER_ID','SOLDIER_NAME','REGION_NAME','RANK_NAME','UNIT_NAME']].drop_duplicates('SOLDIER_ID')
-    region_key='personal_region_filter'
-    unit_key='personal_unit_filter'
-    units_by_region=people.groupby('REGION_NAME')['UNIT_NAME'].unique().map(list).to_dict()
-    regions=region_filter.multiselect(
-        '지역',
-        options=sorted(people.REGION_NAME.dropna().unique().tolist()),
-        key=region_key,
-        on_change=_reset_personal_unit_filter,
-        args=(unit_key,),
-        placeholder='전체 지역',
-    )
-    available_units=(
-        sorted({unit for region in regions for unit in units_by_region.get(region, [])})
-        if regions else sorted(people.UNIT_NAME.dropna().unique().tolist())
-    )
-    units=unit_filter.multiselect(
-        '부대',
-        options=available_units,
-        key=unit_key,
-        placeholder='전체 부대',
-    )
-    search=search_filter.text_input('이름·장병번호 검색')
-    if regions:
-        people=people.loc[people.REGION_NAME.isin(regions)]
-    if units:
-        people=people.loc[people.UNIT_NAME.isin(units)]
-    if search:
-        people=people.loc[people.SOLDIER_NAME.str.contains(search,regex=False)|people.SOLDIER_ID.str.contains(search,regex=False)]
-    if people.empty:
-        st.info('선택한 지역·부대·검색 조건에 해당하는 장병이 없습니다.');st.stop()
-    st.caption(f'조건에 해당하는 장병 {people.SOLDIER_ID.nunique():,}명')
-    people=people.sort_values(['SOLDIER_NAME','SOLDIER_ID'])
-    labels=people.set_index('SOLDIER_ID')
-    soldier=st.selectbox('장병 선택',people.SOLDIER_ID.tolist(),
-        format_func=lambda value:f'{labels.loc[value,"SOLDIER_NAME"]} · {labels.loc[value,"RANK_NAME"]} · {value}')
+    with st.container(border=True,key='personal-finder'):
+        finder_title,finder_reset=st.columns([5,1],vertical_alignment='center')
+        with finder_title:
+            st.subheader('장병 찾기')
+        with finder_reset:
+            st.button('전체 조회',key='personal-clear-filters',on_click=_clear_personal_filters,width='stretch')
+        region_filter,unit_filter,rank_filter,search_filter=st.columns([1,1,1,1.4])
+        people=data[['SOLDIER_ID','SOLDIER_NAME','REGION_NAME','RANK_NAME','UNIT_NAME']].drop_duplicates('SOLDIER_ID')
+        region_key='personal_region_filter'
+        unit_key='personal_unit_filter'
+        units_by_region=people.groupby('REGION_NAME')['UNIT_NAME'].unique().map(list).to_dict()
+        regions=region_filter.multiselect(
+            '지역',
+            options=sorted(people.REGION_NAME.dropna().unique().tolist()),
+            key=region_key,
+            on_change=_reset_personal_unit_filter,
+            args=(unit_key,),
+            placeholder='전체 지역',
+        )
+        available_units=(
+            sorted({unit for region in regions for unit in units_by_region.get(region, [])})
+            if regions else sorted(people.UNIT_NAME.dropna().unique().tolist())
+        )
+        units=unit_filter.multiselect(
+            '부대',
+            options=available_units,
+            key=unit_key,
+            placeholder='전체 부대',
+        )
+        rank_order=['이병','일병','상병','병장']
+        available_ranks=sorted(people.RANK_NAME.dropna().unique().tolist(),
+                               key=lambda rank:(rank_order.index(rank) if rank in rank_order else len(rank_order),rank))
+        ranks=rank_filter.multiselect('계급',available_ranks,key='personal_rank_filter',placeholder='전체 계급')
+        search=search_filter.text_input('이름·장병번호 검색',key='personal_search',
+                                        placeholder='이름 또는 장병번호 입력').strip()
+        if regions:
+            people=people.loc[people.REGION_NAME.isin(regions)]
+        if units:
+            people=people.loc[people.UNIT_NAME.isin(units)]
+        if ranks:
+            people=people.loc[people.RANK_NAME.isin(ranks)]
+        if search:
+            people=people.loc[people.SOLDIER_NAME.str.contains(search,regex=False)|people.SOLDIER_ID.str.contains(search,regex=False)]
+        if people.empty:
+            st.info('선택한 지역·부대·계급·검색 조건에 해당하는 장병이 없습니다.');st.stop()
+        st.caption(f'검색 결과 {people.SOLDIER_ID.nunique():,}명 / 전체 {data.SOLDIER_ID.nunique():,}명')
+        people=people.sort_values(['SOLDIER_NAME','SOLDIER_ID'])
+        labels=people.set_index('SOLDIER_ID')
+        soldier=st.selectbox('장병 선택 · 이름이나 장병번호를 입력해 찾을 수 있습니다',people.SOLDIER_ID.tolist(),
+            key='personal_soldier',
+            format_func=lambda value:f'{labels.loc[value,"SOLDIER_NAME"]} · {labels.loc[value,"RANK_NAME"]} · {labels.loc[value,"UNIT_NAME"]} · {value}')
     history=data.loc[data.SOLDIER_ID.eq(soldier)].sort_values('ROUND')
     rounds=history.ROUND.astype(int).tolist()
     number=st.radio('상세 측정 회차',rounds,index=len(rounds)-1,horizontal=True,format_func=lambda value:f'{value}차')

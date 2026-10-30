@@ -11,7 +11,7 @@ import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.common.charts import CHART_CONTINUOUS_SCALE, CHART_PALETTE, show_plotly
-from dashboard.common.filters import render_filters
+from dashboard.common.filter_map import render_filters
 from dashboard.common.formatting import FITNESS_ITEM_LABELS, GRADE_LABELS, add_deficiency_flags
 from dashboard.common.widgets import PieChartWidget, RadarChartWidget
 from dashboard.data_source import CSV, resolve_source
@@ -19,6 +19,7 @@ from dashboard.db import DEFAULT_TTL, run_query
 from dashboard.main_data import load_main_data
 from dashboard.py.followup_fitness_types import read_fitness_type_tables
 from dashboard.py.followup_probability import load_probabilities
+from dashboard.py.personal_exercise_recommendations import load_recommendation
 from dashboard.py.management_store import COMMON, FIELDS, load_records
 
 PALETTE = list(CHART_PALETTE)
@@ -241,14 +242,15 @@ def _render_fitness_variance(unit: pd.DataFrame) -> None:
             projection_type="mercator", showcountries=False,
         )
         chart.update_layout(height=360, margin=dict(t=8, b=8, l=4, r=4),
-                            coloraxis_colorbar=dict(title="충족률(%)"))
+                            coloraxis_colorbar=dict(title="충족률(%)"),
+                            dragmode=False)  # 지도 드래그 이동 막기(클릭 선택은 유지)
         selection = st.plotly_chart(
             chart,
             width="stretch",
             key="home-region-map",
             on_select="rerun",
             selection_mode="points",
-            config={"displayModeBar": False},
+            config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False},
         )
         points = getattr(getattr(selection, "selection", None), "points", [])
         if points:
@@ -607,30 +609,33 @@ def _render_exercise_type(latest: pd.DataFrame) -> tuple[int, int] | None:
 
 
 def _render_recommendations(latest: pd.DataFrame, selected_type: tuple[int, int] | None) -> None:
-    typed, types = _attach_fitness_types(latest)
     with st.container(border=True, height="content"):
         st.subheader("운동추천리스트")
         if selected_type is None:
             st.info("운동 유형을 선택하면 해당 유형의 추천 운동이 표시됩니다.")
             return
         grade, cluster = selected_type
-        selected_data = typed.loc[
-            typed["AVERAGE_PERCENTILE_GRADE"].eq(grade)
-            & typed["CLUSTER"].eq(cluster)
-        ]
-        selected_name = types.loc[
-            types["AVERAGE_PERCENTILE_GRADE"].eq(grade) & types["CLUSTER"].eq(cluster), "TYPE_NAME"
-        ].iloc[0]
-        st.caption(selected_name)
-        recommendations = _recommendations_for_type(selected_data)
+        try:
+            recommendations = load_recommendation(grade, cluster, source='db')
+        except (OSError,ValueError,KeyError,pd.errors.EmptyDataError,SQLAlchemyError) as error:
+            st.info(f'추천 운동 자료를 확인할 수 없습니다: {error}')
+            return
         if recommendations.empty:
             st.info("선택한 유형에 연결된 추천 운동 기록이 없습니다.")
             return
+        st.caption(f'{grade}등급 · {recommendations.TYPE_NAME.iloc[0]}')
         recommendation_columns = st.columns(2)
         for index, (_, row) in enumerate(recommendations.iterrows()):
             with recommendation_columns[index % 2]:
-                st.markdown(f"**{row['운동']}**")
-                st.caption(f"해당 유형 처방 {int(row['인원']):,}건")
+                st.markdown(f"**{int(row['RECOMMENDATION_RANK'])}. {row['RECOMMENDED_EXERCISE']}**")
+                st.caption(f"보완 요소: {row['IMPROVEMENT_FOCUS']}")
+        illustrations={'근력':'strength','근지구력':'endurance',
+                       '심폐지구력':'cardio','유연성':'flexibility'}
+        focus=recommendations.sort_values('RECOMMENDATION_RANK').iloc[0].IMPROVEMENT_FOCUS
+        image_name=illustrations.get(focus)
+        if image_name:
+            st.image(str(Path(__file__).resolve().parents[1] / 'img' / f'exercise_{image_name}.svg'),
+                     caption=f'{focus} 운동 예시',width=180)
 
 
 def render_home_overview(filters, measurements: pd.DataFrame, injuries: pd.DataFrame) -> None:
@@ -646,6 +651,13 @@ def render_home_overview(filters, measurements: pd.DataFrame, injuries: pd.DataF
         _render_recommendations(latest, selected_type)
     with overview_columns[2]:
         _render_injuries(injuries, set(latest["SOLDIER_ID"]))
+        with st.container(border=True,height='content'):
+            notice_title,notice_image=st.columns([1,1],vertical_alignment='center')
+            with notice_title:
+                st.subheader('알림')
+            with notice_image:
+                st.image(str(Path(__file__).resolve().parents[1] / 'img' / 'notification_bell.svg'),width=40)
+            st.info('오늘도 체력에 투자하세요. 근육은 적금처럼 쌓이지만, 이자는 땀으로 지급됩니다! 💪')
 
 
 def render() -> None:

@@ -4,6 +4,7 @@ import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from config import MANAGEMENT_DIR
+from dashboard.common.filters import render_personnel_cards
 from dashboard.py.management_store import DB_TABLES, load_records, uses_db
 from dashboard.py.management_forms import editor, LABELS
 from dashboard.py.roster_data import load_injuries_text, load_personnel_text
@@ -32,16 +33,17 @@ def render() -> None:
     st.caption('대상 자료: SOLDIER_INJURY.csv. 부상 이력이 있는 장병을 조회하며, 후속조치 기록은 부상 번호로 연결합니다. 신상·부상 원본은 합성 자료입니다.')
     active=records.merge(injuries[['INJURY_ID','SOLDIER_ID']],on=['INJURY_ID','SOLDIER_ID'],how='inner',validate='many_to_one')
     has_archived_records=len(records)!=len(active)
-    units=sorted(people.UNIT_NAME.dropna().unique().tolist())
-    selected_units=st.multiselect('부대 선택',units,
-        key='injury_followup_units',placeholder='전체 부대',
-        help='선택하지 않으면 전체 부대, 여러 개 선택하면 선택한 부대의 현황과 장병을 조회합니다.')
-    if selected_units:
-        people=people.loc[people.UNIT_NAME.isin(selected_units)]
+    if 'REGION_NAME' not in people.columns:  # 지역 컬럼이 없으면 지역 카드 하나로 묶어 표시
+        people=people.assign(REGION_NAME='전체')
+    people=people.loc[people.SOLDIER_ID.isin(injuries.SOLDIER_ID)]
+    selection=render_personnel_cards(people,'injury_followup')
+    is_filtered=len(selection.scoped)!=len(people)
+    if is_filtered:
+        people=selection.scoped
         injuries=injuries.loc[injuries.SOLDIER_ID.isin(people.SOLDIER_ID)]
         active=active.loc[active.SOLDIER_ID.isin(people.SOLDIER_ID)]
-    visible_records=records.loc[records.SOLDIER_ID.isin(people.SOLDIER_ID)] if selected_units else records
-    st.caption('조회 부대: '+(' · '.join(selected_units) if selected_units else '전체 부대'))
+    visible_records=records.loc[records.SOLDIER_ID.isin(people.SOLDIER_ID)] if is_filtered else records
+    st.caption(f'조회 조건: 지역·부대·계급 카드 선택 · {people.SOLDIER_ID.nunique():,}명' if is_filtered else '조회 조건: 전체')
     latest=active.sort_values(['CHECK_DATE','UPDATED_AT']).drop_duplicates('INJURY_ID',keep='last')
     with st.container(key='injury-followup-summary'):
         for col,label,value in zip(st.columns(4),['부상 이력 장병','부상 건수','확인 기록이 있는 부상','최신 기록상 회복 확인'],

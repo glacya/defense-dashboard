@@ -15,6 +15,7 @@ import streamlit as st
 
 from dashboard.data_source import CSV, resolve_source
 from dashboard.db import DEFAULT_TTL
+from dashboard.py import queries
 from dashboard.py.fitness_judgment import EVENTS, REASONS, event_labels, join_labels, load_judged_measurements
 from data.scripts.utils import require_columns
 
@@ -50,6 +51,21 @@ def build_targets(judged: pd.DataFrame) -> pd.DataFrame:
     data['SELECTION_REASONS'] = join_labels({flag: data[flag] for flag in REASONS}, REASONS)
     internal = [column for column in data if column.endswith(INTERNAL_SUFFIXES)] + ['FIRST_FAIL_COUNT']
     return data.drop(columns=internal)
+
+
+def prepare_judgments(raw: pd.DataFrame) -> pd.DataFrame:
+    """SQL 판정 행(queries.judged_cte)의 측정일을 화면이 쓰던 yyyymmdd 숫자로 바꿉니다."""
+    return raw.assign(MESURE_DE=raw.MESURE_DE.astype('int64'))
+
+
+def load_round_targets(round_number: int) -> pd.DataFrame:
+    """선택 회차의 집중관리 대상자(판정 + 신상 + 종목 이름·선정 사유 등 표시용 컬럼)."""
+    return build_targets(prepare_judgments(queries.load_round_targets(round_number)))
+
+
+def targets_metadata() -> dict:
+    """선정 기준 설명(화면 안내용)."""
+    return {'생성일시': datetime.now(ZoneInfo('Asia/Seoul')).isoformat(), **METADATA_TEXT}
 
 
 def _link(targets: pd.DataFrame, source: pd.DataFrame, people: pd.DataFrame) -> pd.DataFrame:

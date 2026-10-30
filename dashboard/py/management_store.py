@@ -129,8 +129,40 @@ def _save_record_db(kind: str, record: dict, record_id: str, expected_updated: s
             if result.rowcount!=1:
                 raise ValueError(CONFLICT_MESSAGE)
             saved=params['record_id']
-    _load_records_db.clear()
+    _clear_record_caches()
     return str(saved)
+
+
+# 메인 화면 완료율: 기록 전체를 받지 않고 DB에서 센다.
+# - 체력: 미달 확률이 기준 이상(경계1~3등급)인 장병 중 완료 기록이 하나라도 있는 장병 수
+# - 부상: 부상별 가장 최근 기록(확인일, 같으면 수정 시각)이 완료인 부상 수
+COMPLETION_SQL = """
+SELECT
+    (SELECT count(*) FROM fitness_followups) AS fitness_records,
+    (SELECT count(DISTINCT f.soldier_id)
+        FROM fitness_followups f
+        JOIN soldier_failure_probabilities p USING (soldier_id)
+        WHERE f.status = '완료' AND p.failure_probability >= :threshold) AS fitness_completed,
+    (SELECT count(*) FROM injury_followups) AS injury_records,
+    (SELECT count(*)
+        FROM (SELECT DISTINCT ON (injury_id) status
+              FROM injury_followups
+              ORDER BY injury_id, check_date DESC, updated_at DESC) latest
+        WHERE status = '완료') AS injury_completed
+"""
+
+
+@st.cache_data(show_spinner=False)
+def load_completion_counts(threshold: float) -> dict[str, int]:
+    """완료율 계산용 건수(fitness_records, fitness_completed, injury_records, injury_completed). 저장할 때 캐시를 비웁니다."""
+    row = read_uncached(COMPLETION_SQL, {'threshold': threshold}).iloc[0]
+    return {name.lower(): int(value) for name, value in row.items()}
+
+
+def _clear_record_caches() -> None:
+    """기록을 저장하면 기록 목록과 완료율 집계 캐시를 비워 바로 반영되게 합니다."""
+    _load_records_db.clear()
+    load_completion_counts.clear()
 
 
 def load_records(kind: str, directory: Path=MANAGEMENT_DIR, source: str | None=None) -> pd.DataFrame:
@@ -237,7 +269,7 @@ def save_followups_batch(soldier_ids: list[str], values: dict,
         rows=[dict(_db_params('followup_records',dict(values,SOLDIER_ID=soldier)),now=now) for soldier in targets]
         with transaction() as session:
             session.execute(text(_insert_sql('followup_records')),rows)
-        _load_records_db.clear()
+        _clear_record_caches()
         return len(targets)
     directory.mkdir(parents=True,exist_ok=True)
     lock=directory/'.write.lock'

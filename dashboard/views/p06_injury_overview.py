@@ -3,8 +3,10 @@
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
-from dashboard.py.injury_overview_data import filter_injuries_by_personnel, load_injury_overview
+from dashboard.py import queries
+from dashboard.py.injury_overview_data import injury_grade_table, injury_metadata, injury_people
 from dashboard.py.fitness_judgment import EVENTS, GRADE_LABELS
 
 INJURY_LABELS={'INJURY_ID':'부상 식별자','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류',
@@ -40,15 +42,12 @@ def _style_injury_chart(chart):
     return chart
 
 
-def _render_injury_distributions(injuries: pd.DataFrame) -> None:
-    """필터된 부상 기록으로 부위·심각도·조직별 그래프를 표시합니다."""
+def _render_injury_distributions(distribution: pd.DataFrame) -> None:
+    """필터를 건 부상 건수 집계(queries.load_injury_distribution)로 부위·심각도·조직별 그래프를 표시합니다."""
     left, right = st.columns(2)
     location_counts = (
-        injuries.groupby('INJURY_LOCATION', dropna=False)
-        .size()
-        .rename('건수')
-        .reset_index()
-        .rename(columns={'INJURY_LOCATION': '부위'})
+        queries.distribution_counts(distribution, 'INJURY_LOCATION')
+        .rename(columns={'INJURY_LOCATION': '부위', 'INJURIES': '건수'})
         .sort_values('건수', ascending=False)
     )
     with left, st.container(border=True):
@@ -63,11 +62,9 @@ def _render_injury_distributions(injuries: pd.DataFrame) -> None:
         st.plotly_chart(_style_injury_chart(chart), width='stretch', theme=None)
 
     severity_counts = (
-        injuries.groupby('SEVERITY', dropna=False)
-        .size()
-        .rename('건수')
-        .reset_index()
-        .rename(columns={'SEVERITY': '심각도'})
+        queries.distribution_counts(distribution, 'SEVERITY')
+        .rename(columns={'SEVERITY': '심각도', 'INJURIES': '건수'})
+        .sort_values('심각도', kind='stable')
     )
     severity_counts['비율'] = severity_counts['건수'] / severity_counts['건수'].sum() * 100
     with right, st.container(border=True):
@@ -89,12 +86,10 @@ def _render_injury_distributions(injuries: pd.DataFrame) -> None:
     group_column = GROUP_COLUMNS[group_label]
     group_label_name = group_label.removesuffix('별')
     grouped_counts = (
-        injuries.groupby(group_column, dropna=False)
-        .size()
-        .rename('부상 건수')
-        .reset_index()
-        .rename(columns={group_column: group_label_name})
-        .sort_values('부상 건수', ascending=True)
+        queries.distribution_counts(distribution, group_column)
+        .rename(columns={group_column: group_label_name, 'INJURIES': '부상 건수'})
+        .sort_values([group_label_name], kind='stable')
+        .sort_values('부상 건수', ascending=True, kind='stable')
     )
     with st.container(border=True):
         st.subheader(f'{group_label} 부상 건수')
@@ -116,25 +111,22 @@ def render() -> None:
     st.title('부상 현황')
     st.write('부상 인원과 건수를 구분하고, 체력등급에 따른 분포와 개인별 기록을 확인합니다.')
     try:
-        people,grades,summary,metadata,injuries=load_injury_overview()
-    except FileNotFoundError:
-        st.warning('분석 결과 또는 원본 파일이 없습니다. 아래 명령으로 생성하세요.')
-        st.code('python -m data.scripts.analysis.analysis2.injury_overview',language='powershell');st.stop()
-    except (ValueError,KeyError,pd.errors.EmptyDataError) as error:
+        summary=queries.load_injury_summary()
+        people=injury_people()
+    except (ValueError,KeyError,SQLAlchemyError) as error:
         st.error(f'자료를 확인해 주세요: {error}');st.stop()
-    if summary.empty:
-        st.info('표시할 집계 자료가 없습니다.');st.stop()
     st.info('합성 부상 자료 · 발생일이 없어 전체 보유 기록을 집계합니다. 최신 체력등급과의 비교이며 실제 부상 위험을 입증하는 결과가 아닙니다.')
-    row=summary.iloc[0]
-    values=[f'{int(row["전체장병수"]):,}명',f'{int(row["부상인원"]):,}명',f'{int(row["부상건수"]):,}건',
-            f'{row["부상자비율"]:.1f}%' if pd.notna(row['부상자비율']) else '해당 없음',f'{int(row["반복부상인원"]):,}명']
+    total=int(summary.TOTAL_SOLDIERS)
+    injured=int(summary.INJURED_SOLDIERS)
+    values=[f'{total:,}명',f'{injured:,}명',f'{int(summary.INJURIES):,}건',
+            f'{injured/total*100:.1f}%' if total else '해당 없음',f'{int(summary.REPEATED_SOLDIERS):,}명']
     for col,label,value in zip(st.columns(5),['전체 장병 수','부상 기록 보유 인원','부상 건수','부상자 비율','2건 이상 부상 기록'],values):
         col.metric(label,value,border=True)
     st.caption('전체 장병 명단이 분모입니다. 한 장병에게 부상이 여러 건 있어도 부상 인원은 1명입니다.')
     overall,comparison,individual=st.tabs(['전체 부상 분포','체력등급별 비교','개인별 부상 이력'])
     with overall:
-        if injuries.empty:
-            st.info('부상 파일에 기록이 없습니다.')
+        if int(summary.INJURIES)==0:
+            st.info('부상 기록이 없습니다.')
         else:
             st.caption('지역·부대·계급 필터는 아래 분포 그래프에 적용됩니다. 상단 요약 지표는 전체 자료 기준입니다.')
             region_filter, unit_filter, rank_filter = st.columns(3)
@@ -156,21 +148,16 @@ def render() -> None:
                 key='injury_filter_rank',
                 placeholder='전체',
             )
-            filtered_injuries = filter_injuries_by_personnel(
-                injuries,
-                people,
-                regions=regions,
-                units=units,
-                ranks=ranks,
-            )
-            st.caption(f'선택 조건에 해당하는 부상 기록 {len(filtered_injuries):,}건')
-            if filtered_injuries.empty:
+            distribution = queries.load_injury_distribution(regions, units, ranks)
+            filtered_total = queries.distribution_counts(distribution, None)
+            st.caption(f'선택 조건에 해당하는 부상 기록 {filtered_total:,}건')
+            if filtered_total == 0:
                 st.info('선택한 지역·부대·계급 조건에 해당하는 부상 기록이 없습니다.')
             else:
-                _render_injury_distributions(filtered_injuries)
+                _render_injury_distributions(distribution)
     with comparison:
         event=st.selectbox('비교할 체력 종목',list(EVENTS),format_func=lambda key:EVENTS[key][0])
-        grade_table=grades.loc[grades['종목'].eq(EVENTS[event][0])]
+        grade_table=injury_grade_table().loc[lambda table: table['종목'].eq(EVENTS[event][0])]
         left,right=st.columns(2)
         with left:
             chart=px.bar(grade_table,x='등급',y='부상자비율',text='부상자비율',
@@ -207,7 +194,7 @@ def render() -> None:
             soldier=st.selectbox('장병 선택',shown.SOLDIER_ID.tolist(),format_func=lambda sid:f'{lookup.loc[sid,"SOLDIER_NAME"]} · {sid}')
             person=lookup.loc[soldier]
             st.write(f'**{person.SOLDIER_NAME} · {person.RANK_NAME} · {person.UNIT_NAME}**')
-            records=injuries.loc[injuries.SOLDIER_ID.eq(soldier)].rename(columns=INJURY_LABELS)
+            records=queries.load_soldier_injuries(soldier).rename(columns=INJURY_LABELS)
             if records.empty:
                 st.info('보유 부상 자료에서 해당 장병의 기록이 없습니다. 현재 건강 상태나 회복 여부를 뜻하지 않습니다.')
             else:
@@ -216,6 +203,7 @@ def render() -> None:
                 st.download_button('개인 부상 기록 CSV',records.to_csv(index=False).encode('utf-8-sig'),f'{soldier}_부상이력.csv','text/csv')
         st.caption('발생일·회복 상태·운동 제한 항목은 원본에 없어 표시하지 않습니다.')
     with st.expander('집계 기준·자료 출처'):
+        metadata=injury_metadata()
         for key in ['집계범위','등급','기간','합성','중복']:
             st.write(metadata[key])
         st.caption('분석 생성일: '+metadata['생성일시'])

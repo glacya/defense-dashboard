@@ -6,8 +6,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from config import MANAGEMENT_DIR
 from dashboard.py.management_store import DB_TABLES, load_records, uses_db
 from dashboard.py.management_forms import editor, LABELS
-from dashboard.py.roster_data import load_injuries_text, load_personnel_text
-from data.scripts.utils import require_columns
+from dashboard.py import queries
+from dashboard.py.roster_data import load_injuries_text
 
 
 def render() -> None:
@@ -18,18 +18,13 @@ def render() -> None:
     if notice:=st.session_state.pop('management_notice',None):
         st.success(notice)
     try:
-        people=load_personnel_text()
+        # 장병 명단은 다른 화면과 함께 쓰는 캐시. 군번 고유·부상-장병 연결은 DB의 PK·FK가 보장한다.
+        people=queries.load_roster().astype({'SOLDIER_ID':str})
         injuries=load_injuries_text()
-        require_columns(people,['SOLDIER_ID','SOLDIER_NAME','RANK_NAME','UNIT_NAME'])
-        require_columns(injuries,['INJURY_ID','SOLDIER_ID','INJURY_LOCATION','SEVERITY'])
-        if people.SOLDIER_ID.duplicated().any() or injuries.INJURY_ID.duplicated().any():
-            raise ValueError('장병 또는 부상 식별자 중복')
         records=load_records('injury_followup')
-        if not injuries.SOLDIER_ID.isin(people.SOLDIER_ID).all():
-            raise ValueError('장병 명단과 부상 원본 불일치')
     except (OSError,ValueError,SQLAlchemyError) as error:
         st.error(f'부상 관리 자료를 읽을 수 없습니다: {error}');st.stop()
-    st.caption('대상 자료: SOLDIER_INJURY.csv. 부상 이력이 있는 장병을 조회하며, 후속조치 기록은 부상 번호로 연결합니다. 신상·부상 원본은 합성 자료입니다.')
+    st.caption('대상 자료: DB 부상 기록(injuries). 부상 이력이 있는 장병을 조회하며, 후속조치 기록은 부상 번호로 연결합니다. 신상·부상 원본은 합성 자료입니다.')
     active=records.merge(injuries[['INJURY_ID','SOLDIER_ID']],on=['INJURY_ID','SOLDIER_ID'],how='inner',validate='many_to_one')
     has_archived_records=len(records)!=len(active)
     units=sorted(people.UNIT_NAME.dropna().unique().tolist())

@@ -44,7 +44,9 @@ from streamlit.connections import SQLConnection
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 
 CONNECTION_NAME = "defense_db"
-DEFAULT_TTL = 600  # 초. 데이터는 파이프라인을 다시 돌릴 때만 바뀌므로 10분 캐시로 충분하다.
+# 읽기 전용 조회는 만료 없이 캐시한다(사용자 결정). 데이터는 파이프라인을 다시 돌려 DB에 올릴 때만 바뀌므로,
+# 그때는 대시보드를 다시 시작하거나 Streamlit 메뉴의 Clear cache로 비운다. 후속조치 기록은 저장할 때 비운다.
+DEFAULT_TTL = None
 
 REQUIRED_SETTINGS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
 # 값이 있을 때만 접속 옵션으로 넘긴다(libpq의 sslmode, channel_binding).

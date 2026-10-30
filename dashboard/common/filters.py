@@ -128,27 +128,32 @@ def render_personnel_cards(
 
     with right:
         st.markdown('**부대**')
-        with st.container(horizontal=True, gap='small', key=f'cardfilter-{prefix}-unit-strip'):
-            if not selected_regions:
-                st.caption('지역을 선택하면 해당 지역의 부대가 표시됩니다. 선택하지 않으면 전체 부대입니다.')
-            shown_regions = sorted(
-                scoped.loc[scoped['_REGION_GROUP'].isin(selected_regions), 'REGION_NAME'].dropna().unique().tolist(),
-                key=lambda name: (_region_order(_region_group(name)), name),
-            )
-            for region in shown_regions:
-                in_region = scoped.loc[scoped['REGION_NAME'].eq(region)]
-                counts = in_region.groupby('UNIT_NAME')['SOLDIER_ID'].nunique().to_dict()
-                with st.container(border=True, key=f'cardfilter-{prefix}-unit-box_{filter_signature(region)}'):
-                    st.caption(region)
-                    for unit in sorted(in_region['UNIT_NAME'].dropna().unique().tolist()):
-                        pair = (region, unit)
-                        selected = pair in selected_units
-                        st.button(
-                            f'{"✓ " if selected else ""}{unit} · {int(counts.get(unit, 0)):,}명',
-                            key=f'cardfilter-{prefix}-unit-card_{filter_signature(region, unit)}',
-                            type='primary' if selected else 'secondary',
-                            width='content', on_click=_toggle, args=(unit_key, pair),
-                        )
+        unit_area=st.empty()
+        if selected_regions:
+            with unit_area.container():
+                with st.container(horizontal=True, gap='small', key=f'cardfilter-{prefix}-unit-strip-{filter_signature(*selected_regions)}'):
+                    shown_regions = sorted(
+                        scoped.loc[scoped['_REGION_GROUP'].isin(selected_regions), 'REGION_NAME'].dropna().unique().tolist(),
+                        key=lambda name: (_region_order(_region_group(name)), name),
+                    )
+                    for region in shown_regions:
+                        in_region = scoped.loc[scoped['REGION_NAME'].eq(region)]
+                        counts = in_region.groupby('UNIT_NAME')['SOLDIER_ID'].nunique().to_dict()
+                        with st.container(border=True, key=f'cardfilter-{prefix}-unit-box_{filter_signature(region)}'):
+                            st.caption(region)
+                            unit_columns=st.columns(2,gap='small')
+                            for index,unit in enumerate(sorted(in_region['UNIT_NAME'].dropna().unique().tolist())):
+                                pair = (region, unit)
+                                selected = pair in selected_units
+                                unit_columns[index%2].button(
+                                    f'{"✓ " if selected else ""}{unit} · {int(counts.get(unit, 0)):,}명',
+                                    key=f'cardfilter-{prefix}-unit-card_{filter_signature(region, unit)}',
+                                    type='primary' if selected else 'secondary',
+                                    width='stretch', on_click=_toggle, args=(unit_key, pair),
+                                )
+
+        else:
+            unit_area.empty()
 
     # 계급 (현재 지역·부대 범위 기준 인원수)
     if show_ranks:

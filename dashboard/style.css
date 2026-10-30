@@ -774,6 +774,17 @@ hr {
     box-shadow: none;
     padding: 0.35rem 0.5rem;
 }
+[class*="st-key-cardfilter-"][class*="-unit-strip"] [class*="-unit-box_"] [data-testid="stHorizontalBlock"] {
+    height: auto;
+    overflow: visible;
+    width: 360px;
+    min-width: 0;
+}
+[class*="st-key-cardfilter-"][class*="-unit-strip"] [class*="-unit-box_"] [data-testid="stHorizontalBlock"] > * {
+    flex: 1 1 0 !important;
+    width: 0 !important;
+    min-width: 0;
+}
 [class*="st-key-cardfilter-"][class*="-unit-box_"] [data-testid="stVerticalBlock"] {
     gap: 0.3rem;
 }

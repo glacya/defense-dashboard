@@ -6,19 +6,20 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
 from config import MANAGEMENT_DIR
-from dashboard.py.management_store import load_records
+from dashboard.py.management_store import DB_TABLES, load_records, uses_db
 from dashboard.py.management_forms import editor, LABELS
 from dashboard.py.followup_probability import RISK_LEVELS, RISK_RANGES, load_probabilities
 from dashboard.py.followup_fitness_types import load_fitness_types
 from dashboard.py.group_followup import render_group_followup
-from data.scripts.analysis.analysis2.fitness_overview import EVENTS
+from dashboard.py.fitness_judgment import EVENTS
 from data.scripts.fitness_standards import grade_cut
-from data.scripts.paths import SYNTHETIC_PERSONNEL_PATH, PROCESSED_FITNESS_PATH
-from data.scripts.utils import read_text_csv, require_columns
+from dashboard.py.roster_data import load_latest_measurements, load_personnel_text
+from data.scripts.utils import require_columns
 
-KINDS=['exercise_plans','exercise_participation','followup_records']
+KINDS=['followup_records']
 
 
 def _select_grade(label: str) -> None:
@@ -52,7 +53,7 @@ def render() -> None:
     if notice:=st.session_state.pop('management_notice',None):
         st.success(notice)
     try:
-        people=read_text_csv(SYNTHETIC_PERSONNEL_PATH)
+        people=load_personnel_text()
         require_columns(people,['SOLDIER_ID','SOLDIER_NAME','RANK_NAME','UNIT_NAME'])
         if people.SOLDIER_ID.duplicated().any():
             raise ValueError('장병 명단 식별자 중복')
@@ -62,7 +63,7 @@ def render() -> None:
         population=people.merge(probabilities,on='SOLDIER_ID',how='inner',validate='one_to_one')
         current_ids=population.SOLDIER_ID
         records={kind:load_records(kind) for kind in KINDS}
-    except (OSError,ValueError,KeyError) as error:
+    except (OSError,ValueError,KeyError,SQLAlchemyError) as error:
         st.error(f'관리 자료를 읽을 수 없습니다: {error}')
         st.caption('장병 명단과 SOLDIER_FAILURE_PROBABILITY.csv를 확인하세요.')
         st.stop()
@@ -128,12 +129,8 @@ def render() -> None:
     st.caption(f'현재 조회: {" / ".join(chosen) if chosen else "전체 등급"} · {len(eligible):,}명')
     people=population.loc[population.SOLDIER_ID.isin(eligible)].sort_values('FAILURE_PROBABILITY',ascending=False).copy()
     # 측정값은 참고 정보일 뿐이며, 기존 미달·악화 대상 분석 파일은 사용하지 않습니다.
-    measurement_columns=['SOLDIER_ID','MESURE_ID','MESURE_DE','AGE','BMI',*EVENTS]
     try:
-        measurements=pd.read_csv(PROCESSED_FITNESS_PATH,dtype={'SOLDIER_ID':str},usecols=measurement_columns)
-        measurements['MESURE_DE']=pd.to_datetime(measurements.MESURE_DE.astype(str).str.removesuffix('.0'),format='%Y%m%d',errors='coerce')
-        latest=measurements.sort_values(['MESURE_DE','MESURE_ID'],kind='stable',na_position='first').drop_duplicates('SOLDIER_ID',keep='last')
-        people=people.merge(latest,on='SOLDIER_ID',how='left',validate='one_to_one')
+        people=people.merge(load_latest_measurements(),on='SOLDIER_ID',how='left',validate='one_to_one')
     except (OSError,ValueError,KeyError):
         st.warning('참고용 측정 정보를 읽지 못했습니다. 확률 등급에 따른 대상 조회와 관리 기록은 이용할 수 있습니다.')
         for field in ['MESURE_ID','MESURE_DE','AGE','BMI',*EVENTS]:
@@ -284,13 +281,12 @@ def render() -> None:
         else:
             st.info('참고용 측정 정보가 없습니다. 확률 등급에 따른 관리 기록은 이용할 수 있습니다.')
     st.caption('상단 완료율은 선택한 등급에 담당자·기간 필터를 적용한 집계입니다. 아래 기록은 선택 장병 기준입니다.')
-    labels=['운동 지도 계획','운동 참여 기록','상담·후속조치']
-    for tab,kind in zip(st.tabs(labels),KINDS):
-        with tab:
-            editor(kind,soldier,records,pd.DataFrame(columns=['SOLDIER_ID']))
+    st.subheader('상담·후속조치')
+    editor('followup_records',soldier,records,pd.DataFrame(columns=['SOLDIER_ID']))
     with st.expander('입력 자료 보관 안내'):
-        st.write(f'저장 위치: {MANAGEMENT_DIR}')
-        st.write('입력 기록은 별도 CSV에 저장하며 분석 재실행으로 초기화하지 않습니다. 실제 확인한 체력 지도·상담 내용만 입력합니다. 부상 회복·운동 제한은 8번에서 관리합니다.')
+        st.write('저장 위치: '+(f"DB {DB_TABLES['followup_records']} 테이블" if uses_db('followup_records')
+                              else str(MANAGEMENT_DIR / 'followup_records.csv')))
+        st.write('입력 기록은 분석 데이터와 따로 저장하며 분석 재실행으로 초기화하지 않습니다. 실제 확인한 체력 지도·상담 내용만 입력합니다. 부상 회복·운동 제한은 8번에서 관리합니다.')
         st.caption('여러 화면에서 동시에 수정하면 충돌을 안내합니다. 최신 기록을 다시 읽고 수정하세요. 원본 신상·부상은 합성 자료입니다.')
 
     st.subheader('선택 조건에 해당하는 장병 명단')

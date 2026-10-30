@@ -5,6 +5,12 @@ import pytest
 from dashboard.py import management_store as store
 
 
+@pytest.fixture(autouse=True)
+def csv_mode(monkeypatch):
+    """이 파일은 CSV 저장 방식을 검사하므로 CSV 모드로 고정합니다(DB 모드는 test_management_store_db.py)."""
+    monkeypatch.setenv('DASHBOARD_DATA_SOURCE', 'csv')
+
+
 def _values():
     return dict(ASSIGNEE='담당자',COUNSELING_DATE='2026-10-29',COUNSELING_CONTENT='공통 상담',
                 ACTION_CONTENT='공통 후속조치',NEXT_CHECK_DATE='2026-11-01',STATUS='점검 대기',COMPLETED_DATE='')

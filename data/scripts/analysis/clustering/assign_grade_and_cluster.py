@@ -5,8 +5,10 @@
 
 [입력] intermediate/clustering/grade_1.csv ~ grade_4.csv, CLUSTER_MODEL_DIR/k_means_grade_{등급}.joblib
 [출력]
-  processed/MEASUREMENT_CLASSIFICATION.csv : MESURE_ID, AVERAGE_PERCENTILE_GRADE, CLUSTER (측정마다 한 행)
-  processed/FITNESS_TYPE.csv               : AVERAGE_PERCENTILE_GRADE, CLUSTER, TYPE_NAME (등급·군집마다 한 행)
+  processed/MEASUREMENT_CLASSIFICATION.csv : MESURE_ID, AVERAGE_PERCENTILE_GRADE, CLUSTER,
+                                             {종목}_GRADE(체력 등급 0~3), {종목}_PERCENTILE(전체 측정 안 백분위) (측정마다 한 행)
+  processed/FITNESS_TYPE.csv               : AVERAGE_PERCENTILE_GRADE, CLUSTER, TYPE_NAME,
+                                             {종목}_RELATIVE(군집 중심의 종목별 상대 편차, 소수 둘째 자리) (등급·군집마다 한 행)
   processed/clustering/grade_{등급}_relative_profile.csv / .png : 군집별 상대 체력편차 표·히트맵
 
 실행: python -m data.scripts.analysis.clustering.assign_grade_and_cluster
@@ -30,8 +32,10 @@ from data.scripts.analysis.clustering.cluster_features import (
     grade_file_path,
     load_graded_csv,
     model_path,
+    percentile_column,
 )
 from data.scripts.analysis.clustering.train_cluster_model import EXERCISE_LABELS, relative_profile
+from data.scripts.fitness_standards import fitness_grade
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import (
     CLUSTER_MODEL_DIR,
@@ -46,6 +50,14 @@ from data.scripts.utils import write_by_definition
 logger = logging.getLogger(__name__)
 
 TYPE_NAME_COLUMN = "TYPE_NAME"
+# 대시보드가 종목 등급·백분위를 다시 계산하지 않도록 측정별 분류 표에 함께 저장한다.
+PERCENTILE_DECIMALS = 2  # 정의서 DECIMAL(5,2): 100.00까지 담음
+RELATIVE_DECIMALS = 2  # FITNESS_TYPE의 상대 편차(정의서 DECIMAL(5,2))
+
+
+def grade_column(name: str) -> str:
+    """종목 이름의 체력 등급 컬럼 이름입니다(예: STRENGTH_GRADE)."""
+    return f"{name}_GRADE"
 
 
 def load_bundles(model_dir: Path) -> dict[int, dict]:
@@ -64,11 +76,14 @@ def load_bundles(model_dir: Path) -> dict[int, dict]:
 
 
 def classify_grade(df: pd.DataFrame, grade: int, bundle: dict) -> pd.DataFrame:
-    """한 등급의 측정에 군집 번호를 붙여 MESURE_ID, 등급, 군집을 돌려줍니다.
+    """한 등급의 측정에 군집 번호를 붙여 MESURE_ID, 평균 백분위 등급, 군집, 종목별 체력 등급·백분위를 돌려줍니다.
 
     종목 백분위가 하나라도 없어 편차를 만들 수 없는 측정은 군집이 비어 있습니다.
     """
     classified = pd.DataFrame({ID_COLUMN: df[ID_COLUMN], GRADE_COLUMN: grade}, index=df.index)
+    for name in MEASURE_NAMES:
+        classified[grade_column(name)] = fitness_grade(df[name], name)
+        classified[percentile_column(name)] = df[percentile_column(name)].round(PERCENTILE_DECIMALS)
     features = build_gap_features(df)
     if not features.empty:
         labels = bundle["kmeans"].predict(features[bundle["feature_columns"]])
@@ -113,6 +128,8 @@ def build_fitness_types(bundles: dict[int, dict]) -> pd.DataFrame:
         bundle = bundles[grade]
         centers = pd.DataFrame(bundle['kmeans'].cluster_centers_, columns=bundle['feature_columns'])
         profiles = relative_profile(centers)
+        # 저장하는 상대 편차는 군집별 체력편차 표(save_relative_profiles)와 같게 소수 둘째 자리로 반올림한다.
+        rounded = profiles.round(RELATIVE_DECIMALS)
         for cluster, profile in profiles.iterrows():
             values = {name: profile[f'{name}_RELATIVE'] for name in MEASURE_NAMES}
             if grade in (1, 2):
@@ -125,6 +142,7 @@ def build_fitness_types(bundles: dict[int, dict]) -> pd.DataFrame:
                 GRADE_COLUMN: grade,
                 CLUSTER_COLUMN: int(cluster),
                 TYPE_NAME_COLUMN: f'유형{cluster}: {EXERCISE_LABELS[exercise]} {label}',
+                **{f'{name}_RELATIVE': float(rounded.loc[cluster, f'{name}_RELATIVE']) for name in MEASURE_NAMES},
             })
     return pd.DataFrame(rows)
 

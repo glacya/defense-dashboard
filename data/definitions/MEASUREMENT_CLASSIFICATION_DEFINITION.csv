@@ -2,3 +2,11 @@
 1,MESURE_ID,측정식별번호,INT,,Y,KS_NFA_PROCESSED.MESURE_ID,Y,장병 체력 유형 분류 데이터
 2,AVERAGE_PERCENTILE_GRADE,평균백분위등급,INT,,N,FITNESS_TYPE.AVERAGE_PERCENTILE_GRADE,Y,장병 체력 유형 분류 데이터
 3,CLUSTER,군집번호,INT,,N,FITNESS_TYPE.CLUSTER,Y,장병 체력 유형 분류 데이터
+4,STRENGTH_GRADE,근력등급,INT,,N,,Y,장병 체력 유형 분류 데이터
+5,ENDURANCE_GRADE,근지구력등급,INT,,N,,Y,장병 체력 유형 분류 데이터
+6,CARDIO_GRADE,심폐지구력등급,INT,,N,,Y,장병 체력 유형 분류 데이터
+7,FLEXIBILITY_GRADE,유연성등급,INT,,N,,Y,장병 체력 유형 분류 데이터
+8,STRENGTH_PERCENTILE,근력백분위,DECIMAL,"5,2",N,,Y,장병 체력 유형 분류 데이터
+9,ENDURANCE_PERCENTILE,근지구력백분위,DECIMAL,"5,2",N,,Y,장병 체력 유형 분류 데이터
+10,CARDIO_PERCENTILE,심폐지구력백분위,DECIMAL,"5,2",N,,Y,장병 체력 유형 분류 데이터
+11,FLEXIBILITY_PERCENTILE,유연성백분위,DECIMAL,"5,2",N,,Y,장병 체력 유형 분류 데이터

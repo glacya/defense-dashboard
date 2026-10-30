@@ -1,0 +1,12 @@
+순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,FK참조,NOT NULL여부,데이터 상품명
+1,RECORD_ID,기록식별번호,SERIAL,,Y,,Y,장병 체력 후속조치 기록 데이터
+2,SOLDIER_ID,군번,VARCHAR,20,N,SOLDIER_PERSONNEL.SOLDIER_ID,Y,장병 체력 후속조치 기록 데이터
+3,CREATED_AT,최초저장시각,TIMESTAMP,,N,,Y,장병 체력 후속조치 기록 데이터
+4,UPDATED_AT,최종수정시각,TIMESTAMP,,N,,Y,장병 체력 후속조치 기록 데이터
+5,ASSIGNEE,담당자,VARCHAR,30,N,,Y,장병 체력 후속조치 기록 데이터
+6,COUNSELING_DATE,상담일,DATE,,N,,Y,장병 체력 후속조치 기록 데이터
+7,COUNSELING_CONTENT,상담내용,VARCHAR,1000,N,,N,장병 체력 후속조치 기록 데이터
+8,ACTION_CONTENT,후속조치내용,VARCHAR,1000,N,,Y,장병 체력 후속조치 기록 데이터
+9,NEXT_CHECK_DATE,다음점검일,DATE,,N,,Y,장병 체력 후속조치 기록 데이터
+10,STATUS,진행상태,VARCHAR,10,N,,Y,장병 체력 후속조치 기록 데이터
+11,COMPLETED_DATE,완료일,DATE,,N,,N,장병 체력 후속조치 기록 데이터

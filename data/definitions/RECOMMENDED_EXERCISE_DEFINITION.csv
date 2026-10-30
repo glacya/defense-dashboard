@@ -1,0 +1,5 @@
+순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,FK참조,NOT NULL여부,데이터 상품명
+1,AVERAGE_PERCENTILE_GRADE,평균백분위등급,INT,,Y,FITNESS_TYPE.AVERAGE_PERCENTILE_GRADE,Y,체력 유형별 운동 추천 데이터
+2,CLUSTER,군집번호,INT,,Y,FITNESS_TYPE.CLUSTER,Y,체력 유형별 운동 추천 데이터
+3,RECOMMENDATION_RANK,추천순위,INT,,Y,,Y,체력 유형별 운동 추천 데이터
+4,PRESCRIPTION_TYPE_ID,처방유형번호,INT,,N,EXERCISE_CLASSIFICATION.PRESCRIPTION_TYPE_ID,Y,체력 유형별 운동 추천 데이터

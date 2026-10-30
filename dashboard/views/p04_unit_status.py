@@ -16,7 +16,7 @@ from dashboard.common.widgets import render_soldier_details
 from dashboard.main_data import load_main_data
 from dashboard.py.followup_fitness_types import load_fitness_types
 from dashboard.py.personal_fitness_profile import load_personal_profile
-from data.scripts.analysis.analysis2.fitness_overview import EVENTS
+from dashboard.py.fitness_judgment import EVENTS
 
 
 def clear_bmi_chart_selection() -> None:

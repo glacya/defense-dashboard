@@ -8,6 +8,7 @@
 
 from data.scripts.pipeline import Step
 from data.scripts.analysis.clustering import assign_grade_and_cluster, classify_measurements_by_percentile
+from data.scripts.analysis.clustering import build_exercise_recommendations
 from data.scripts.analysis.failure_prediction import predict_failure_probability
 from data.scripts.paths import (
     CLUSTER_MODEL_DIR,
@@ -18,6 +19,7 @@ from data.scripts.paths import (
     INTERMEDIATE_CLUSTERING,
     PROCESSED_FITNESS_PATH,
     PROCESSED_FITNESS_TYPE_PATH,
+    PROCESSED_PRESCRIPTION_DETAIL_PATH,
     PROCESSED_MEASUREMENT_CLASSIFICATION_PATH,
     PROCESSED_SOLDIER_FAILURE_PROBABILITY_PATH,
 )
@@ -47,6 +49,16 @@ def build_steps() -> list[Step]:
                 "classification_output_path": PROCESSED_MEASUREMENT_CLASSIFICATION_PATH,
                 "fitness_type_output_path": PROCESSED_FITNESS_TYPE_PATH,
             },
+        ),
+        Step(
+            "체력 유형별 추천 운동·사용 부위 저장",
+            build_exercise_recommendations.run,
+            inputs={
+                "fitness_type_path": PROCESSED_FITNESS_TYPE_PATH,
+                "prescription_detail_path": PROCESSED_PRESCRIPTION_DETAIL_PATH,
+                "profile_dir": PROCESSED_FITNESS_TYPE_PATH.parent / "clustering",
+            },
+            outputs={"output_path": build_exercise_recommendations.OUTPUT_PATH},
         ),
         Step(
             "장병별 다음 회차 미달 확률 예측",

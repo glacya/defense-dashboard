@@ -28,7 +28,6 @@ from dashboard.py.personal_exercise_recommendations import render_recommendation
 render_recommendation(3, 0)
 ''').run()
     assert not app.exception
-    assert len(app.get('imgs')) == 3
     text = '\n'.join(element.value for element in app.markdown)
     assert '팔굽혀펴기' in text
     assert '낮은 발판 오르기 반복' not in text

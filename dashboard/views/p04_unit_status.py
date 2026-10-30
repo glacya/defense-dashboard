@@ -1,4 +1,4 @@
-"""부대 현황: 지역·부대별 BMI 구성, 계급별 평균 BMI, 체지방률을 비교합니다."""
+"""부대 현황: 지역·부대별 BMI 구성과 장병 분포를 확인합니다."""
 
 import altair as alt
 import pandas as pd
@@ -10,9 +10,9 @@ from types import SimpleNamespace
 from dashboard.common.filters import render_personnel_cards
 from dashboard.common.charts import (
     BMI_COLORS, LIGHT_TEXT, NAVY_BACKGROUND, NAVY_BORDER, NAVY_SURFACE, MUTED_TEXT,
-    RANK_BAR_COLOR, WARN_COLOR, apply_dark_layout, show_plotly, style_altair,
+    apply_dark_layout, show_plotly, style_altair,
 )
-from dashboard.common.formatting import BMI_CATEGORY_ORDER, RANK_ORDER, filter_signature, latest_measurements
+from dashboard.common.formatting import BMI_CATEGORY_ORDER, filter_signature, latest_measurements
 from dashboard.common.widgets import render_soldier_details
 from dashboard.main_data import load_main_data
 from dashboard.py.followup_fitness_types import load_fitness_types
@@ -189,7 +189,7 @@ def _render_summary(scoped: pd.DataFrame) -> str:
 
 
 def _render_analysis(scoped: pd.DataFrame, filters, summary_level: str) -> None:
-    analysis_level = st.segmented_control("차트 분석 단위", options=["지역별", "부대별"], default="지역별",
+    analysis_level = st.segmented_control("요약 기준", options=["지역별", "부대별"], default="지역별",
                                           key="unit_analysis_level", on_change=clear_bmi_chart_selection)
     group_column = "REGION_NAME" if analysis_level == "지역별" else "UNIT_NAME"
     label = "지역" if analysis_level == "지역별" else "부대"
@@ -265,30 +265,6 @@ def _render_analysis(scoped: pd.DataFrame, filters, summary_level: str) -> None:
                     args=(group_name, category, context),
                 )
 
-    rank_average = group.groupby("RANK_NAME", as_index=False).agg(평균_BMI=("BMI", "mean"), 인원=("SOLDIER_ID", "nunique"))
-    rank_average["RANK_NAME"] = pd.Categorical(rank_average["RANK_NAME"], categories=RANK_ORDER, ordered=True)
-    rank_average = rank_average.sort_values("RANK_NAME")
-    st.markdown(f"**{group_name} · 계급별 평균 BMI**")
-    rank_figure = px.bar(rank_average, x="RANK_NAME", y="평균_BMI", text="평균_BMI",
-                         color_discrete_sequence=[RANK_BAR_COLOR], hover_data={"인원": True, "평균_BMI": ":.2f"},
-                         labels={"RANK_NAME": "계급", "평균_BMI": "평균 BMI", "인원": "장병 수"})
-    rank_figure.update_traces(texttemplate="%{y:.1f}", textposition="outside")
-    apply_dark_layout(rank_figure, 360, showlegend=False, xaxis_title=None, yaxis_title="평균 BMI", yaxis_rangemode="tozero")
-    show_plotly(rank_figure)
-
-    st.markdown(f"**현재 조건 · {label}별 평균 체지방률**")
-    body_fat = (scoped.groupby(group_column, as_index=False)
-                .agg(평균_체지방률=("BODY_FAT_PERCENTAGE", "mean"), 인원=("SOLDIER_ID", "nunique"))
-                .sort_values("평균_체지방률", ascending=True))
-    body_fat_figure = px.bar(body_fat, x="평균_체지방률", y=group_column, orientation="h", text="평균_체지방률",
-                             hover_data={"인원": True, "평균_체지방률": ":.1f"},
-                             labels={group_column: label, "평균_체지방률": "평균 체지방률(%)", "인원": "장병 수"},
-                             color_discrete_sequence=[WARN_COLOR])
-    body_fat_figure.update_traces(texttemplate="%{x:.1f}%", textposition="outside")
-    apply_dark_layout(body_fat_figure, max(300, min(620, 36 * len(body_fat) + 100)),
-                      margin=dict(l=8, r=40, t=8, b=8), xaxis_title="평균 체지방률(%)", yaxis_title=None)
-    show_plotly(body_fat_figure)
-
     selected_category = st.session_state.get("bmi_chart_selected_category")
     current_key = (group_name, selected_category, context)
     if (analysis_level == "부대별" and selected_category in BMI_CATEGORY_ORDER
@@ -299,7 +275,7 @@ def _render_analysis(scoped: pd.DataFrame, filters, summary_level: str) -> None:
 
 def render() -> None:
     st.title("부대 현황")
-    st.caption("지역·부대별 BMI 구성과 체지방률을 비교하고, 구간별 장병 명단을 확인합니다.")
+    st.caption("지역·부대별 BMI 구간과 구간별 장병 분포를 확인합니다.")
     try:
         measurements, _ = load_main_data()
     except (FileNotFoundError, ValueError, UnicodeDecodeError, pd.errors.ParserError) as error:
@@ -311,7 +287,7 @@ def render() -> None:
         st.info("선택한 지역·부대 조건에 해당하는 장병이 없습니다.")
         st.stop()
 
-    summary_tab, analysis_tab = st.tabs(["지역·부대별 요약", "신체정보 분석"])
+    summary_tab, analysis_tab = st.tabs(["지역·부대별 인원 요약", "BMI 별 요약"])
     with summary_tab:
         summary_level = _render_summary(filters.scoped)
     with analysis_tab:

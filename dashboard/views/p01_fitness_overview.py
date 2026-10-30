@@ -78,6 +78,12 @@ def _combine_events(events: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _change_comparison_page(page_key: str, offset: int, page_count: int) -> None:
+    """비교 페이지를 갱신해 Streamlit 재실행부터 새 페이지를 표시합니다."""
+    current_page = int(st.session_state.get(page_key, 0))
+    st.session_state[page_key] = min(max(current_page + offset, 0), page_count - 1)
+
+
 def render() -> None:
     """전체 지표·종목 통계·등급 분포·회차별 추이를 표시합니다."""
     st.caption('장병 체력관리 / 01')
@@ -176,16 +182,6 @@ def render() -> None:
         page_count = max(1, (len(group_names) + page_size - 1) // page_size)
         page_key = f"fitness_comparison_page_{filter_signature(level, selected_group, number, tuple(group_names))}"
         page = min(max(int(st.session_state.get(page_key, 0)), 0), page_count - 1)
-        previous_col, page_col, next_col = st.columns([1, 2, 1])
-        if previous_col.button('← 이전', disabled=page == 0, key=f'{page_key}_previous'):
-            page -= 1
-            st.session_state[page_key] = page
-        page_col.markdown(f'<div style="text-align:center;padding:.45rem">{page + 1} / {page_count}</div>',
-                          unsafe_allow_html=True)
-        if next_col.button('다음 →', disabled=page >= page_count - 1, key=f'{page_key}_next'):
-            page += 1
-            st.session_state[page_key] = page
-
         start = page * page_size
         visible_groups = group_names[start:start + page_size]
         visible_overall = compare.loc[compare['그룹'].isin(visible_groups), ['그룹', '미달률']].copy()
@@ -213,9 +209,21 @@ def render() -> None:
             legend={'orientation': 'h', 'y': 1.12, 'x': 0},
         )
         apply_chart_layout(chart, height=430, margin={'l': 55, 'r': 24, 't': 70, 'b': 90})
-        show_plotly(chart)
+        previous_col, chart_col, next_col = st.columns([1, 14, 1], vertical_alignment='center')
+        previous_col.button(
+            '← 이전', disabled=page == 0, key=f'{page_key}_previous',
+            on_click=_change_comparison_page, args=(page_key, -1, page_count),
+        )
+        with chart_col:
+            st.caption(f'{page + 1} / {page_count}')
+            show_plotly(chart)
+        next_col.button(
+            '다음 →', disabled=page >= page_count - 1, key=f'{page_key}_next',
+            on_click=_change_comparison_page, args=(page_key, 1, page_count),
+        )
+        visible_compare = compare.loc[compare['그룹'].isin(visible_groups)]
         st.dataframe(
-            compare.rename(columns={'그룹': group_label}),
+            visible_compare.rename(columns={'그룹': group_label}),
             hide_index=True,
             width='stretch',
             column_config={
@@ -243,22 +251,34 @@ def render() -> None:
     with tab2:
         compare_groups = level != '전체' and selected_group == '전체 비교'
         trend = all_comparison_events.copy() if compare_groups else scoped_events.copy()
+        selected_groups = []
+        trend_page = 0
+        trend_page_count = 1
         if compare_groups:
-            available_groups = sorted(trend['그룹'].dropna().unique().tolist())
             latest_round = all_comparison_rounds['회차'].max()
-            defaults = (
+            ranked_groups = (
                 all_comparison_rounds.loc[all_comparison_rounds['회차'].eq(latest_round)]
                 .sort_values('미달률', ascending=False, na_position='last')['그룹']
-                .head(min(5, len(available_groups))).tolist()
+                .drop_duplicates().tolist()
             )
+            available_groups = [
+                *ranked_groups,
+                *sorted(set(trend['그룹'].dropna()) - set(ranked_groups)),
+            ]
             selected_groups = st.sidebar.multiselect(
                 f'{group_label} 선택 · 미달률 추이',
                 options=available_groups,
-                default=defaults,
+                default=available_groups,
                 key=f'fitness_trend_groups_{filter_signature(level, selected_group)}',
-                help='기본값은 최신 회차의 전체 미달률 상위 5개입니다. 여러 그룹을 선택해 비교할 수 있습니다.',
+                help='선택한 그룹을 최신 회차 미달률 순으로 5개씩 나눠 봅니다.',
             )
-            trend = trend.loc[trend['그룹'].isin(selected_groups)]
+            trend_page_size = 5
+            trend_page_count = max(1, (len(selected_groups) + trend_page_size - 1) // trend_page_size)
+            trend_page_key = f"fitness_trend_page_{filter_signature(level, tuple(selected_groups))}"
+            trend_page = min(max(int(st.session_state.get(trend_page_key, 0)), 0), trend_page_count - 1)
+            trend_start = trend_page * trend_page_size
+            visible_trend_groups = selected_groups[trend_start:trend_start + trend_page_size]
+            trend = trend.loc[trend['그룹'].isin(visible_trend_groups)]
             st.caption(f'선택한 {group_label} {len(selected_groups)}개 · 범례를 클릭하면 선을 숨기거나 다시 표시할 수 있습니다.')
 
         event_tabs = st.tabs(EVENT_ORDER)
@@ -290,14 +310,50 @@ def render() -> None:
                                     '미달인원': ':,d', '판정가능인원': ':,d'},
                     )
                     chart.update_traces(line={'width': 3}, marker={'size': 8})
+                visible_rates = event_trend['미달률'].dropna()
+                if visible_rates.empty:
+                    yaxis_range = [0, 100]
+                else:
+                    rate_min = float(visible_rates.min())
+                    rate_max = float(visible_rates.max())
+                    padding = max((rate_max - rate_min) * 0.15, 1.0)
+                    yaxis_range = [
+                        max(0.0, rate_min - padding),
+                        min(100.0, rate_max + padding),
+                    ]
+                    if yaxis_range[0] == yaxis_range[1]:
+                        yaxis_range = [max(0.0, rate_min - 1.0), min(100.0, rate_max + 1.0)]
                 chart.update_layout(
                     title=f'{event} 미달률 추이',
                     xaxis_title='측정 회차', yaxis_title='미달률 (%)',
-                    yaxis_range=[0, 100], xaxis_dtick=1, hovermode='closest',
+                    yaxis_range=yaxis_range, xaxis_dtick=1, hovermode='closest',
                     legend={'title': group_label, 'itemclick': 'toggle', 'itemdoubleclick': 'toggleothers'},
                 )
                 apply_chart_layout(chart, height=430, margin={'l': 55, 'r': 24, 't': 55, 'b': 45})
-                show_plotly(chart)
+                if compare_groups:
+                    previous_col, chart_col, next_col = st.columns(
+                        [1, 14, 1], vertical_alignment='center'
+                    )
+                    previous_col.button(
+                        '← 이전', disabled=trend_page == 0,
+                        key=f'{trend_page_key}_{event}_previous',
+                        on_click=_change_comparison_page,
+                        args=(trend_page_key, -1, trend_page_count),
+                    )
+                    with chart_col:
+                        st.caption(
+                            f'추이 그룹 {trend_page + 1} / {trend_page_count} · '
+                            f'{len(visible_trend_groups)}개 표시'
+                        )
+                        show_plotly(chart)
+                    next_col.button(
+                        '다음 →', disabled=trend_page >= trend_page_count - 1,
+                        key=f'{trend_page_key}_{event}_next',
+                        on_click=_change_comparison_page,
+                        args=(trend_page_key, 1, trend_page_count),
+                    )
+                else:
+                    show_plotly(chart)
     st.caption('회차는 개인별 날짜순 측정 순서입니다. 같은 달력 기간을 뜻하지 않으며, 회차별 측정·판정 가능 인원을 함께 확인하세요.')
     with st.expander('집계표 및 CSV 다운로드'):
         st.dataframe(scope,hide_index=True,width='stretch')

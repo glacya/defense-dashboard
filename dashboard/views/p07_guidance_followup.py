@@ -49,7 +49,7 @@ def render() -> None:
     st.caption('장병 체력관리 / 07')
     st.title('체력 지도·후속조치 관리')
     st.write('예측 확률에 따라 안전·경계1등급·경계2등급·경계3등급으로 나누어 체력 지도·후속조치를 관리합니다.')
-    st.caption('첨부 파일은 부상 확률이 아닌 다음 체력검정 미달 확률입니다. 안전은 30% 미만이며, 30%·50%·70% 경계값은 각각 경계1·2·3등급에 포함합니다. 등급 계산 결과는 CSV로 저장하지 않습니다.')
+    st.caption(' 다음 체력검정 미달 확률입니다. 안전은 30% 미만이며, 30%·50%·70% 경계값은 각각 경계1·2·3등급에 포함합니다. 등급 계산 결과는 CSV로 저장하지 않습니다.')
     if notice:=st.session_state.pop('management_notice',None):
         st.success(notice)
     try:
@@ -136,7 +136,7 @@ def render() -> None:
         for field in ['MESURE_ID','MESURE_DE','AGE','BMI',*EVENTS]:
             people[field]=pd.NA
     st.subheader('운동유형 (16)')
-    st.caption('장병별 최신 측정의 백분위 4등급 × 군집 4개입니다. 등급별 유형 버튼을 여러 개 선택할 수 있습니다. 인원은 위에서 선택한 확률 등급 기준입니다.')
+    st.caption('장병별 최신 측정의 종목별 백분위평균4등급 × 군집 4개입니다. 등급별 유형 버튼을 여러 개 선택할 수 있습니다. 인원은 위에서 선택한 확률 등급 기준입니다.')
     try:
         people,type_catalog=load_fitness_types(people)
     except (OSError,ValueError,KeyError) as error:

@@ -7,6 +7,7 @@ import streamlit as st
 from dashboard.py.injury_overview_data import filter_injuries_by_personnel, load_injury_overview
 from dashboard.py.fitness_judgment import EVENTS, GRADE_LABELS
 from dashboard.common.filters import render_personnel_cards
+from dashboard.common.formatting import filter_signature
 
 INJURY_LABELS={'INJURY_ID':'부상 식별자','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류',
                'INJURY_LOCATION':'부상 부위','SEVERITY':'심각도','PREVENTABILITY':'예방 가능 여부'}
@@ -113,6 +114,38 @@ def _render_injury_distributions(injuries: pd.DataFrame) -> None:
     st.caption('분포 그래프는 부상 건수 기준입니다. 같은 장병의 반복 부상도 각각 포함됩니다.')
 
 
+def _clear_injury_modal_dismissal() -> None:
+    st.session_state['injury_modal_dismissed_signature'] = None
+
+
+def _dismiss_injury_modal(signature: str) -> None:
+    st.session_state['injury_modal_dismissed_signature'] = signature
+
+
+def _show_injury_history_modal(person: pd.Series, injuries: pd.DataFrame, signature: str) -> None:
+    @st.dialog(
+        f'{person.SOLDIER_NAME} · 개인 부상 이력',
+        width='large',
+        on_dismiss=lambda: _dismiss_injury_modal(signature),
+    )
+    def _modal() -> None:
+        st.markdown(f'**{person.SOLDIER_NAME} · {person.RANK_NAME} · {person.UNIT_NAME}**')
+        if injuries.empty:
+            st.info('보유 부상 자료에서 해당 장병의 기록이 없습니다.')
+        else:
+            st.dataframe(injuries, hide_index=True, width='stretch')
+            st.download_button(
+                '개인 부상 기록 CSV',
+                injuries.to_csv(index=False).encode('utf-8-sig'),
+                f'{person.SOLDIER_ID}_부상이력.csv',
+                'text/csv',
+                width='stretch',
+            )
+        st.caption('발생일·회복 상태·운동 제한 항목은 원본에 없어 표시하지 않습니다.')
+
+    _modal()
+
+
 def _render_personnel_filter_cards(people: pd.DataFrame, injuries: pd.DataFrame) -> pd.DataFrame:
     """지역·부대·계급 카드를 표시하고 조건에 맞는 부상 기록을 반환합니다."""
     selection = render_personnel_cards(people, 'injury')
@@ -189,22 +222,27 @@ def render() -> None:
         cols=['SOLDIER_ID','SOLDIER_NAME','RANK_NAME','UNIT_NAME','INJURY_COUNT']
         display=shown[cols].rename(columns={'SOLDIER_ID':'장병 식별자','SOLDIER_NAME':'이름','RANK_NAME':'계급','UNIT_NAME':'소속','INJURY_COUNT':'부상 건수'})
         st.caption(f'조회 결과 {len(shown):,}명 · 신상 정보는 합성 자료입니다.')
-        st.dataframe(display,hide_index=True,width='stretch')
+        table_key = f"injury_personnel_table_{filter_signature(tuple(shown['SOLDIER_ID']))}"
+        table_event = st.dataframe(
+            display,
+            hide_index=True,
+            width='stretch',
+            on_select=_clear_injury_modal_dismissal,
+            selection_mode='single-row',
+            key=table_key,
+        )
         if shown.empty:
             st.info('검색 조건에 해당하는 장병이 없습니다.')
         else:
-            lookup=shown.set_index('SOLDIER_ID')
-            soldier=st.selectbox('장병 선택',shown.SOLDIER_ID.tolist(),format_func=lambda sid:f'{lookup.loc[sid,"SOLDIER_NAME"]} · {sid}')
-            person=lookup.loc[soldier]
-            st.write(f'**{person.SOLDIER_NAME} · {person.RANK_NAME} · {person.UNIT_NAME}**')
-            records=injuries.loc[injuries.SOLDIER_ID.eq(soldier)].rename(columns=INJURY_LABELS)
-            if records.empty:
-                st.info('보유 부상 자료에서 해당 장병의 기록이 없습니다. 현재 건강 상태나 회복 여부를 뜻하지 않습니다.')
-            else:
-                records['예방 가능 여부']=records['예방 가능 여부'].map({'Y':'가능','N':'불가능'}).fillna('정보 없음')
-                st.dataframe(records,hide_index=True,width='stretch')
-                st.download_button('개인 부상 기록 CSV',records.to_csv(index=False).encode('utf-8-sig'),f'{soldier}_부상이력.csv','text/csv')
-        st.caption('발생일·회복 상태·운동 제한 항목은 원본에 없어 표시하지 않습니다.')
+            selected_rows = table_event.selection.rows
+            if selected_rows and 0 <= selected_rows[0] < len(shown):
+                person = shown.iloc[selected_rows[0]]
+                modal_signature = filter_signature(table_key, person.SOLDIER_ID)
+                if st.session_state.get('injury_modal_dismissed_signature') != modal_signature:
+                    records = injuries.loc[injuries.SOLDIER_ID.eq(person.SOLDIER_ID)].rename(columns=INJURY_LABELS).copy()
+                    if not records.empty:
+                        records['예방 가능 여부'] = records['예방 가능 여부'].map({'Y': '가능', 'N': '불가능'}).fillna('정보 없음')
+                    _show_injury_history_modal(person, records, modal_signature)
     with st.expander('집계 기준·자료 출처'):
         for key in ['집계범위','등급','기간','합성','중복']:
             st.write(metadata[key])

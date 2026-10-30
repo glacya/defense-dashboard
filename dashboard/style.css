@@ -225,7 +225,10 @@ body {
     display: none !important;
 }
 
-/* 3-3. 메뉴 (st.page_link): 색은 모두 :root 변수 사용 */
+/* ==========================================
+   3-3. 사이드바 메뉴 (기본 알약형 디자인)
+   ========================================== */
+
 [class*="st-key-sidebar-menu"] a,
 [class*="st-key-sidebar-menu"] a:visited,
 [class*="st-key-sidebar-menu"] a:focus,
@@ -233,28 +236,47 @@ body {
     display: flex !important;
     align-items: center;
     gap: 0.6rem;
-    margin: 0.15rem 0.5rem !important;
-    padding: 0.5rem 0.75rem !important;
-    border-radius: 10px !important;
-    background: transparent !important;
+
+    /* 알약 형태 */
+    margin: 0.6rem 0.5rem !important;
+    padding: 0.65rem 1rem !important;
+    min-height: 2.6rem;
+    border-radius: 999px !important;
+
+    /* 기본 상태 */
+    background: var(--side-hover) !important;
     box-shadow: none !important;
     color: var(--side-text) !important;
+
     font-weight: 600;
     text-decoration: none !important;
+
+    transition:
+        background 150ms ease,
+        color 150ms ease,
+        transform 150ms ease;
 }
+
+/* 메뉴 내부 글자와 아이콘 */
 [class*="st-key-sidebar-menu"] a *,
 [class*="st-key-sidebar-menu"] a p,
 [class*="st-key-sidebar-menu"] a span {
     color: inherit !important;
     text-decoration: none !important;
 }
+
+/* 호버 */
 [class*="st-key-sidebar-menu"] a:hover {
-    background: var(--side-hover) !important;
+    background: var(--side-active) !important;
     color: var(--side-text-active) !important;
+    transform: translateX(2px);
 }
+
 [class*="st-key-sidebar-menu"] a:hover * {
     color: var(--side-text-active) !important;
 }
+
+/* 아이콘 */
 [class*="st-key-sidebar-menu"] [data-testid="stIconMaterial"] {
     color: var(--side-icon) !important;
 }

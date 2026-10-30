@@ -6,6 +6,7 @@ import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from config import DASHBOARD_DIR
+from dashboard.common.filters import render_personnel_cards, reset_card_filters
 from dashboard.py.personal_detail_data import load_personal
 from dashboard.py.followup_fitness_types import load_fitness_types
 from dashboard.py.followup_probability import load_probabilities
@@ -15,15 +16,8 @@ from dashboard.py.fitness_judgment import EVENTS
 from data.scripts.fitness_standards import grade_cut
 
 
-def _reset_personal_unit_filter(unit_key: str) -> None:
-    """지역 변경 시 부대 선택을 초기화해 이전 지역의 조건이 남지 않게 합니다."""
-    st.session_state[unit_key] = []
-
-
 def _clear_personal_filters() -> None:
-    st.session_state['personal_region_filter']=[]
-    st.session_state['personal_unit_filter']=[]
-    st.session_state['personal_rank_filter']=[]
+    reset_card_filters('personal')
     st.session_state['personal_search']=''
     st.session_state.pop('personal_soldier',None)
 
@@ -57,41 +51,10 @@ def render() -> None:
             st.subheader('장병 찾기')
         with finder_reset:
             st.button('전체 조회',key='personal-clear-filters',on_click=_clear_personal_filters,width='stretch')
-        region_filter,unit_filter,rank_filter,search_filter=st.columns([1,1,1,1.4])
         people=data[['SOLDIER_ID','SOLDIER_NAME','REGION_NAME','RANK_NAME','UNIT_NAME']].drop_duplicates('SOLDIER_ID')
-        region_key='personal_region_filter'
-        unit_key='personal_unit_filter'
-        units_by_region=people.groupby('REGION_NAME')['UNIT_NAME'].unique().map(list).to_dict()
-        regions=region_filter.multiselect(
-            '지역',
-            options=sorted(people.REGION_NAME.dropna().unique().tolist()),
-            key=region_key,
-            on_change=_reset_personal_unit_filter,
-            args=(unit_key,),
-            placeholder='전체 지역',
-        )
-        available_units=(
-            sorted({unit for region in regions for unit in units_by_region.get(region, [])})
-            if regions else sorted(people.UNIT_NAME.dropna().unique().tolist())
-        )
-        units=unit_filter.multiselect(
-            '부대',
-            options=available_units,
-            key=unit_key,
-            placeholder='전체 부대',
-        )
-        rank_order=['이병','일병','상병','병장']
-        available_ranks=sorted(people.RANK_NAME.dropna().unique().tolist(),
-                               key=lambda rank:(rank_order.index(rank) if rank in rank_order else len(rank_order),rank))
-        ranks=rank_filter.multiselect('계급',available_ranks,key='personal_rank_filter',placeholder='전체 계급')
-        search=search_filter.text_input('이름·장병번호 검색',key='personal_search',
-                                        placeholder='이름 또는 장병번호 입력').strip()
-        if regions:
-            people=people.loc[people.REGION_NAME.isin(regions)]
-        if units:
-            people=people.loc[people.UNIT_NAME.isin(units)]
-        if ranks:
-            people=people.loc[people.RANK_NAME.isin(ranks)]
+        people=render_personnel_cards(people,'personal').scoped
+        search=st.text_input('이름·장병번호 검색',key='personal_search',
+                             placeholder='이름 또는 장병번호 입력').strip()
         if search:
             people=people.loc[people.SOLDIER_NAME.str.contains(search,regex=False)|people.SOLDIER_ID.str.contains(search,regex=False)]
         if people.empty:

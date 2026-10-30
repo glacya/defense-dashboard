@@ -6,63 +6,13 @@ import streamlit as st
 
 from dashboard.py.injury_overview_data import filter_injuries_by_personnel, load_injury_overview
 from dashboard.py.fitness_judgment import EVENTS, GRADE_LABELS
-from dashboard.common.formatting import filter_signature
+from dashboard.common.filters import render_personnel_cards
 
 INJURY_LABELS={'INJURY_ID':'부상 식별자','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류',
                'INJURY_LOCATION':'부상 부위','SEVERITY':'심각도','PREVENTABILITY':'예방 가능 여부'}
 
 SEVERITY_COLORS = {'경증': '#0F766E', '중등증': '#0891B2', '중증': '#2563EB'}
 GROUP_COLUMNS = {'지역별': 'REGION_NAME', '부대별': 'UNIT_NAME', '계급별': 'RANK_NAME'}
-REGION_GROUP_ORDER = ['경기', '강원', '전라', '경상', '충청', '제주']
-
-
-def _region_group(region_name: str) -> str:
-    name = str(region_name)
-    keywords = (
-        ('전남광주', '전라'),
-        ('서울', '경기'), ('인천', '경기'), ('경기', '경기'),
-        ('강원', '강원'),
-        ('충청북', '충청'), ('충북', '충청'), ('충청남', '충청'), ('충남', '충청'),
-        ('대전', '충청'), ('세종', '충청'),
-        ('전라북', '전라'), ('전북', '전라'), ('전라남', '전라'), ('전남', '전라'), ('광주', '전라'),
-        ('경상북', '경상'), ('경북', '경상'), ('대구', '경상'),
-        ('경상남', '경상'), ('경남', '경상'), ('부산', '경상'), ('울산', '경상'),
-        ('제주', '제주'),
-    )
-    return next((label for keyword, label in keywords if keyword in name), name)
-
-
-def _toggle_injury_region(region: str) -> None:
-    selected = list(st.session_state.get('injury_filter_regions', []))
-    if region in selected:
-        selected.remove(region)
-    else:
-        selected.append(region)
-    st.session_state['injury_filter_regions'] = [item for item in REGION_GROUP_ORDER if item in selected]
-    st.session_state['injury_filter_units'] = []
-
-
-def _toggle_injury_unit(unit: tuple[str, str]) -> None:
-    selected = list(st.session_state.get('injury_filter_units', []))
-    if unit in selected:
-        selected.remove(unit)
-    else:
-        selected.append(unit)
-    st.session_state['injury_filter_units'] = selected
-
-
-def _toggle_injury_rank(rank: str) -> None:
-    selected = list(st.session_state.get('injury_filter_ranks', []))
-    if rank in selected:
-        selected.remove(rank)
-    else:
-        selected.append(rank)
-    st.session_state['injury_filter_ranks'] = selected
-
-
-def _change_injury_region_page(page_key: str, offset: int, page_count: int) -> None:
-    current = int(st.session_state.get(page_key, 0))
-    st.session_state[page_key] = min(max(current + offset, 0), page_count - 1)
 
 
 def _style_injury_chart(chart):
@@ -165,121 +115,14 @@ def _render_injury_distributions(injuries: pd.DataFrame) -> None:
 
 def _render_personnel_filter_cards(people: pd.DataFrame, injuries: pd.DataFrame) -> pd.DataFrame:
     """지역·부대·계급 카드를 표시하고 조건에 맞는 부상 기록을 반환합니다."""
-    scoped = people.assign(_REGION_GROUP=people['REGION_NAME'].map(_region_group))
-    available_regions = sorted(
-        scoped['_REGION_GROUP'].dropna().unique().tolist(),
-        key=lambda value: (REGION_GROUP_ORDER.index(value) if value in REGION_GROUP_ORDER else len(REGION_GROUP_ORDER), value),
-    )
-    selected_regions = [region for region in st.session_state.get('injury_filter_regions', []) if region in available_regions]
-    st.session_state['injury_filter_regions'] = selected_regions
-    active_regions = selected_regions or available_regions
-    source_regions = scoped.loc[scoped['_REGION_GROUP'].isin(active_regions), 'REGION_NAME'].dropna().unique().tolist()
-    unit_pairs = sorted(
-        map(tuple, scoped.loc[scoped['REGION_NAME'].isin(source_regions), ['REGION_NAME', 'UNIT_NAME']]
-             .dropna().drop_duplicates().to_numpy().tolist())
-    )
-    selected_units = [tuple(unit) for unit in st.session_state.get('injury_filter_units', []) if tuple(unit) in unit_pairs]
-    st.session_state['injury_filter_units'] = selected_units
-    active_units = selected_units or unit_pairs
-    ranks = sorted(scoped['RANK_NAME'].dropna().unique().tolist())
-    selected_ranks = [rank for rank in st.session_state.get('injury_filter_ranks', []) if rank in ranks]
-    st.session_state['injury_filter_ranks'] = selected_ranks
-    active_ranks = selected_ranks or ranks
-
-    st.markdown('''<style>
-        div[class*="st-key-injury-region-card"] button {
-            min-height: 68px; border-radius: 10px; white-space: pre-line; padding: 4px 7px;
-            border: 1px solid #7B9DB8 !important;
-        }
-        div[class*="st-key-injury-region-card"] button[kind="primary"] {
-            border: 2px solid #93C5FD !important; background: #DBEAFE !important;
-            color: #1E3A5F !important; box-shadow: 0 0 0 1px #EFF6FF;
-        }
-        div[class*="st-key-injury-region-card"] button[kind="primary"] * { color: #1E3A5F !important; }
-        div[class*="st-key-injury-unit-card"] button,
-        div[class*="st-key-injury-rank-card"] button {
-            min-height: 30px; border-radius: 16px; white-space: normal; padding: 1px 6px;
-            border: 1px solid #91A99A !important;
-        }
-        div[class*="st-key-injury-unit-card"] button[kind="primary"],
-        div[class*="st-key-injury-rank-card"] button[kind="primary"] {
-            border: 2px solid #86EFAC !important; background: #D1FAE5 !important;
-            color: #14532D !important; box-shadow: 0 0 0 1px #ECFDF5;
-        }
-        div[class*="st-key-injury-unit-card"] button[kind="primary"] *,
-        div[class*="st-key-injury-rank-card"] button[kind="primary"] * { color: #14532D !important; }
-        div[class*="st-key-injury-unit-region"] {
-            border-color: #A9BDAF !important; border-radius: 12px; padding: .15rem .3rem;
-        }
-    </style>''', unsafe_allow_html=True)
-
-    st.markdown('**지역**')
-    region_counts = scoped.groupby('_REGION_GROUP')['SOLDIER_ID'].nunique().to_dict()
-    for start in range(0, len(available_regions), 4):
-        for column, region in zip(st.columns(4, gap='small'), available_regions[start:start + 4]):
-            selected = region in selected_regions
-            column.button(
-                f'{"✓ " if selected else ""}**{region}**  \n{int(region_counts.get(region, 0)):,}명',
-                key=f'injury-region-card_{region}', type='primary' if selected else 'secondary',
-                width='stretch', on_click=_toggle_injury_region, args=(region,),
-            )
-
-    if selected_regions:
-        st.markdown('**부대**')
-        page_count = len(selected_regions)
-        page_key = f"injury_region_page_{filter_signature(tuple(selected_regions))}"
-        page = min(max(int(st.session_state.get(page_key, 0)), 0), page_count - 1)
-        previous, status, next_button = st.columns([1, 3, 1])
-        previous.button('← 이전 지역', disabled=page == 0, key=f'{page_key}_previous',
-                        on_click=_change_injury_region_page, args=(page_key, -1, page_count))
-        status.markdown(f'<div style="text-align:center;padding:.45rem">{selected_regions[page]} · {page + 1} / {page_count}</div>', unsafe_allow_html=True)
-        next_button.button('다음 지역 →', disabled=page >= page_count - 1, key=f'{page_key}_next',
-                           on_click=_change_injury_region_page, args=(page_key, 1, page_count))
-        province = selected_regions[page]
-        page_regions = sorted(scoped.loc[scoped['_REGION_GROUP'].eq(province), 'REGION_NAME'].dropna().unique().tolist())
-        region_columns = st.columns(4, gap='small')
-        for index, region in enumerate(page_regions):
-            units_in_region = sorted(scoped.loc[scoped['REGION_NAME'].eq(region), 'UNIT_NAME'].dropna().unique().tolist())
-            with region_columns[index % 4]:
-                with st.container(border=True, key=f'injury-unit-region_{filter_signature(region)}'):
-                    st.caption(region)
-                    for unit in units_in_region:
-                        unit_pair = (region, unit)
-                        count = scoped.loc[
-                            scoped['REGION_NAME'].eq(region) & scoped['UNIT_NAME'].eq(unit), 'SOLDIER_ID'
-                        ].nunique()
-                        selected = unit_pair in selected_units
-                        st.button(
-                            f'{"✓ " if selected else ""}{unit} · {count:,}명',
-                            key=f'injury-unit-card_{filter_signature(region, unit)}', type='primary' if selected else 'secondary',
-                            width='content', on_click=_toggle_injury_unit, args=(unit_pair,),
-                        )
-
-    rank_base = scoped.loc[
-        scoped['_REGION_GROUP'].isin(active_regions)
-        & pd.MultiIndex.from_frame(scoped[['REGION_NAME', 'UNIT_NAME']]).isin(active_units)
-    ]
-    rank_counts = rank_base.groupby('RANK_NAME')['SOLDIER_ID'].nunique().to_dict()
-    st.markdown('**계급**')
-    for start in range(0, len(ranks), 4):
-        for column, rank in zip(st.columns(4, gap='small'), ranks[start:start + 4]):
-            selected = rank in selected_ranks
-            column.button(
-                f'{"✓ " if selected else ""}{rank} · {int(rank_counts.get(rank, 0)):,}명',
-                key=f'injury-rank-card_{rank}', type='primary' if selected else 'secondary',
-                width='stretch', on_click=_toggle_injury_rank, args=(rank,),
-            )
-
+    selection = render_personnel_cards(people, 'injury')
     filtered_injuries = filter_injuries_by_personnel(
         injuries,
         people,
-        regions=source_regions,
-        ranks=active_ranks,
+        regions=selection.regions,
+        ranks=selection.ranks,
     )
-    selected_unit_mask = pd.MultiIndex.from_frame(
-        filtered_injuries[['REGION_NAME', 'UNIT_NAME']]
-    ).isin(active_units)
-    return filtered_injuries.loc[selected_unit_mask]
+    return filtered_injuries.loc[selection.unit_mask(filtered_injuries)]
 
 
 def render() -> None:

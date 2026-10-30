@@ -11,7 +11,7 @@ import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.common.charts import CHART_CONTINUOUS_SCALE, CHART_PALETTE, show_plotly
-from dashboard.common.filters import render_filters
+from dashboard.common.filter_map import render_filters
 from dashboard.common.formatting import FITNESS_ITEM_LABELS, GRADE_LABELS, add_deficiency_flags
 from dashboard.common.widgets import PieChartWidget, RadarChartWidget
 from dashboard.data_source import CSV, resolve_source

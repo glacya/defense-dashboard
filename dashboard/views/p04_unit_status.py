@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from types import SimpleNamespace
 
+from dashboard.common.filters import render_personnel_cards
 from dashboard.common.charts import (
     BMI_COLORS, LIGHT_TEXT, NAVY_BACKGROUND, NAVY_BORDER, NAVY_SURFACE, MUTED_TEXT,
     RANK_BAR_COLOR, WARN_COLOR, apply_dark_layout, show_plotly, style_altair,
@@ -18,184 +19,15 @@ from dashboard.py.followup_fitness_types import load_fitness_types
 from dashboard.py.personal_fitness_profile import load_personal_profile
 from dashboard.py.fitness_judgment import EVENTS
 
-REGION_GROUP_ORDER = ["경기", "강원", "전라", "경상", "충청", "제주"]
-
-
-def _region_group_order(region: str) -> tuple[int, str]:
-    try:
-        return REGION_GROUP_ORDER.index(region), region
-    except ValueError:
-        return len(REGION_GROUP_ORDER), region
-
-
-def _toggle_region(region: str) -> None:
-    selected = list(st.session_state.get("unit_card_regions", []))
-    if region in selected:
-        selected.remove(region)
-    else:
-        selected.append(region)
-    st.session_state["unit_card_regions"] = sorted(selected, key=_region_group_order)
-    st.session_state["unit_card_units"] = []
-
-
-def _toggle_unit(unit: tuple[str, str]) -> None:
-    selected = list(st.session_state.get("unit_card_units", []))
-    if unit in selected:
-        selected.remove(unit)
-    else:
-        selected.append(unit)
-    st.session_state["unit_card_units"] = selected
-
-
-def _change_unit_region_page(page_key: str, offset: int, page_count: int) -> None:
-    page = int(st.session_state.get(page_key, 0))
-    st.session_state[page_key] = min(max(page + offset, 0), page_count - 1)
-
-
-def _province_group(region_name: str) -> str:
-    name = str(region_name)
-    keywords = (
-        ("전남광주", "전라"),
-        ("서울", "경기"), ("인천", "경기"), ("경기", "경기"),
-        ("강원", "강원"),
-        ("충청북", "충청"), ("충북", "충청"),
-        ("충청남", "충청"), ("충남", "충청"), ("대전", "충청"), ("세종", "충청"),
-        ("전라북", "전라"), ("전북", "전라"),
-        ("전라남", "전라"), ("전남", "전라"), ("광주", "전라"),
-        ("경상북", "경상"), ("경북", "경상"), ("대구", "경상"),
-        ("경상남", "경상"), ("경남", "경상"), ("부산", "경상"), ("울산", "경상"),
-        ("제주", "제주"),
-    )
-    return next((label for keyword, label in keywords if keyword in name), name)
-
-
 def _render_unit_filters(measurements: pd.DataFrame):
-    """기간 필터를 제외하고 도 단위 지역·지역별 부대 선택을 표시합니다."""
+    """기간 필터를 제외하고 도 단위 지역·지역별 부대 카드 필터를 표시합니다."""
     date_start = measurements["MESURE_DE"].min().date()
     date_end = measurements["MESURE_DE"].max().date()
     population = latest_measurements(measurements, date_start, date_end)
-    population = population.assign(_REGION_GROUP=population["REGION_NAME"].map(_province_group))
-    regions = sorted(
-        population["_REGION_GROUP"].dropna().unique().tolist(),
-        key=_region_group_order,
-    )
-    selected_regions = sorted(
-        (region for region in st.session_state.get("unit_card_regions", []) if region in regions),
-        key=_region_group_order,
-    )
-    st.session_state["unit_card_regions"] = selected_regions
-    active_regions = selected_regions or regions
-    selected_source_regions = population.loc[population["_REGION_GROUP"].isin(active_regions), "REGION_NAME"].dropna().unique().tolist()
-    all_unit_pairs = sorted(
-        map(tuple, population.loc[population["REGION_NAME"].isin(selected_source_regions), ["REGION_NAME", "UNIT_NAME"]]
-             .dropna().drop_duplicates().to_numpy().tolist())
-    )
-    selected_units = [tuple(unit) for unit in st.session_state.get("unit_card_units", []) if tuple(unit) in all_unit_pairs]
-    st.session_state["unit_card_units"] = selected_units
-    active_unit_pairs = selected_units or all_unit_pairs
-
-    region_counts = population.groupby("_REGION_GROUP")["SOLDIER_ID"].nunique().to_dict()
-
-    region_summary = "전체" if not selected_regions else ", ".join(selected_regions[:2]) + (f" 외 {len(selected_regions)-2}개" if len(selected_regions) > 2 else "")
-    unit_summary = "지역 선택 후 표시" if not selected_regions else ("전체" if not selected_units else f"선택 {len(selected_units)}개")
-    st.caption(f"조회 조건 · 지역 {region_summary} · 부대 {unit_summary} · 장병별 최신 측정 · {population.SOLDIER_ID.nunique():,}명 기준")
     st.caption("도 단위 지역 카드를 선택하면 해당 지역의 부대가 표시됩니다. 부대 선택이 없으면 선택 지역의 전체 부대를 포함합니다.")
-    st.markdown('''<style>
-        div[class*="st-key-unit-region-card"] button {
-            min-height: 72px; border-radius: 10px; white-space: pre-line; padding: 5px 8px;
-            border: 1px solid #7B9DB8 !important;
-        }
-        div[class*="st-key-unit-region-card"] button[kind="primary"] {
-            border: 2px solid #93C5FD !important;
-            background: #DBEAFE !important;
-            color: #1E3A5F !important;
-            box-shadow: 0 0 0 1px #EFF6FF;
-        }
-        div[class*="st-key-unit-region-card"] button[kind="primary"] * {
-            color: #1E3A5F !important;
-        }
-        div[class*="st-key-unit-card"] button {
-            min-height: 28px; border-radius: 14px; white-space: normal; padding: 1px 6px;
-            border: 1px solid #91A99A !important;
-        }
-        div[class*="st-key-unit-card"] button[kind="primary"] {
-            border: 2px solid #86EFAC !important;
-            background: #D1FAE5 !important;
-            color: #14532D !important;
-            box-shadow: 0 0 0 1px #ECFDF5;
-        }
-        div[class*="st-key-unit-card"] button[kind="primary"] * {
-            color: #14532D !important;
-        }
-        div[class*="st-key-unit-card"] button p {
-            font-size: 12px; line-height: 1.1; margin: 0;
-        }
-        div[class*="st-key-unit-source-region"] {
-            padding: .15rem .3rem;
-            border-color: #A9BDAF !important;
-            border-radius: 12px;
-        }
-        div[class*="st-key-unit-source-region"] [data-testid="stVerticalBlock"] {
-            gap: .15rem;
-        }
-        div[class*="st-key-unit-source-region"] h4 {
-            font-size: 12px; padding: 0; margin: 0;
-        }
-        div[class*="st-key-unit-source-region"] [data-testid="stMarkdownContainer"] p {
-            font-size: 13px; margin: 0;
-        }
-    </style>''', unsafe_allow_html=True)
-    st.markdown("**지역**")
-    for start in range(0, len(regions), 4):
-        for column, region in zip(st.columns(4, gap="small"), regions[start:start + 4]):
-            selected = region in selected_regions
-            column.button(
-                f'{"✓ " if selected else ""}**{region}**  \n{int(region_counts.get(region, 0)):,}명',
-                key=f"unit-region-card_{filter_signature(region)}",
-                type="primary" if selected else "secondary", width="stretch",
-                on_click=_toggle_region, args=(region,),
-            )
-
-    if selected_regions:
-        st.markdown("**부대**")
-        page_count = len(selected_regions)
-        page_key = f"unit_region_page_{filter_signature(tuple(selected_regions))}"
-        page = min(max(int(st.session_state.get(page_key, 0)), 0), page_count - 1)
-        prev_col, status_col, next_col = st.columns([1, 3, 1])
-        prev_col.button("← 이전 지역", disabled=page == 0, key=f"{page_key}_previous",
-                        on_click=_change_unit_region_page, args=(page_key, -1, page_count))
-        status_col.markdown(f'<div style="text-align:center;padding:.45rem">{selected_regions[page]} · {page + 1} / {page_count}</div>', unsafe_allow_html=True)
-        next_col.button("다음 지역 →", disabled=page >= page_count - 1, key=f"{page_key}_next",
-                        on_click=_change_unit_region_page, args=(page_key, 1, page_count))
-
-        province = selected_regions[page]
-        source_regions = sorted(population.loc[population["_REGION_GROUP"].eq(province), "REGION_NAME"].dropna().unique().tolist())
-        source_columns = st.columns(8, gap="small")
-        for source_index, source_region in enumerate(source_regions):
-            source_units = sorted(
-                population.loc[population["REGION_NAME"].eq(source_region), "UNIT_NAME"].dropna().unique().tolist()
-            )
-            counts = population.loc[population["REGION_NAME"].eq(source_region)].groupby("UNIT_NAME")["SOLDIER_ID"].nunique().to_dict()
-            with source_columns[source_index % len(source_columns)]:
-                with st.container(border=True, key=f"unit-source-region_{filter_signature(source_region)}"):
-                    st.markdown(f"**{source_region}**")
-                    for unit in source_units:
-                        unit_pair = (source_region, unit)
-                        selected = unit_pair in selected_units
-                        st.button(
-                            f'{"✓ " if selected else ""}{unit} · {int(counts.get(unit, 0)):,}명',
-                            key=f"unit-card_{filter_signature(unit_pair)}",
-                            type="primary" if selected else "secondary", width="content",
-                            on_click=_toggle_unit, args=(unit_pair,),
-                        )
-
-    unit_index = pd.MultiIndex.from_frame(population[["REGION_NAME", "UNIT_NAME"]])
-    scoped = population.loc[
-        population["_REGION_GROUP"].isin(active_regions) & unit_index.isin(active_unit_pairs)
-    ].drop(columns="_REGION_GROUP").copy()
-    filters = SimpleNamespace(regions=active_regions, units=active_unit_pairs, scoped=scoped)
-    st.caption(f"현재 조회 · {scoped.SOLDIER_ID.nunique():,}명")
-    return filters
+    selection = render_personnel_cards(population, "unit", show_ranks=False, unit_columns=8)
+    st.caption(f"조회 조건 · 장병별 최신 측정 · 현재 조회 {selection.scoped.SOLDIER_ID.nunique():,}명 / 전체 {population.SOLDIER_ID.nunique():,}명")
+    return SimpleNamespace(regions=selection.regions, units=selection.units, scoped=selection.scoped)
 
 
 def clear_bmi_chart_selection() -> None:

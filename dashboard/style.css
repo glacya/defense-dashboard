@@ -395,6 +395,57 @@ body {
     white-space: nowrap;
 }
 
+.st-key-fitness-overview-summary-cards [data-testid="stButton"] button {
+    height: 5.5rem;
+    min-height: 5.5rem;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    border-radius: 0.8rem;
+    box-shadow: 0 2px 8px rgba(24, 43, 64, 0.05);
+    padding: 0.7rem 0.9rem;
+}
+.st-key-fitness-overview-summary-cards [data-testid="stButton"] button:hover {
+    background: #DBEAFE;
+    border-color: var(--c-blue);
+}
+.st-key-fitness-overview-summary-cards [data-testid="stButton"] button p {
+    width: 100%;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.55;
+}
+.st-key-fitness-overview-summary-cards [data-testid="stButton"] button p strong:first-of-type {
+    color: var(--c-slate);
+    font-size: 0.72rem;
+}
+.st-key-fitness-overview-summary-cards [data-testid="stButton"] button p strong:last-of-type {
+    color: var(--c-ink);
+    font-size: 1.2rem;
+}
+.st-key-fitness-overview-summary-cards [data-testid="stMetric"] {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    height: 5.5rem;
+    min-height: 5.5rem;
+    padding: 0.7rem 0.9rem;
+    text-align: center;
+}
+.st-key-fitness-overview-summary-cards [data-testid="stMetricLabel"],
+.st-key-fitness-overview-summary-cards [data-testid="stMetricValue"],
+.st-key-fitness-overview-summary-cards [data-testid="stMetricLabel"] p,
+.st-key-fitness-overview-summary-cards [data-testid="stMetricValue"] div {
+    width: 100%;
+    justify-content: center;
+    text-align: center !important;
+}
+
 /* 부상 후속조치 요약: 열마다 색을 다르게 */
 .st-key-injury-followup-summary [data-testid="stColumn"]:nth-child(1) {
     --injury-card-bg: #ECF3FC;

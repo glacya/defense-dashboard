@@ -2,10 +2,21 @@
 
 import pandas as pd
 
-from data.scripts.paths import PROCESSED_MEASUREMENT_CLASSIFICATION_PATH, PROCESSED_FITNESS_TYPE_PATH
+from dashboard.data_source import CSV, resolve_source
+from dashboard.db import run_query
 from data.scripts.utils import require_columns
 
 TYPE_COLUMNS = ['AVERAGE_PERCENTILE_GRADE', 'CLUSTER']
+CLASSIFICATIONS_SQL = """
+SELECT mesure_id, average_percentile_grade, cluster
+FROM measurement_classifications
+ORDER BY mesure_id
+"""
+TYPES_SQL = """
+SELECT average_percentile_grade, cluster, type_name
+FROM fitness_types
+ORDER BY average_percentile_grade, cluster
+"""
 
 
 def attach_fitness_types(people: pd.DataFrame, classifications: pd.DataFrame,
@@ -37,7 +48,14 @@ def attach_fitness_types(people: pd.DataFrame, classifications: pd.DataFrame,
     return result, types.sort_values(TYPE_COLUMNS)
 
 
-def load_fitness_types(people: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """기존 두 CSV를 읽어 메모리에서 연결합니다."""
-    return attach_fitness_types(people, pd.read_csv(PROCESSED_MEASUREMENT_CLASSIFICATION_PATH),
-                                pd.read_csv(PROCESSED_FITNESS_TYPE_PATH))
+def read_fitness_type_tables(source: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """측정별 분류와 16개 유형명 표를 읽습니다."""
+    if resolve_source(source) != CSV:
+        return run_query(CLASSIFICATIONS_SQL), run_query(TYPES_SQL)
+    from data.scripts.paths import PROCESSED_MEASUREMENT_CLASSIFICATION_PATH, PROCESSED_FITNESS_TYPE_PATH
+    return pd.read_csv(PROCESSED_MEASUREMENT_CLASSIFICATION_PATH), pd.read_csv(PROCESSED_FITNESS_TYPE_PATH)
+
+
+def load_fitness_types(people: pd.DataFrame, source: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """두 표를 읽어 메모리에서 연결합니다."""
+    return attach_fitness_types(people, *read_fitness_type_tables(source))

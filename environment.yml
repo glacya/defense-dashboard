@@ -5,3 +5,6 @@ dependencies:
   - pip
   - pip:
       - -r requirements.txt
+      # 프로젝트를 editable로 설치해 어디서 실행해도 `from config import ...`, `from data.scripts...`가 동작하게 한다.
+      # conda는 pip을 이 파일이 있는 폴더(저장소 루트)에서 실행하므로 `.`이 저장소 루트를 가리킨다.
+      - -e .

@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.py.management_store import STATUSES, save_followups_batch
 
@@ -43,5 +44,5 @@ def render_group_followup(people: pd.DataFrame) -> None:
                 saved=save_followups_batch(targets.SOLDIER_ID.tolist(),values)
                 st.session_state['management_notice']=f'그룹 {saved:,}명에게 후속조치를 등록했습니다.'
                 st.rerun()
-            except (OSError,ValueError,KeyError) as error:
+            except (OSError,ValueError,KeyError,SQLAlchemyError) as error:
                 st.error(f'그룹 후속조치를 저장하지 못했습니다: {error}')

@@ -19,9 +19,14 @@
 
 화면 입력값은 반드시 params로 넘깁니다. SQL 문자열에 f-string으로 넣으면 SQL 인젝션이 생길 수 있습니다.
 params로 넘긴 값은 psycopg가 SQL 문장과 따로(서버 쪽 파라미터 바인딩) 보내므로 SQL로 해석되지 않습니다.
+
+사용자 입력 기록(후속조치 등)은 저장 직후 바로 보여야 하므로 run_query의 캐시를 쓰지 않습니다.
+쓰기는 transaction(), 읽기는 read_uncached()를 쓰고, 읽기 캐시는 그 모듈이 직접 두고 저장한 뒤 비웁니다.
 """
 
 import os
+from collections.abc import Generator
+from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -29,6 +34,8 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 from dotenv import dotenv_values
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 from streamlit.connections import SQLConnection
 
 # 배포 환경에서는 저장소 루트의 config.py를 import하지 않게 할 예정이라(CLAUDE.md 배포 계획) 이 파일 기준으로 찾는다.
@@ -117,3 +124,22 @@ def run_query(sql: str, params: dict[str, Any] | None = None, ttl: int | None = 
     result = get_connection().query(sql, params=params, ttl=ttl, show_spinner=False)
     return tidy(result)
 
+
+def read_uncached(sql: str, params: dict[str, Any] | None = None) -> pd.DataFrame:
+    """캐시하지 않고 SQL을 실행해 DataFrame으로 돌려줍니다(모양은 run_query와 같음)."""
+    with get_connection().session as session:
+        result = session.execute(text(sql), params or {})
+        frame = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+    return tidy(frame)
+
+
+@contextmanager
+def transaction() -> Generator[Session, None, None]:
+    """쓰기용 세션을 엽니다. 블록이 오류 없이 끝나면 커밋하고, 예외가 나면 모두 되돌립니다.
+
+    사용 예:
+        with transaction() as session:
+            session.execute(text("UPDATE ... WHERE record_id = :record_id"), {"record_id": 1})
+    """
+    with get_connection().session as session, session.begin():
+        yield session

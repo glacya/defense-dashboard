@@ -1,0 +1,5 @@
+순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,FK참조,NOT NULL여부,데이터 상품명
+1,PRESCRIPTION_TYPE_ID,처방유형번호,INT,,Y,KS_NFA_PRESCRIPTION_DETAIL.PRESCRIPTION_TYPE_ID,Y,체력 유형별 운동 추천 데이터
+2,IMPROVEMENT_FOCUS,향상체력요소,VARCHAR,10,N,,Y,체력 유형별 운동 추천 데이터
+3,EXERCISE_DIFFICULTY,동작난이도,INT,,N,,Y,체력 유형별 운동 추천 데이터
+4,REQUIRED_EQUIPMENT,필요장비,VARCHAR,20,N,,Y,체력 유형별 운동 추천 데이터

@@ -8,22 +8,31 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.common.charts import CHART_CONTINUOUS_SCALE, CHART_PALETTE, show_plotly
 from dashboard.common.filters import render_filters
 from dashboard.common.formatting import FITNESS_ITEM_LABELS, GRADE_LABELS, add_deficiency_flags
 from dashboard.common.widgets import PieChartWidget, RadarChartWidget
+from dashboard.data_source import CSV, resolve_source
+from dashboard.db import DEFAULT_TTL, run_query
 from dashboard.main_data import load_main_data
+from dashboard.py.followup_fitness_types import read_fitness_type_tables
 from dashboard.py.followup_probability import load_probabilities
-from dashboard.py.management_store import load_records
-from data.scripts.paths import (
-    PROCESSED_FITNESS_TYPE_PATH,
-    PROCESSED_MEASUREMENT_CLASSIFICATION_PATH,
-    PROCESSED_PRESCRIPTION_DETAIL_PATH,
-    PROCESSED_PRESCRIPTION_PATH,
-)
+from dashboard.py.management_store import COMMON, FIELDS, load_records
 
 PALETTE = list(CHART_PALETTE)
+# 측정별 운동 처방(KS_NFA_PRESCRIPTION.csv)과 처방 이름표(KS_NFA_PRESCRIPTION_DETAIL.csv)의 DB 테이블
+PRESCRIPTIONS_SQL = """
+SELECT mesure_id, prescription_type_id
+FROM exercise_prescriptions
+ORDER BY prescription_id
+"""
+PRESCRIPTION_NAMES_SQL = """
+SELECT prescription_type_id, prescription
+FROM exercise_prescription_details
+ORDER BY prescription_type_id
+"""
 REGION_GEOJSON_PATH = Path(__file__).resolve().parents[1] / "assets" / "geojson" / "korea_provinces.geojson"
 # 지도는 9개 도 단위로 그립니다. 특별시·광역시·특별자치시는 둘러싼 도에 편입합니다.
 # (경도 최소, 경도 최대, 위도 최소, 위도 최대) — 서로 겹치지 않는 도식 지도용 사각형
@@ -140,11 +149,19 @@ def _non_safe_count(soldier_ids: set[str]) -> int:
     return len(_non_safe_ids(soldier_ids))
 
 
+def _records_or_empty(kind: str) -> pd.DataFrame:
+    """관리 기록을 읽지 못하면(예: DB에 테이블이 아직 없음) 빈 기록으로 계산해 홈 화면은 계속 보여 줍니다."""
+    try:
+        return load_records(kind)
+    except (OSError, ValueError, SQLAlchemyError):
+        return pd.DataFrame(columns=COMMON + FIELDS[kind])
+
+
 def _render_kpis(total: int, managed: int, latest: pd.DataFrame, injuries: pd.DataFrame) -> None:
     ids = set(latest["SOLDIER_ID"])
     scoped_injuries = injuries.loc[injuries["SOLDIER_ID"].isin(ids)]
-    followups = load_records("followup_records")
-    injury_followups = load_records("injury_followup")
+    followups = _records_or_empty("followup_records")
+    injury_followups = _records_or_empty("injury_followup")
     try:
         non_safe_ids = _non_safe_ids(ids)
         non_safe = len(non_safe_ids)
@@ -464,8 +481,18 @@ def _render_injuries(injuries: pd.DataFrame, ids: set[str]) -> None:
             )
 
 
-@st.cache_data(show_spinner=False)
-def _load_fitness_type_links() -> tuple[pd.DataFrame, pd.DataFrame]:
+def _load_fitness_type_links(source: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    return _read_fitness_type_links(resolve_source(source))
+
+
+@st.cache_data(ttl=DEFAULT_TTL, show_spinner=False)
+def _read_fitness_type_links(source: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if source != CSV:
+        classifications, types = read_fitness_type_tables(source)
+        # 측정 데이터(main_data)의 MESURE_ID가 정수라 이어 붙이려면 같은 타입이어야 한다.
+        classifications["MESURE_ID"] = classifications["MESURE_ID"].astype("int64")
+        return classifications, types
+    from data.scripts.paths import PROCESSED_FITNESS_TYPE_PATH, PROCESSED_MEASUREMENT_CLASSIFICATION_PATH
     classifications = pd.read_csv(
         PROCESSED_MEASUREMENT_CLASSIFICATION_PATH,
         usecols=["MESURE_ID", "AVERAGE_PERCENTILE_GRADE", "CLUSTER"],
@@ -477,8 +504,20 @@ def _load_fitness_type_links() -> tuple[pd.DataFrame, pd.DataFrame]:
     return classifications, types
 
 
-@st.cache_data(show_spinner=False)
-def _load_prescription_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+def _load_prescription_data(source: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    return _read_prescription_data(resolve_source(source))
+
+
+@st.cache_data(ttl=DEFAULT_TTL, show_spinner=False)
+def _read_prescription_data(source: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if source != CSV:
+        prescriptions = run_query(PRESCRIPTIONS_SQL)
+        details = run_query(PRESCRIPTION_NAMES_SQL)
+        for frame in (prescriptions, details):
+            frame["PRESCRIPTION_TYPE_ID"] = frame["PRESCRIPTION_TYPE_ID"].astype("int64")
+        prescriptions["MESURE_ID"] = prescriptions["MESURE_ID"].astype("int64")
+        return prescriptions, details
+    from data.scripts.paths import PROCESSED_PRESCRIPTION_DETAIL_PATH, PROCESSED_PRESCRIPTION_PATH
     prescriptions = pd.read_csv(
         PROCESSED_PRESCRIPTION_PATH,
         usecols=["MESURE_ID", "PRESCRIPTION_TYPE_ID"],

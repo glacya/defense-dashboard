@@ -1,0 +1,13 @@
+순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,FK참조,NOT NULL여부,데이터 상품명
+1,RECORD_ID,기록식별번호,SERIAL,,Y,,Y,장병 부상 후속조치 기록 데이터
+2,CREATED_AT,최초저장시각,TIMESTAMP,,N,,Y,장병 부상 후속조치 기록 데이터
+3,UPDATED_AT,최종수정시각,TIMESTAMP,,N,,Y,장병 부상 후속조치 기록 데이터
+4,INJURY_ID,부상식별번호,INT,,N,SOLDIER_INJURY.INJURY_ID,Y,장병 부상 후속조치 기록 데이터
+5,CHECK_DATE,확인일,DATE,,N,,Y,장병 부상 후속조치 기록 데이터
+6,STATUS,후속조치상태,VARCHAR,10,N,,Y,장병 부상 후속조치 기록 데이터
+7,ACTION_CONTENT,후속조치내용,VARCHAR,1000,N,,N,장병 부상 후속조치 기록 데이터
+8,RECOVERY_STATUS,회복상태,VARCHAR,10,N,,Y,장병 부상 후속조치 기록 데이터
+9,RESTRICTION,운동제한내용,VARCHAR,500,N,,N,장병 부상 후속조치 기록 데이터
+10,RESTRICTION_START,제한시작일,DATE,,N,,N,장병 부상 후속조치 기록 데이터
+11,RESTRICTION_END,제한종료일,DATE,,N,,N,장병 부상 후속조치 기록 데이터
+12,NOTE,비고,VARCHAR,500,N,,N,장병 부상 후속조치 기록 데이터

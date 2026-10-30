@@ -5,8 +5,7 @@ import plotly.express as px
 import streamlit as st
 
 from dashboard.py.injury_overview_data import filter_injuries_by_personnel, load_injury_overview
-from data.scripts.analysis.analysis2.fitness_overview import EVENTS
-from data.scripts.analysis.analysis2.injury_overview import GRADE_LABELS
+from dashboard.py.fitness_judgment import EVENTS, GRADE_LABELS
 
 INJURY_LABELS={'INJURY_ID':'부상 식별자','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류',
                'INJURY_LOCATION':'부상 부위','SEVERITY':'심각도','PREVENTABILITY':'예방 가능 여부'}

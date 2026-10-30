@@ -242,14 +242,15 @@ def _render_fitness_variance(unit: pd.DataFrame) -> None:
             projection_type="mercator", showcountries=False,
         )
         chart.update_layout(height=360, margin=dict(t=8, b=8, l=4, r=4),
-                            coloraxis_colorbar=dict(title="충족률(%)"))
+                            coloraxis_colorbar=dict(title="충족률(%)"),
+                            dragmode=False)  # 지도 드래그 이동 막기(클릭 선택은 유지)
         selection = st.plotly_chart(
             chart,
             width="stretch",
             key="home-region-map",
             on_select="rerun",
             selection_mode="points",
-            config={"displayModeBar": False},
+            config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False},
         )
         points = getattr(getattr(selection, "selection", None), "points", [])
         if points:

@@ -11,12 +11,11 @@ CHART_PALETTE = (
     "#6366F1",
 )
 CHART_CONTINUOUS_SCALE = (
-    (0.0, "#DBEAFE"),
-    (0.35, "#7DD3FC"),
-    (0.7, "#2DD4BF"),
-    (1.0, "#0F766E"),
+    (0.0, "#DC2626"),   # 빨강: 충족률 낮음
+    (0.33, "#EAB308"),  # 노랑
+    (0.66, "#16A34A"),  # 초록
+    (1.0, "#1D4ED8"),   # 파랑: 충족률 높음
 )
-
 NAVY_BACKGROUND = "#FFFFFF"
 NAVY_SURFACE = "#F4F8FB"
 NAVY_BORDER = "#D9E3EC"

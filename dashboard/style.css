@@ -680,23 +680,18 @@ hr {
     padding: 0 !important;
 }
 
-/* 링크 기본색(파랑)이 글자에 번지지 않도록 색을 명시 */
-[data-testid="stSidebar"] .st-key-sidebar-brand a,
-[data-testid="stSidebar"] .st-key-sidebar-brand a:visited,
-[data-testid="stSidebar"] .st-key-sidebar-brand a:hover,
-[data-testid="stSidebar"] .st-key-sidebar-brand a:focus,
-[data-testid="stSidebar"] .st-key-sidebar-brand a:active {
-    text-decoration: none !important;
+/* 브랜드는 클릭되지 않는 <div class="brand-block">입니다. 글자색을 명시해 다른 사이드바 규칙에 덮이지 않게 합니다. */
+[data-testid="stSidebar"] .st-key-sidebar-brand .brand-block {
+    cursor: default !important;
+    pointer-events: none !important;
+    opacity: 1 !important;
     color: var(--brand-title) !important;
 }
-[data-testid="stSidebar"] .st-key-sidebar-brand a span:first-child + span > span:first-child {
+[data-testid="stSidebar"] .st-key-sidebar-brand .brand-title {
     color: var(--brand-title) !important;
 }
-[data-testid="stSidebar"] .st-key-sidebar-brand a span:first-child + span > span:last-child {
+[data-testid="stSidebar"] .st-key-sidebar-brand .brand-sub {
     color: var(--brand-sub) !important;
-}
-[data-testid="stSidebar"] .st-key-sidebar-brand a:hover {
-    opacity: 0.85;
 }
 /* ==========================================
    14. 카드 필터 (지역·부대·계급)  ← dashboard/common/card_filters.py

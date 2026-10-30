@@ -23,19 +23,20 @@ BRAND_SVG = (
 
 
 def brand_html(href: str = "/") -> str:
-    """사이드바 브랜드 블록 HTML. 클릭하면 href(기본: 홈)로 이동합니다."""
+    """사이드바 브랜드 블록 HTML. 클릭해도 이동하지 않습니다(href는 호환용으로만 유지)."""
     return (
-        f'<a href="{href}" target="_self" '
-        'style="display:flex;align-items:center;gap:9px;'
-        'padding:0;text-decoration:none !important;">'
+        '<div class="brand-block" '
+        'style="display:flex;align-items:center;gap:9px;padding:0;'
+        'cursor:default;user-select:none;pointer-events:none;'
+        'color:#E8ECF4 !important;opacity:1 !important;">'
         '<span style="display:block;flex:0 0 auto;width:28px;height:28px;">'
         f'{BRAND_SVG}'
         '</span>'
         '<span style="display:flex;flex-direction:column;min-width:0;">'
-        '<span style="display:block;font-size:14px;font-weight:700;line-height:1.2;'
-        f'color:#E8ECF4 !important;text-decoration:none !important;">{BRAND_TITLE}</span>'
-        '<span style="display:block;margin-top:2px;font-size:10px;line-height:1.3;'
-        f'color:#7F8BA0 !important;text-decoration:none !important;">{BRAND_SUB}</span>'
+        '<span class="brand-title" style="display:block;font-size:14px;font-weight:700;line-height:1.2;'
+        f'color:#E8ECF4 !important;opacity:1 !important;">{BRAND_TITLE}</span>'
+        '<span class="brand-sub" style="display:block;margin-top:2px;font-size:10px;line-height:1.3;'
+        f'color:#7F8BA0 !important;opacity:1 !important;">{BRAND_SUB}</span>'
         '</span>'
-        '</a>'
+        '</div>'
     )

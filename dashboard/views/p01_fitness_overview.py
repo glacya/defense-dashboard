@@ -8,7 +8,11 @@ import streamlit as st
 
 from dashboard.common.charts import CHART_PALETTE, GRADE_COLORS, apply_chart_layout, show_plotly
 from dashboard.common.formatting import filter_signature
+from dashboard.data_source import CSV, resolve_source
+from dashboard.main_data import load_main_data
+from dashboard.py.fitness_judgment import EVENTS, load_judged_measurements
 from dashboard.py.fitness_overview_data import load_group_summary, load_overview
+from dashboard.py.roster_data import load_personnel_text
 
 EVENT_ORDER = ['근력','근지구력','심폐지구력','유연성']
 GRADE_ORDER = ['1등급', '2등급', '3등급', '3등급 미만']
@@ -80,6 +84,89 @@ def _change_comparison_page(page_key: str, offset: int, page_count: int) -> None
     st.session_state[page_key] = min(max(current_page + offset, 0), page_count - 1)
 
 
+def _load_people_judgments() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """현재 데이터 모드의 회차별 판정 행과 전체 장병 명단을 읽습니다."""
+    if resolve_source() == CSV:
+        from data.scripts.analysis.analysis2.fitness_overview import judge_measurements
+
+        measurements, _ = load_main_data(CSV)
+        judged = judge_measurements(measurements)
+    else:
+        judged = load_judged_measurements()
+    if 'EVALUATED_COUNT' not in judged:
+        judged = judged.assign(EVALUATED_COUNT=len(EVENTS))
+    return judged, load_personnel_text()
+
+
+def _people_for_metric(
+    judged: pd.DataFrame,
+    roster: pd.DataFrame,
+    metric: str,
+    round_number: int,
+    unit_name: str,
+) -> pd.DataFrame:
+    if metric == 'total':
+        latest = judged.sort_values(['ROUND', 'MESURE_DE', 'MESURE_ID']).drop_duplicates(
+            'SOLDIER_ID', keep='last',
+        )
+        profile_columns = ['SOLDIER_NAME', 'REGION_NAME', 'UNIT_NAME', 'RANK_NAME']
+        details = latest.drop(columns=profile_columns, errors='ignore')
+        people = roster[['SOLDIER_ID', *profile_columns]].merge(
+            details, on='SOLDIER_ID', how='left', validate='one_to_one',
+        )
+        return people.loc[people['UNIT_NAME'].eq(unit_name)]
+
+    current = judged.loc[judged['UNIT_NAME'].eq(unit_name) & judged['ROUND'].eq(round_number)]
+    if metric == 'measured':
+        return current
+    if metric in {'deficient', 'managed'}:
+        if metric == 'deficient':
+            return current.loc[
+                current['EVALUATED_COUNT'].eq(len(EVENTS))
+                & current['FAIL_COUNT'].fillna(0).ge(1)
+            ]
+        return current.loc[current['MANAGED'].fillna(False)]
+    raise ValueError(f'지원하지 않는 카드 구분입니다: {metric}')
+
+
+def _show_metric_people(title: str, people: pd.DataFrame, signature: str) -> None:
+    display = people.copy()
+
+    def failed_events(row: pd.Series) -> str:
+        if pd.isna(row['EVALUATED_COUNT']) or row['EVALUATED_COUNT'] < len(EVENTS):
+            return '판정 불가'
+        failed = [
+            label for event, (label, _) in EVENTS.items()
+            if pd.notna(row[f'{event}_GRADE']) and row[f'{event}_GRADE'] == 0
+        ]
+        return ', '.join(failed) if failed else '없음'
+
+    display['미달 종목'] = display.apply(failed_events, axis=1)
+    table = display.reindex(columns=[
+        'SOLDIER_ID', 'SOLDIER_NAME', 'RANK_NAME', 'AGE', '미달 종목', 'MANAGED',
+    ]).rename(columns={
+        'SOLDIER_ID': '군번', 'SOLDIER_NAME': '이름', 'RANK_NAME': '계급',
+        'AGE': '나이', 'MANAGED': '집중관리 대상',
+    })
+
+    @st.dialog(title, width='large')
+    def _modal() -> None:
+        st.caption(f'해당 장병 {len(table):,}명')
+        if table.empty:
+            st.info('해당 조건의 장병이 없습니다.')
+        else:
+            st.dataframe(
+                table, hide_index=True, width='stretch',
+                column_config={'집중관리 대상': st.column_config.CheckboxColumn()},
+            )
+            st.download_button(
+                '장병 명단 CSV', table.to_csv(index=False).encode('utf-8-sig'),
+                f'{signature}_장병명단.csv', 'text/csv', width='stretch',
+            )
+
+    _modal()
+
+
 def render() -> None:
     """전체 지표·종목 통계·등급 분포·회차별 추이를 표시합니다."""
     st.caption('장병 체력관리 / 01')
@@ -140,22 +227,66 @@ def render() -> None:
     selected = scoped_events.loc[scoped_events['회차'].eq(number)]
     title_scope = f'{level} · {selected_group}' if level != '전체' else '전체 장병'
     st.subheader(f'{title_scope} · {number}차')
-    metrics = [('전체 장병 수',f'{int(row["전체장병수"]):,}명'), ('측정 인원',f'{int(row["측정인원"]):,}명'),
-        ('미달 인원',f'{int(row["미달인원"]):,}명'), ('미달 비율',f'{row["미달률"]:.1f}%' if pd.notna(row['미달률']) else '판정 불가'),
-        ('집중관리 대상',f'{int(row["관리대상인원"]):,}명')]
-    for column,(label,value) in zip(st.columns(5), metrics):
-        column.metric(label,value,border=True)
+    selected_group_name = selected_group if level != '전체' else None
+    unit_selected = level == '부대별' and selected_group_name not in {None, '전체 비교'}
+    scope_signature = filter_signature(level, selected_group_name, number)
+    metrics = [
+        ('total', '전체 장병 수', f'{int(row["전체장병수"]):,}명'),
+        ('measured', '측정 인원', f'{int(row["측정인원"]):,}명'),
+        ('deficient', '미달 인원', f'{int(row["미달인원"]):,}명'),
+        ('managed', '집중관리 대상', f'{int(row["관리대상인원"]):,}명'),
+        ('rate', '미달 비율', f'{row["미달률"]:.1f}%' if pd.notna(row['미달률']) else '판정 불가'),
+    ]
+    clicked_metric = None
+    with st.container(key='fitness-overview-summary-cards'):
+        for column, (metric_key, label, value) in zip(st.columns(5), metrics):
+            if unit_selected and metric_key in {'total', 'measured', 'deficient', 'managed'}:
+                if column.button(
+                    f'**{label}**  \n**{value}**',
+                    key=f'fitness_overview_card_{metric_key}_{scope_signature}',
+                    width='stretch', help=f'{label}에 해당하는 장병 명단 보기',
+                ):
+                    clicked_metric = metric_key
+            else:
+                column.metric(label, value, border=True)
+    if unit_selected:
+        st.caption('부대를 선택한 상태에서 네 가지 요약 카드를 클릭하면 해당 장병 명단을 확인할 수 있습니다.')
+    if clicked_metric:
+        judged, roster = _load_people_judgments()
+        people = _people_for_metric(judged, roster, clicked_metric, int(number), selected_group_name)
+        metric_label = next(label for key, label, _ in metrics if key == clicked_metric)
+        modal_title = f'{selected_group_name} · {number}차 · {metric_label}'
+        if clicked_metric == 'total':
+            modal_title = f'{selected_group_name} · 전체 장병 수'
+        _show_metric_people(modal_title, people, f'{scope_signature}_{clicked_metric}')
     st.caption('전체 미달률은 측정 인원 중 1종목 이상 미달한 인원의 비율입니다.')
     if row['측정인원']==0:
         st.info('선택한 조건에서 측정한 장병이 없습니다.')
     left,right=st.columns(2)
     with left,st.container(border=True):
         st.subheader('종목별 미달률')
-        chart=px.bar(selected,x='종목',y='미달률',text='미달률',category_orders={'종목':EVENT_ORDER},
-            hover_data=['미달인원','측정인원'],color_discrete_sequence=[CHART_PALETTE[0]])
-        chart.update_traces(texttemplate='%{text:.1f}%')
-        chart.update_layout(yaxis_title='미달률 (%)',yaxis_range=[0,100],showlegend=False)
-        apply_chart_layout(chart)
+        chart=px.bar(
+            selected, x='종목', y='미달률', text='미달률', color='종목',
+            category_orders={'종목': EVENT_ORDER},
+            hover_data=['미달인원', '측정인원'],
+            color_discrete_sequence=list(CHART_PALETTE),
+        )
+        chart.update_traces(texttemplate='%{text:.1f}%', textposition='outside', cliponaxis=False)
+        visible_rates = selected['미달률'].dropna()
+        if visible_rates.empty:
+            yaxis_range = [0, 100]
+        else:
+            rate_min, rate_max = float(visible_rates.min()), float(visible_rates.max())
+            padding = max((rate_max - rate_min) * 0.35, 2.0)
+            yaxis_range = [max(0.0, rate_min - padding), min(100.0, rate_max + padding)]
+            if yaxis_range[0] == yaxis_range[1]:
+                yaxis_range = [max(0.0, rate_min - 2.0), min(100.0, rate_max + 2.0)]
+        chart.update_layout(
+            yaxis_title='미달률 (%)', yaxis_range=yaxis_range, showlegend=False,
+            xaxis={'categoryorder': 'array', 'categoryarray': EVENT_ORDER},
+        )
+        apply_chart_layout(chart, margin={'l': 55, 'r': 20, 't': 32, 'b': 45})
+        st.caption('선택 회차의 미달률 범위를 확대해 막대 간 차이를 표시합니다. Y축은 0%에서 시작하지 않을 수 있습니다.')
         show_plotly(chart)
     with right,st.container(border=True):
         st.subheader('종목별 등급 분포')
@@ -166,69 +297,6 @@ def render() -> None:
             color_discrete_sequence=GRADE_PALETTE)
         apply_chart_layout(chart)
         show_plotly(chart)
-    if level != '전체':
-        compare = all_comparison_rounds.loc[all_comparison_rounds['회차'].eq(number)].copy()
-        compare = compare.sort_values('미달률', ascending=False, na_position='last', kind='stable')
-        compare_events = all_comparison_events.loc[all_comparison_events['회차'].eq(number)]
-        st.subheader(f'{group_label}별 미달률 비교')
-        st.caption('전체 미달률과 4개 종목별 미달률을 함께 표시합니다. 전체 미달률이 높은 순서로 5개씩 볼 수 있습니다.')
-        group_names = compare['그룹'].tolist()
-        page_size = 5
-        page_count = max(1, (len(group_names) + page_size - 1) // page_size)
-        page_key = f"fitness_comparison_page_{filter_signature(level, selected_group, number, tuple(group_names))}"
-        page = min(max(int(st.session_state.get(page_key, 0)), 0), page_count - 1)
-        start = page * page_size
-        visible_groups = group_names[start:start + page_size]
-        visible_overall = compare.loc[compare['그룹'].isin(visible_groups), ['그룹', '미달률']].copy()
-        visible_overall['비교 항목'] = '전체'
-        visible_events = compare_events.loc[compare_events['그룹'].isin(visible_groups),
-                                            ['그룹', '종목', '미달률']].rename(columns={'종목': '비교 항목'})
-        chart_data = pd.concat([visible_overall, visible_events], ignore_index=True)
-        chart = px.bar(
-            chart_data, x='그룹', y='미달률', color='비교 항목', barmode='group',
-            category_orders={'그룹': visible_groups, '비교 항목': ['전체', *EVENT_ORDER]},
-            color_discrete_sequence=list(CHART_PALETTE),
-            hover_data={'미달률': ':.1f'},
-        )
-        average_rate = compare['미달률'].mean()
-        if pd.notna(average_rate):
-            chart.add_hline(y=average_rate, line_color='#F59E0B', line_dash='dot', line_width=2)
-            chart.add_annotation(
-                x=1, y=average_rate, xref='paper', yref='y',
-                text=f'전체 평균 {average_rate:.1f}%', showarrow=False,
-                xanchor='right', yanchor='bottom', font={'color': '#F59E0B', 'size': 11},
-            )
-        chart.update_layout(
-            xaxis_title=group_label, yaxis_title='미달률 (%)', yaxis_range=[0, 100],
-            xaxis={'tickangle': -25, 'automargin': True},
-            legend={'orientation': 'h', 'y': 1.12, 'x': 0},
-        )
-        apply_chart_layout(chart, height=430, margin={'l': 55, 'r': 24, 't': 70, 'b': 90})
-        previous_col, chart_col, next_col = st.columns([1, 14, 1], vertical_alignment='center')
-        previous_col.button(
-            '← 이전', disabled=page == 0, key=f'{page_key}_previous',
-            on_click=_change_comparison_page, args=(page_key, -1, page_count),
-        )
-        with chart_col:
-            st.caption(f'{page + 1} / {page_count}')
-            show_plotly(chart)
-        next_col.button(
-            '다음 →', disabled=page >= page_count - 1, key=f'{page_key}_next',
-            on_click=_change_comparison_page, args=(page_key, 1, page_count),
-        )
-        visible_compare = compare.loc[compare['그룹'].isin(visible_groups)]
-        st.dataframe(
-            visible_compare.rename(columns={'그룹': group_label}),
-            hide_index=True,
-            width='stretch',
-            column_config={
-                '전체장병수': st.column_config.NumberColumn('전체 장병 수', format='%d명'),
-                '측정인원': st.column_config.NumberColumn('측정 인원', format='%d명'),
-                '미달인원': st.column_config.NumberColumn('미달 인원', format='%d명'),
-                '미달률': st.column_config.NumberColumn('미달 비율(%)', format='%.1f'),
-                '관리대상인원': st.column_config.NumberColumn('집중관리 대상', format='%d명'),
-            },
-        )
     st.subheader('종목별 측정 수준')
     st.caption('단위가 다른 종목의 평균은 하나의 축에서 비교하지 않습니다. 평균은 유효 측정값 기준이며, 등급 판정은 연령 기준까지 적용합니다.')
     for col,event in zip(st.columns(4),EVENT_ORDER):
@@ -371,3 +439,66 @@ def render() -> None:
         st.write(f'측정 기간: {metadata["측정시작"]} ~ {metadata["측정종료"]}')
         st.caption('분석 생성일: '+metadata['생성일시'])
         st.dataframe(pd.DataFrame(metadata['등급기준']).T.rename(columns={'1':'1등급 하한','2':'2등급 하한','3':'3등급 하한'}))
+    if level != '전체':
+        compare = all_comparison_rounds.loc[all_comparison_rounds['회차'].eq(number)].copy()
+        compare = compare.sort_values('미달률', ascending=False, na_position='last', kind='stable')
+        compare_events = all_comparison_events.loc[all_comparison_events['회차'].eq(number)]
+        st.subheader(f'{group_label}별 미달률 비교')
+        st.caption('전체 미달률과 4개 종목별 미달률을 함께 표시합니다. 전체 미달률이 높은 순서로 5개씩 볼 수 있습니다.')
+        group_names = compare['그룹'].tolist()
+        page_size = 5
+        page_count = max(1, (len(group_names) + page_size - 1) // page_size)
+        page_key = f"fitness_comparison_page_{filter_signature(level, selected_group, number, tuple(group_names))}"
+        page = min(max(int(st.session_state.get(page_key, 0)), 0), page_count - 1)
+        start = page * page_size
+        visible_groups = group_names[start:start + page_size]
+        visible_overall = compare.loc[compare['그룹'].isin(visible_groups), ['그룹', '미달률']].copy()
+        visible_overall['비교 항목'] = '전체'
+        visible_events = compare_events.loc[compare_events['그룹'].isin(visible_groups),
+                                            ['그룹', '종목', '미달률']].rename(columns={'종목': '비교 항목'})
+        chart_data = pd.concat([visible_overall, visible_events], ignore_index=True)
+        chart = px.bar(
+            chart_data, x='그룹', y='미달률', color='비교 항목', barmode='group',
+            category_orders={'그룹': visible_groups, '비교 항목': ['전체', *EVENT_ORDER]},
+            color_discrete_sequence=list(CHART_PALETTE),
+            hover_data={'미달률': ':.1f'},
+        )
+        average_rate = compare['미달률'].mean()
+        if pd.notna(average_rate):
+            chart.add_hline(y=average_rate, line_color='#F59E0B', line_dash='dot', line_width=2)
+            chart.add_annotation(
+                x=1, y=average_rate, xref='paper', yref='y',
+                text=f'전체 평균 {average_rate:.1f}%', showarrow=False,
+                xanchor='right', yanchor='bottom', font={'color': '#F59E0B', 'size': 11},
+            )
+        chart.update_layout(
+            xaxis_title=group_label, yaxis_title='미달률 (%)', yaxis_range=[0, 100],
+            xaxis={'tickangle': -25, 'automargin': True},
+            legend={'orientation': 'h', 'y': 1.12, 'x': 0},
+        )
+        apply_chart_layout(chart, height=430, margin={'l': 55, 'r': 24, 't': 70, 'b': 90})
+        previous_col, chart_col, next_col = st.columns([1, 14, 1], vertical_alignment='center')
+        previous_col.button(
+            '← 이전', disabled=page == 0, key=f'{page_key}_previous',
+            on_click=_change_comparison_page, args=(page_key, -1, page_count),
+        )
+        with chart_col:
+            st.caption(f'{page + 1} / {page_count}')
+            show_plotly(chart)
+        next_col.button(
+            '다음 →', disabled=page >= page_count - 1, key=f'{page_key}_next',
+            on_click=_change_comparison_page, args=(page_key, 1, page_count),
+        )
+        visible_compare = compare.loc[compare['그룹'].isin(visible_groups)]
+        st.dataframe(
+            visible_compare.rename(columns={'그룹': group_label}),
+            hide_index=True,
+            width='stretch',
+            column_config={
+                '전체장병수': st.column_config.NumberColumn('전체 장병 수', format='%d명'),
+                '측정인원': st.column_config.NumberColumn('측정 인원', format='%d명'),
+                '미달인원': st.column_config.NumberColumn('미달 인원', format='%d명'),
+                '미달률': st.column_config.NumberColumn('미달 비율(%)', format='%.1f'),
+                '관리대상인원': st.column_config.NumberColumn('집중관리 대상', format='%d명'),
+            },
+        )

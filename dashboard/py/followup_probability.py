@@ -2,11 +2,17 @@
 
 import pandas as pd
 
-from data.scripts.paths import PROCESSED_SOLDIER_FAILURE_PROBABILITY_PATH
-from data.scripts.utils import read_text_csv, require_columns
+from dashboard.data_source import CSV, resolve_source
+from dashboard.db import run_query
+from data.scripts.utils import require_columns
 
 RISK_LEVELS = ['안전', '경계1등급', '경계2등급', '경계3등급']
 RISK_RANGES = ['30% 미만', '30% 이상 · 50% 미만', '50% 이상 · 70% 미만', '70% 이상']
+PROBABILITIES_SQL = """
+SELECT soldier_id, failure_probability
+FROM soldier_failure_probabilities
+ORDER BY soldier_id
+"""
 
 
 def classify_probabilities(frame: pd.DataFrame) -> pd.DataFrame:
@@ -27,6 +33,10 @@ def classify_probabilities(frame: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def load_probabilities() -> pd.DataFrame:
-    """기존 파일을 읽기만 하며 등급은 메모리에서 계산합니다."""
+def load_probabilities(source: str | None = None) -> pd.DataFrame:
+    """미달 확률을 읽기만 하며 등급은 메모리에서 계산합니다."""
+    if resolve_source(source) != CSV:
+        return classify_probabilities(run_query(PROBABILITIES_SQL))
+    from data.scripts.paths import PROCESSED_SOLDIER_FAILURE_PROBABILITY_PATH
+    from data.scripts.utils import read_text_csv
     return classify_probabilities(read_text_csv(PROCESSED_SOLDIER_FAILURE_PROBABILITY_PATH))

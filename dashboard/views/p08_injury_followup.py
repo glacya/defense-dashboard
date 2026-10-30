@@ -1,12 +1,13 @@
 """8번 화면: 부상 이력 기반으로 회복 상태와 운동 제한을 기록합니다."""
 
 import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
 from config import MANAGEMENT_DIR
-from dashboard.py.management_store import load_records
+from dashboard.py.management_store import DB_TABLES, load_records, uses_db
 from dashboard.py.management_forms import editor, LABELS
-from data.scripts.paths import SYNTHETIC_PERSONNEL_PATH, SYNTHETIC_INJURY_PATH
-from data.scripts.utils import read_text_csv, require_columns
+from dashboard.py.roster_data import load_injuries_text, load_personnel_text
+from data.scripts.utils import require_columns
 
 
 def render() -> None:
@@ -17,8 +18,8 @@ def render() -> None:
     if notice:=st.session_state.pop('management_notice',None):
         st.success(notice)
     try:
-        people=read_text_csv(SYNTHETIC_PERSONNEL_PATH)
-        injuries=read_text_csv(SYNTHETIC_INJURY_PATH)
+        people=load_personnel_text()
+        injuries=load_injuries_text()
         require_columns(people,['SOLDIER_ID','SOLDIER_NAME','RANK_NAME','UNIT_NAME'])
         require_columns(injuries,['INJURY_ID','SOLDIER_ID','INJURY_LOCATION','SEVERITY'])
         if people.SOLDIER_ID.duplicated().any() or injuries.INJURY_ID.duplicated().any():
@@ -26,7 +27,7 @@ def render() -> None:
         records=load_records('injury_followup')
         if not injuries.SOLDIER_ID.isin(people.SOLDIER_ID).all():
             raise ValueError('장병 명단과 부상 원본 불일치')
-    except (OSError,ValueError) as error:
+    except (OSError,ValueError,SQLAlchemyError) as error:
         st.error(f'부상 관리 자료를 읽을 수 없습니다: {error}');st.stop()
     st.caption('대상 자료: SOLDIER_INJURY.csv. 부상 이력이 있는 장병을 조회하며, 후속조치 기록은 부상 번호로 연결합니다. 신상·부상 원본은 합성 자료입니다.')
     active=records.merge(injuries[['INJURY_ID','SOLDIER_ID']],on=['INJURY_ID','SOLDIER_ID'],how='inner',validate='many_to_one')
@@ -66,4 +67,5 @@ def render() -> None:
     st.subheader(f'{person.SOLDIER_NAME} · {person.RANK_NAME} · {person.UNIT_NAME}')
     st.dataframe(injuries.loc[injuries.SOLDIER_ID.eq(soldier)].rename(columns={'INJURY_ID':'부상 번호','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류','INJURY_LOCATION':'부상 부위','SEVERITY':'심각도','PREVENTABILITY':'예방 가능 여부'}),hide_index=True,width='stretch')
     editor('injury_followup',soldier,{'injury_followup':records},injuries)
-    st.caption(f'저장: {MANAGEMENT_DIR / "injury_followup.csv"} · 기존 기록은 유지됩니다. 합성 부상 이력으로 회복 상태나 운동 제한을 추정하지 않습니다.')
+    location=f"DB {DB_TABLES['injury_followup']} 테이블" if uses_db('injury_followup') else MANAGEMENT_DIR / 'injury_followup.csv'
+    st.caption(f'저장: {location} · 기존 기록은 유지됩니다. 합성 부상 이력으로 회복 상태나 운동 제한을 추정하지 않습니다.')

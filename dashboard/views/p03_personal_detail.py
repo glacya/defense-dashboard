@@ -9,7 +9,7 @@ from dashboard.py.personal_detail_data import load_personal
 from dashboard.py.followup_fitness_types import load_fitness_types
 from dashboard.py.personal_fitness_profile import load_personal_profile
 from dashboard.py.personal_exercise_recommendations import render_recommendation
-from data.scripts.analysis.analysis2.fitness_overview import EVENTS
+from dashboard.py.fitness_judgment import EVENTS
 from data.scripts.fitness_standards import grade_cut
 
 
@@ -187,8 +187,6 @@ def render() -> None:
                 '3등급 하한':grade_cut(event,3)})
         st.dataframe(pd.DataFrame(rows),hide_index=True,width='stretch')
         st.write('미달 종목: '+(row.FAILED_EVENTS or '확인된 미달 없음'))
-        if row.EVALUATED_COUNT<4:
-            st.warning('일부 종목은 판정할 수 없습니다. 확인된 미달이 없다는 것이 전 종목 통과를 뜻하지 않습니다.')
         st.write('집중관리 사유: '+(row.SELECTION_REASONS or '현재 자료에서 확인된 선정 조건 없음'))
     with changes:
         st.subheader('1차 대비 선택 회차 변화')

@@ -21,7 +21,7 @@
 |---|---|
 | `config.py` | 프로젝트 전역 경로 상수. `dashboard`와 `data` 모두 경로는 여기서 import합니다. |
 | `requirements.txt` | 의존성 목록(버전 고정). 로컬·CI·배포 모두 이 파일을 기준으로 설치합니다. 패키지를 추가하면 여기에 `==` 버전으로 적습니다. |
-| `environment.yml` | **로컬 전용.** conda 환경 `kdt-project-1` 정의(Python 3.10). 패키지 목록은 `requirements.txt`를 참조합니다. |
+| `environment.yml` | conda 환경 `kdt-project-1` 정의(Python 3.10). 패키지 목록은 `requirements.txt`를 참조하고, 프로젝트도 editable(`-e .`)로 설치합니다. 로컬 개발과 Streamlit Community Cloud(저장소 루트의 이 파일을 의존성 파일로 씀)가 함께 씁니다. |
 | `pyproject.toml` | 프로젝트 설치 설정(`pip install -e .`)과 pytest 설정 |
 | `setup.ps1` | **로컬 전용.** conda 환경을 새로 만들고 프로젝트를 editable 모드로 설치한 뒤 환경을 활성화합니다. 기존 환경은 삭제됩니다. |
 | `run_dashboard.ps1` | **로컬 전용.** 대시보드를 실행합니다. |

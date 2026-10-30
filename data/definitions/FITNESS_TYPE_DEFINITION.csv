@@ -2,3 +2,7 @@
 1,AVERAGE_PERCENTILE_GRADE,평균백분위등급,INT,,Y,,Y,장병 체력 유형 분류 데이터
 2,CLUSTER,군집번호,INT,,Y,,Y,장병 체력 유형 분류 데이터
 3,TYPE_NAME,유형명,VARCHAR,30,N,,Y,장병 체력 유형 분류 데이터
+4,STRENGTH_RELATIVE,근력상대편차,DECIMAL,"5,2",N,,Y,장병 체력 유형 분류 데이터
+5,ENDURANCE_RELATIVE,근지구력상대편차,DECIMAL,"5,2",N,,Y,장병 체력 유형 분류 데이터
+6,CARDIO_RELATIVE,심폐지구력상대편차,DECIMAL,"5,2",N,,Y,장병 체력 유형 분류 데이터
+7,FLEXIBILITY_RELATIVE,유연성상대편차,DECIMAL,"5,2",N,,Y,장병 체력 유형 분류 데이터

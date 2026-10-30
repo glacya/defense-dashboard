@@ -8,28 +8,25 @@ import streamlit as st
 
 from dashboard.common.charts import CHART_PALETTE, GRADE_COLORS, apply_chart_layout, show_plotly
 from dashboard.common.formatting import filter_signature
-from dashboard.main_data import load_main_data
-from dashboard.py.fitness_overview_data import load_overview, summarize_by_group
+from dashboard.py.fitness_overview_data import load_group_summary, load_overview
 
 EVENT_ORDER = ['근력','근지구력','심폐지구력','유연성']
-GRADE_ORDER = ['1등급', '2등급', '3등급', '3등급 미만', '판정 불가']
+GRADE_ORDER = ['1등급', '2등급', '3등급', '3등급 미만']
 GRADE_PALETTE = [
     GRADE_COLORS["1등급"],
     "#38BDF8",
     "#2563EB",
     "#DC5C6A",
-    "#94A3B8",
 ]
 
 
 def _combine_rounds(rounds: pd.DataFrame) -> pd.DataFrame:
     """조직별 집계를 합쳐 전체 지표를 회차별로 계산합니다."""
     count_columns = [
-        "전체장병수", "측정인원", "판정가능인원", "판정불완전인원",
-        "미달인원", "관리대상인원",
+        "전체장병수", "측정인원", "미달인원", "관리대상인원",
     ]
     combined = rounds.groupby("회차", as_index=False)[count_columns].sum()
-    denominator = combined["판정가능인원"]
+    denominator = combined["측정인원"]
     combined["미달률"] = combined["미달인원"].div(denominator.where(denominator.gt(0))).mul(100)
     return combined
 
@@ -37,8 +34,7 @@ def _combine_rounds(rounds: pd.DataFrame) -> pd.DataFrame:
 def _combine_events(events: pd.DataFrame) -> pd.DataFrame:
     """조직별 종목 집계를 인원 기준으로 합쳐 비율을 다시 계산합니다."""
     count_columns = [
-        "유효측정인원", "판정가능인원", "판정불가인원", "미달인원",
-        "1등급인원", "2등급인원", "3등급인원",
+        "측정인원", "미달인원", "1등급인원", "2등급인원", "3등급인원",
     ]
     rows = []
     for (number, event, unit), groups in events.groupby(
@@ -50,21 +46,21 @@ def _combine_events(events: pd.DataFrame) -> pd.DataFrame:
             "단위": unit,
             **groups[count_columns].sum().to_dict(),
         }
-        valid = int(row["판정가능인원"])
+        valid = int(row["측정인원"])
         row["미달률"] = row["미달인원"] / valid * 100 if valid else float("nan")
 
-        measured = groups.loc[groups["유효측정인원"].gt(0)]
-        measured_count = int(measured["유효측정인원"].sum())
+        measured = groups.loc[groups["측정인원"].gt(0)]
+        measured_count = int(measured["측정인원"].sum())
         if measured_count:
             mean = (
-                measured["평균"] * measured["유효측정인원"]
+                measured["평균"] * measured["측정인원"]
             ).sum() / measured_count
             within_variance = (
-                (measured["유효측정인원"] - 1).clip(lower=0)
+                (measured["측정인원"] - 1).clip(lower=0)
                 * measured["표준편차"].fillna(0).pow(2)
             ).sum()
             between_variance = (
-                measured["유효측정인원"] * (measured["평균"] - mean).pow(2)
+                measured["측정인원"] * (measured["평균"] - mean).pow(2)
             ).sum()
             row["평균"] = mean
             row["표준편차"] = (
@@ -108,9 +104,8 @@ def render() -> None:
     comparison_events = pd.DataFrame()
     if level != '전체':
         try:
-            measurements, _ = load_main_data()
             group_column = 'REGION_NAME' if level == '지역별' else 'UNIT_NAME'
-            comparison_rounds, comparison_events = summarize_by_group(measurements, group_column)
+            comparison_rounds, comparison_events = load_group_summary(group_column)
         except (FileNotFoundError, ValueError, KeyError, pd.errors.ParserError) as error:
             st.error(f'{level} 체력 현황을 계산하지 못했습니다: {error}')
             st.stop()
@@ -150,23 +145,23 @@ def render() -> None:
         ('집중관리 대상',f'{int(row["관리대상인원"]):,}명')]
     for column,(label,value) in zip(st.columns(5), metrics):
         column.metric(label,value,border=True)
-    st.caption(f'4종목 판정 가능 {int(row["판정가능인원"]):,}명 · 판정 불완전 {int(row["판정불완전인원"]):,}명. 전체 미달률은 4종목 모두 판정 가능한 인원 중 1종목 이상 미달 비율입니다.')
+    st.caption('전체 미달률은 측정 인원 중 1종목 이상 미달한 인원의 비율입니다.')
     if row['측정인원']==0:
         st.info('선택한 조건에서 측정한 장병이 없습니다.')
     left,right=st.columns(2)
     with left,st.container(border=True):
         st.subheader('종목별 미달률')
         chart=px.bar(selected,x='종목',y='미달률',text='미달률',category_orders={'종목':EVENT_ORDER},
-            hover_data=['미달인원','판정가능인원'],color_discrete_sequence=[CHART_PALETTE[0]])
+            hover_data=['미달인원','측정인원'],color_discrete_sequence=[CHART_PALETTE[0]])
         chart.update_traces(texttemplate='%{text:.1f}%')
         chart.update_layout(yaxis_title='미달률 (%)',yaxis_range=[0,100],showlegend=False)
         apply_chart_layout(chart)
         show_plotly(chart)
     with right,st.container(border=True):
         st.subheader('종목별 등급 분포')
-        grade_columns=['1등급인원','2등급인원','3등급인원','미달인원','판정불가인원']
+        grade_columns=['1등급인원','2등급인원','3등급인원','미달인원']
         distribution=selected.melt(id_vars=['종목'],value_vars=grade_columns,var_name='등급',value_name='인원')
-        distribution['등급']=distribution['등급'].replace({'1등급인원':'1등급','2등급인원':'2등급','3등급인원':'3등급','미달인원':'3등급 미만','판정불가인원':'판정 불가'})
+        distribution['등급']=distribution['등급'].replace({'1등급인원':'1등급','2등급인원':'2등급','3등급인원':'3등급','미달인원':'3등급 미만'})
         chart=px.bar(distribution,x='종목',y='인원',color='등급',barmode='stack',category_orders={'종목':EVENT_ORDER,'등급':GRADE_ORDER},
             color_discrete_sequence=GRADE_PALETTE)
         apply_chart_layout(chart)
@@ -296,18 +291,18 @@ def render() -> None:
                         event_trend, x='회차', y='미달률', color='그룹', line_group='그룹',
                         markers=True,
                         labels={'그룹': group_label, '회차': '회차', '미달률': '미달률 (%)',
-                                '미달인원': '미달 인원', '판정가능인원': '판정 가능 인원'},
+                                '미달인원': '미달 인원', '측정인원': '측정 인원'},
                         hover_data={'그룹': True, '회차': True, '미달률': ':.1f',
-                                    '미달인원': ':,d', '판정가능인원': ':,d'},
+                                    '미달인원': ':,d', '측정인원': ':,d'},
                     )
                     chart.update_traces(line={'width': 2}, marker={'size': 7})
                 else:
                     chart = px.line(
                         event_trend, x='회차', y='미달률', markers=True,
                         labels={'회차': '회차', '미달률': '미달률 (%)',
-                                '미달인원': '미달 인원', '판정가능인원': '판정 가능 인원'},
+                                '미달인원': '미달 인원', '측정인원': '측정 인원'},
                         hover_data={'회차': True, '미달률': ':.1f',
-                                    '미달인원': ':,d', '판정가능인원': ':,d'},
+                                    '미달인원': ':,d', '측정인원': ':,d'},
                     )
                     chart.update_traces(line={'width': 3}, marker={'size': 8})
                 visible_rates = event_trend['미달률'].dropna()

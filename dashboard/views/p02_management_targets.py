@@ -7,13 +7,12 @@ import plotly.express as px
 import streamlit as st
 
 from dashboard.py.management_targets_data import load_targets
-from data.scripts.analysis.analysis2.management_targets import REASONS
-from data.scripts.analysis.analysis2.fitness_overview import EVENTS
+from dashboard.py.fitness_judgment import EVENTS, REASONS
 from data.scripts.fitness_standards import grade_cut
 
 LABELS={'SOLDIER_ID':'장병 식별자','SOLDIER_NAME':'이름','RANK_NAME':'계급','UNIT_NAME':'소속',
         'ROUND':'회차','BMI':'BMI','BMI_GROUP':'BMI 구간','FAIL_COUNT':'미달 개수',
-        'EVALUATED_COUNT':'판정 가능 종목 수','FAILED_EVENTS':'미달 종목',
+        'FAILED_EVENTS':'미달 종목',
         'FAIL_COUNT_CHANGE':'1차 대비 미달 수 변화','NEW_FAILED_EVENTS':'1차 대비 신규 미달 종목',
         'PERSISTENT_EVENTS':'지속 미달 종목','SELECTION_REASONS':'선정 사유'}
 
@@ -66,9 +65,7 @@ def render() -> None:
     if chosen:
         flags=[key for key,value in available.items() if value in chosen]
         shown=shown.loc[shown[flags].any(axis=1)]
-    if fail_count=='판정 불완전':
-        shown=shown.loc[shown.EVALUATED_COUNT.lt(4)]
-    elif fail_count!='전체':
+    if fail_count!='전체':
         n=int(fail_count[0])
         shown=shown.loc[shown.FAIL_COUNT.eq(n)]
     if events:
@@ -87,7 +84,7 @@ def render() -> None:
     st.subheader('통합 대상자 명단')
     conditions=[f'{number}차 기준', ' / '.join(chosen) if chosen else '전체 관리 사유']
     if fail_count!='전체':
-        conditions.append('판정 불완전' if fail_count=='판정 불완전' else f'{fail_count} 미달')
+        conditions.append(f'{fail_count} 미달')
     if events:
         conditions.append(' / '.join(events)+' 미달')
     if search:

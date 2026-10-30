@@ -116,14 +116,24 @@ dashboard/
 
 ### 4.3 로더 (`dashboard/py/`)
 
-| 파일 | 함수 | 읽는 원본 | 캐시 키 |
+CSV → DB 전환 기간에는 로더마다 **CSV 모드/DB 모드**가 있습니다. 모든 로더가 `source` 인자(`"csv"`/`"db"`)를 받고, 비우면 환경 변수 `DASHBOARD_DATA_SOURCE` > `dashboard/.env` > 기본값 `db` 순서로 정합니다(`dashboard/data_source.py`). DB 모드는 `dashboard.db.run_query`(SQL)만 쓰고 결과를 10분(`DEFAULT_TTL`) 캐시합니다. 두 모드 결과가 같은지는 `python dashboard/compare_data_sources.py`로 확인합니다(실제 DB에 접속, CI에서는 실행하지 않음). 검증이 끝나면 CSV 모드·비교 스크립트·`data/scripts/analysis/analysis2/`를 지웁니다.
+
+| 파일 | 함수 | CSV 모드 | DB 모드 |
 |---|---|---|---|
-| `main_data.py` | `load_main_data()` | `SOLDIER_PERSONNEL.csv`, `KS_NFA_PROCESSED.csv`, `SOLDIER_INJURY.csv` | 파일의 수정 시각과 크기 |
-| `fitness_overview_data.py` | `load_overview()` | 전체 현황 분석 결과 | 파일 수정 시각 |
-| `management_targets_data.py` | `load_targets()` | 집중관리 분석 결과 | 파일 수정 시각 |
-| `personal_detail_data.py` | `load_personal()` | 개인 상세 분석 결과 | 파일 수정 시각 |
-| `injury_overview_data.py` | `load_injury_overview()` | 부상 현황 분석 결과 | 파일 수정 시각 |
-| `management_store.py` | `load_records(kind)` | `MANAGEMENT_DIR/*.csv` | 캐시하지 않음 (입력 기록은 즉시 반영) |
+| `main_data.py` | `load_main_data()` | `SOLDIER_PERSONNEL.csv`, `KS_NFA_PROCESSED.csv`, `SOLDIER_INJURY.csv` | `fitness_measurements` + `soldiers`, `injuries` |
+| `py/followup_fitness_types.py` | `load_fitness_types()` | `MEASUREMENT_CLASSIFICATION.csv`, `FITNESS_TYPE.csv` | `measurement_classifications`, `fitness_types` |
+| `py/followup_probability.py` | `load_probabilities()` | `SOLDIER_FAILURE_PROBABILITY.csv` | `soldier_failure_probabilities` |
+| `py/personal_fitness_profile.py` | `load_profiles()` | `KS_NFA_PROCESSED.csv`로 백분위 계산 + 유형 | `measurement_classifications`의 저장된 백분위 + 유형 |
+| `py/roster_data.py` | `load_personnel_text()` 등 | 명단·부상·측정 CSV | `soldiers`, `injuries`, `fitness_measurements` |
+| `py/fitness_overview_data.py` | `load_overview()`, `load_group_summary()` | analysis2 전체 현황 결과 | 판정표를 pandas로 회차·종목(·조직)별 집계 |
+| `py/management_targets_data.py` | `load_targets()` | analysis2 집중관리 결과 | 판정표 + BMI 구간·종목 이름·선정 사유 |
+| `py/personal_detail_data.py` | `load_personal()` | analysis2 개인 상세 결과 | 판정표의 1차 값으로 변화 계산, `injuries` |
+| `py/injury_overview_data.py` | `load_injury_overview()` | analysis2 부상 현황 결과 | 판정표 최신 회차 × `injuries` 집계 |
+
+B 그룹(아래 네 로더)은 `py/fitness_judgment.py`의 판정표(`JUDGED_SQL` 한 번: 측정 + 명단 + 저장된 종목 등급, 창 함수로 회차·1차 값·최근 3회 지속 미달, 미달 수·집중관리 플래그)를 `st.cache_data`로 캐시해 함께 씁니다. 빈 값·나이 범위는 DB 제약(NOT NULL)과 전처리가 보장하므로 판정 불가 항목은 두지 않습니다.
+| `py/personal_exercise_recommendations.py` | `load_recommendation(grade, cluster)` | 추천·유형·운동 분류·처방 상세 CSV를 pandas로 연결 | `recommended_exercises` JOIN `fitness_types`·`exercise_classifications`·`exercise_prescription_details`(params `:grade`, `:cluster`). 지침·근거 문장은 `build_exercise_recommendations.training_guidance()`·`recommendation_basis()` |
+| `views/mainpage.py` | `_load_fitness_type_links()`, `_load_prescription_data()` | 유형·처방 CSV | `fitness_types` 등, `exercise_prescriptions`·`exercise_prescription_details` |
+| `py/management_store.py` | `load_records(kind)`, `save_record()`, `save_followups_batch()` | `MANAGEMENT_DIR/*.csv` | 상담·후속조치 `fitness_followups`, 부상 후속조치 `injury_followups`(군번은 `injuries`와 JOIN)에 INSERT/UPDATE. 읽기는 `st.cache_data`로 캐시하고 저장할 때마다 비움. 수정은 `UPDATED_AT`이 화면을 열 때와 같을 때만. |
 | `management_forms.py` | `editor(...)`, `LABELS` | 관리 기록 | - |
 
 개인 장병 상세 화면의 `장병 찾기`에서는 지역을 먼저 선택한 뒤 해당 지역의 부대를 선택해 장병 목록을 좁힐 수 있습니다. 두 필터를 비워 두면 전체를 조회합니다.

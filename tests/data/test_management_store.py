@@ -6,6 +6,12 @@ import pytest
 from dashboard.py.management_store import save_record,load_records,followup_metrics
 
 
+@pytest.fixture(autouse=True)
+def csv_mode(monkeypatch):
+    """이 파일은 CSV 저장 방식을 검사하므로 CSV 모드로 고정합니다(DB 모드는 test_management_store_db.py)."""
+    monkeypatch.setenv('DASHBOARD_DATA_SOURCE', 'csv')
+
+
 def followup(status='진행 중'):
     return {'SOLDIER_ID':'001','ASSIGNEE':'담당자','COUNSELING_DATE':'2026-10-27',
             'COUNSELING_CONTENT':'상태 확인','ACTION_CONTENT':'운동 지도 점검',
@@ -34,20 +40,6 @@ def test_completion_denominator_excludes_cancelled(tmp_path):
     assert metrics['대상']==2
     assert metrics['취소']==1
     assert followup_metrics(pd.DataFrame(columns=['STATUS']))['완료율'] is None
-
-
-def test_participation_links_same_soldier_plan(tmp_path):
-    plan={'SOLDIER_ID':'001','ASSIGNEE':'지도자','EXERCISE':'지도 내용','START_DATE':'2026-10-27',
-          'END_DATE':'2026-11-10','PLANNED_SESSIONS':'3','STATUS':'진행 중','NOTE':''}
-    ident=save_record('exercise_plans',plan,tmp_path)
-    session={'SOLDIER_ID':'001','PLAN_ID':ident,'SESSION_DATE':'2026-10-28','ATTENDED':'Y',
-             'DURATION_MINUTES':'20','ACTUAL_CONTENT':'실제 지도','NOTE':''}
-    save_record('exercise_participation',session,tmp_path)
-    assert len(load_records('exercise_participation',tmp_path))==1
-    session['SOLDIER_ID']='002'
-    with pytest.raises(ValueError,match='지도 계획'):
-        save_record('exercise_participation',session,tmp_path)
-    assert len(load_records('exercise_participation',tmp_path))==1
 
 
 def test_invalid_dates_and_completion_do_not_write(tmp_path):

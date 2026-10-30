@@ -25,7 +25,7 @@ def _render_unit_filters(measurements: pd.DataFrame):
     date_end = measurements["MESURE_DE"].max().date()
     population = latest_measurements(measurements, date_start, date_end)
     st.caption("도 단위 지역 카드를 선택하면 해당 지역의 부대가 표시됩니다. 부대 선택이 없으면 선택 지역의 전체 부대를 포함합니다.")
-    selection = render_personnel_cards(population, "unit", show_ranks=False, unit_columns=8)
+    selection = render_personnel_cards(population, "unit", show_ranks=False)
     st.caption(f"조회 조건 · 장병별 최신 측정 · 현재 조회 {selection.scoped.SOLDIER_ID.nunique():,}명 / 전체 {population.SOLDIER_ID.nunique():,}명")
     return SimpleNamespace(regions=selection.regions, units=selection.units, scoped=selection.scoped)
 

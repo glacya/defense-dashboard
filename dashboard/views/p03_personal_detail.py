@@ -6,7 +6,7 @@ import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from config import DASHBOARD_DIR
-from dashboard.common.filters import render_personnel_cards, reset_card_filters
+from dashboard.common.formatting import RANK_ORDER
 from dashboard.py.personal_detail_data import load_personal
 from dashboard.py.followup_fitness_types import load_fitness_types
 from dashboard.py.followup_probability import load_probabilities
@@ -16,8 +16,18 @@ from dashboard.py.fitness_judgment import EVENTS
 from data.scripts.fitness_standards import grade_cut
 
 
+def _toggle_personal_rank(rank: str) -> None:
+    selected=list(st.session_state.get('personal_ranks',[]))
+    if rank in selected:
+        selected.remove(rank)
+    else:
+        selected.append(rank)
+    st.session_state['personal_ranks']=selected
+
+
 def _clear_personal_filters() -> None:
-    reset_card_filters('personal')
+    st.session_state['personal_unit']='전체 부대'
+    st.session_state['personal_ranks']=[]
     st.session_state['personal_search']=''
     st.session_state.pop('personal_soldier',None)
 
@@ -52,13 +62,30 @@ def render() -> None:
         with finder_reset:
             st.button('전체 조회',key='personal-clear-filters',on_click=_clear_personal_filters,width='stretch')
         people=data[['SOLDIER_ID','SOLDIER_NAME','REGION_NAME','RANK_NAME','UNIT_NAME']].drop_duplicates('SOLDIER_ID')
-        people=render_personnel_cards(people,'personal').scoped
-        search=st.text_input('이름·장병번호 검색',key='personal_search',
-                             placeholder='이름 또는 장병번호 입력').strip()
+        unit_filter,search_filter=st.columns([1,1.4])
+        unit=unit_filter.selectbox('부대',['전체 부대',*sorted(people.UNIT_NAME.dropna().unique().tolist())],
+                                   key='personal_unit')
+        search=search_filter.text_input('이름·장병번호 검색',key='personal_search',
+                                        placeholder='이름 또는 장병번호 입력').strip()
+        if unit!='전체 부대':
+            people=people.loc[people.UNIT_NAME.eq(unit)]
+        ranks=[rank for rank in RANK_ORDER if rank in people.RANK_NAME.unique()]
+        selected_ranks=[rank for rank in st.session_state.get('personal_ranks',[]) if rank in ranks]
+        st.session_state['personal_ranks']=selected_ranks
+        rank_counts=people.groupby('RANK_NAME')['SOLDIER_ID'].nunique().to_dict()
+        st.markdown('**계급**')
+        with st.container(horizontal=True,gap='small',key='cardfilter-personal-rank-row'):
+            for rank in ranks:
+                chosen=rank in selected_ranks
+                st.button(f'{"✓ " if chosen else ""}{rank} · {int(rank_counts.get(rank,0)):,}명',
+                          key=f'cardfilter-personal-rank-card_{rank}',type='primary' if chosen else 'secondary',
+                          width='content',on_click=_toggle_personal_rank,args=(rank,))
+        if selected_ranks:
+            people=people.loc[people.RANK_NAME.isin(selected_ranks)]
         if search:
             people=people.loc[people.SOLDIER_NAME.str.contains(search,regex=False)|people.SOLDIER_ID.str.contains(search,regex=False)]
         if people.empty:
-            st.info('선택한 지역·부대·계급·검색 조건에 해당하는 장병이 없습니다.');st.stop()
+            st.info('선택한 부대·계급·검색 조건에 해당하는 장병이 없습니다.');st.stop()
         st.caption(f'검색 결과 {people.SOLDIER_ID.nunique():,}명 / 전체 {data.SOLDIER_ID.nunique():,}명')
         people=people.sort_values(['SOLDIER_NAME','SOLDIER_ID'])
         labels=people.set_index('SOLDIER_ID')

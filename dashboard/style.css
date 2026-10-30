@@ -698,3 +698,122 @@ hr {
 [data-testid="stSidebar"] .st-key-sidebar-brand a:hover {
     opacity: 0.85;
 }
+/* ==========================================
+   14. 카드 필터 (지역·부대·계급)  ← dashboard/common/card_filters.py
+   - 요소 key가 'cardfilter-{prefix}-...' 형태라 페이지(prefix)와 무관하게 같은 스타일이 적용됩니다.
+   - 색은 :root 변수만 사용합니다. 부대 프레임 높이는 --cf-strip-h 하나로 조절합니다.
+   ========================================== */
+:root {
+    --cf-region-h: 3.8rem;      /* 지역 카드 높이 (3열 × 2행) */
+    --cf-strip-h: 8.3rem;       /* 부대 프레임 고정 높이 = 지역 카드 2행 높이에 맞춤 */
+    --cf-box-w: 12rem;          /* 부대 프레임 안 지역 박스 최소 폭 */
+}
+
+/* ---------- 지역 카드 (왼쪽, 3열 × 2행) ---------- */
+[class*="st-key-cardfilter-"][class*="-region-card_"] button {
+    min-height: var(--cf-region-h);
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.7rem;
+    background: var(--c-white) !important;
+    border: 1px solid var(--c-border) !important;
+    box-shadow: none;
+    white-space: normal;
+}
+[class*="st-key-cardfilter-"][class*="-region-card_"] button p {
+    margin: 0;
+    color: var(--c-slate) !important;
+    font-size: 0.74rem;
+    line-height: 1.3;
+}
+[class*="st-key-cardfilter-"][class*="-region-card_"] button p strong {
+    color: var(--c-ink);
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+[class*="st-key-cardfilter-"][class*="-region-card_"] button:hover {
+    background: var(--c-blue-tint) !important;
+    border-color: var(--c-blue) !important;
+}
+[class*="st-key-cardfilter-"][class*="-region-card_"] button[kind="primary"] {
+    background: var(--c-blue-tint) !important;
+    border: 1.5px solid var(--c-blue) !important;
+    box-shadow: 0 2px 8px rgba(44, 101, 183, 0.14);
+}
+[class*="st-key-cardfilter-"][class*="-region-card_"] button[kind="primary"] p,
+[class*="st-key-cardfilter-"][class*="-region-card_"] button[kind="primary"] p strong {
+    color: var(--c-navy) !important;
+}
+
+/* ---------- 부대 프레임 (지역 오른쪽, 높이 고정, 가로로 늘어나면 스크롤) ---------- */
+[class*="st-key-cardfilter-"][class*="-unit-strip"],
+[class*="st-key-cardfilter-"][class*="-unit-strip"] [data-testid="stHorizontalBlock"] {
+    height: var(--cf-strip-h);
+    overflow: auto;
+    flex-wrap: nowrap !important;
+    align-items: flex-start;
+    scrollbar-width: thin;
+    scrollbar-color: var(--c-blue-light) transparent;
+}
+[class*="st-key-cardfilter-"][class*="-unit-strip"] {
+    padding: 0.6rem;
+    background: var(--c-bg-muted);
+    border: 1px solid var(--c-border);
+    border-radius: 0.8rem;
+}
+/* 프레임 안의 지역 박스는 줄어들거나 줄바꿈되지 않고 옆으로 나열 */
+[class*="st-key-cardfilter-"][class*="-unit-strip"] > *,
+[class*="st-key-cardfilter-"][class*="-unit-strip"] [data-testid="stHorizontalBlock"] > * {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: var(--cf-box-w);
+}
+[class*="st-key-cardfilter-"][class*="-unit-box_"] {
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: 0.65rem;
+    box-shadow: none;
+    padding: 0.35rem 0.5rem;
+}
+[class*="st-key-cardfilter-"][class*="-unit-box_"] [data-testid="stVerticalBlock"] {
+    gap: 0.3rem;
+}
+[class*="st-key-cardfilter-"][class*="-unit-box_"] [data-testid="stCaptionContainer"] p {
+    margin: 0;
+    color: var(--c-slate);
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+/* ---------- 부대·계급 칩 ---------- */
+[class*="st-key-cardfilter-"][class*="-unit-card_"] button,
+[class*="st-key-cardfilter-"][class*="-rank-card_"] button {
+    min-height: 2rem;
+    padding: 0.1rem 0.7rem;
+    border-radius: 999px;
+    background: var(--c-white) !important;
+    border: 1px solid var(--c-border) !important;
+    box-shadow: none;
+    white-space: nowrap;
+}
+[class*="st-key-cardfilter-"][class*="-unit-card_"] button p,
+[class*="st-key-cardfilter-"][class*="-rank-card_"] button p {
+    margin: 0;
+    color: var(--c-ink) !important;
+    font-size: 0.78rem;
+    line-height: 1.2;
+}
+[class*="st-key-cardfilter-"][class*="-unit-card_"] button:hover,
+[class*="st-key-cardfilter-"][class*="-rank-card_"] button:hover {
+    background: var(--c-teal-tint) !important;
+    border-color: var(--c-teal) !important;
+}
+[class*="st-key-cardfilter-"][class*="-unit-card_"] button[kind="primary"],
+[class*="st-key-cardfilter-"][class*="-rank-card_"] button[kind="primary"] {
+    background: var(--c-teal-tint) !important;
+    border: 1.5px solid var(--c-teal) !important;
+}
+[class*="st-key-cardfilter-"][class*="-unit-card_"] button[kind="primary"] p,
+[class*="st-key-cardfilter-"][class*="-rank-card_"] button[kind="primary"] p {
+    color: var(--c-teal) !important;
+    font-weight: 700;
+}

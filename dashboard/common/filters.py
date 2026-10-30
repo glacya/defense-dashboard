@@ -1,11 +1,15 @@
 """지역·부대·계급 카드 필터 공용 모듈 (dashboard/common/card_filters.py).
 
 모든 페이지가 같은 모양·같은 동작의 필터를 쓰도록 하나로 모았습니다.
-- 지역: 도 단위 카드 (REGION_NAME을 경기·강원·전라·경상·충청·제주로 묶음)
-- 부대: 지역 카드를 고르면 해당 지역의 (REGION_NAME, UNIT_NAME) 카드가 나타남
+- 지역(왼쪽): 도 단위 카드 3열 (REGION_NAME을 경기·강원·전라·경상·충청·제주로 묶음)
+- 부대(오른쪽): 지역 카드를 고르면 크기가 고정된 프레임 안에 (REGION_NAME, UNIT_NAME) 카드가 가로로 나열되고,
+        내용이 넘치면 프레임 안에서 스크롤됩니다.
 - 계급: RANK_ORDER 순서의 카드
 - 아무것도 선택하지 않으면 해당 범위 전체를 뜻합니다.
 - prefix가 같으면 페이지 사이에서 선택이 공유되고, 다르면 페이지마다 독립됩니다.
+
+스타일은 이 파일이 아니라 전역 CSS의 "14. 카드 필터" 섹션에 있습니다.
+요소는 key가 'cardfilter-{prefix}-...' 형태라 CSS 클래스(st-key-cardfilter-...)로 잡습니다.
 
 people은 장병 1명당 1행이며 SOLDIER_ID, REGION_NAME, UNIT_NAME, RANK_NAME 컬럼이 필요합니다.
 """
@@ -20,33 +24,7 @@ import streamlit as st
 from dashboard.common.formatting import RANK_ORDER, filter_signature
 
 REGION_GROUP_ORDER = ['경기', '강원', '전라', '경상', '충청', '제주']
-
-_CSS = '''<style>
-    div[class*="st-key-__P__-region-card"] button {
-        min-height: 68px; border-radius: 10px; white-space: pre-line; padding: 4px 7px;
-        border: 1px solid #7B9DB8 !important;
-    }
-    div[class*="st-key-__P__-region-card"] button[kind="primary"] {
-        border: 2px solid #93C5FD !important; background: #DBEAFE !important;
-        color: #1E3A5F !important; box-shadow: 0 0 0 1px #EFF6FF;
-    }
-    div[class*="st-key-__P__-region-card"] button[kind="primary"] * { color: #1E3A5F !important; }
-    div[class*="st-key-__P__-unit-card"] button,
-    div[class*="st-key-__P__-rank-card"] button {
-        min-height: 30px; border-radius: 16px; white-space: normal; padding: 1px 6px;
-        border: 1px solid #91A99A !important;
-    }
-    div[class*="st-key-__P__-unit-card"] button[kind="primary"],
-    div[class*="st-key-__P__-rank-card"] button[kind="primary"] {
-        border: 2px solid #86EFAC !important; background: #D1FAE5 !important;
-        color: #14532D !important; box-shadow: 0 0 0 1px #ECFDF5;
-    }
-    div[class*="st-key-__P__-unit-card"] button[kind="primary"] *,
-    div[class*="st-key-__P__-rank-card"] button[kind="primary"] * { color: #14532D !important; }
-    div[class*="st-key-__P__-unit-region"] {
-        border-color: #A9BDAF !important; border-radius: 12px; padding: .15rem .3rem;
-    }
-</style>'''
+REGION_CARDS_PER_ROW = 3
 
 
 @dataclass
@@ -103,17 +81,11 @@ def _toggle(key: str, value, reset_key: str | None = None) -> None:
         st.session_state[reset_key] = []
 
 
-def _change_page(page_key: str, offset: int, page_count: int) -> None:
-    current = int(st.session_state.get(page_key, 0))
-    st.session_state[page_key] = min(max(current + offset, 0), page_count - 1)
-
-
 def render_personnel_cards(
     people: pd.DataFrame,
     prefix: str,
     *,
     show_ranks: bool = True,
-    unit_columns: int = 4,
 ) -> CardSelection:
     """지역·부대(·계급) 카드를 그리고 선택 결과를 돌려줍니다."""
     region_key, unit_key, rank_key = _keys(prefix)
@@ -138,50 +110,42 @@ def render_personnel_cards(
     st.session_state[rank_key] = selected_ranks
     active_ranks = selected_ranks or ranks
 
-    st.markdown(_CSS.replace('__P__', prefix), unsafe_allow_html=True)
+    # 지역(왼쪽, 3열) + 부대(오른쪽, 고정 높이 프레임)
+    left, right = st.columns([5, 7], gap='medium')
+    with left:
+        st.markdown('**지역**')
+        region_counts = scoped.groupby('_REGION_GROUP')['SOLDIER_ID'].nunique().to_dict()
+        for start in range(0, len(available_regions), REGION_CARDS_PER_ROW):
+            for column, region in zip(st.columns(REGION_CARDS_PER_ROW, gap='small'),
+                                      available_regions[start:start + REGION_CARDS_PER_ROW]):
+                selected = region in selected_regions
+                column.button(
+                    f'{"✓ " if selected else ""}**{region}**  \n{int(region_counts.get(region, 0)):,}명',
+                    key=f'cardfilter-{prefix}-region-card_{region}',
+                    type='primary' if selected else 'secondary',
+                    width='stretch', on_click=_toggle, args=(region_key, region, unit_key),
+                )
 
-    # 지역
-    st.markdown('**지역**')
-    region_counts = scoped.groupby('_REGION_GROUP')['SOLDIER_ID'].nunique().to_dict()
-    for start in range(0, len(available_regions), 4):
-        for column, region in zip(st.columns(4, gap='small'), available_regions[start:start + 4]):
-            selected = region in selected_regions
-            column.button(
-                f'{"✓ " if selected else ""}**{region}**  \n{int(region_counts.get(region, 0)):,}명',
-                key=f'{prefix}-region-card_{region}', type='primary' if selected else 'secondary',
-                width='stretch', on_click=_toggle, args=(region_key, region, unit_key),
-            )
-
-    # 부대 (지역을 고른 경우에만)
-    if selected_regions:
+    with right:
         st.markdown('**부대**')
-        page_count = len(selected_regions)
-        page_key = f'{prefix}_card_page_{filter_signature(tuple(selected_regions))}'
-        page = min(max(int(st.session_state.get(page_key, 0)), 0), page_count - 1)
-        previous, status, following = st.columns([1, 3, 1])
-        previous.button('← 이전 지역', disabled=page == 0, key=f'{page_key}_previous',
-                        on_click=_change_page, args=(page_key, -1, page_count))
-        status.markdown(
-            f'<div style="text-align:center;padding:.45rem">{selected_regions[page]} · {page + 1} / {page_count}</div>',
-            unsafe_allow_html=True,
-        )
-        following.button('다음 지역 →', disabled=page >= page_count - 1, key=f'{page_key}_next',
-                         on_click=_change_page, args=(page_key, 1, page_count))
-        province = selected_regions[page]
-        page_regions = sorted(scoped.loc[scoped['_REGION_GROUP'].eq(province), 'REGION_NAME'].dropna().unique().tolist())
-        columns = st.columns(unit_columns, gap='small')
-        for index, region in enumerate(page_regions):
-            in_region = scoped.loc[scoped['REGION_NAME'].eq(region)]
-            counts = in_region.groupby('UNIT_NAME')['SOLDIER_ID'].nunique().to_dict()
-            with columns[index % unit_columns]:
-                with st.container(border=True, key=f'{prefix}-unit-region_{filter_signature(region)}'):
+        with st.container(horizontal=True, gap='small', key=f'cardfilter-{prefix}-unit-strip'):
+            if not selected_regions:
+                st.caption('지역을 선택하면 해당 지역의 부대가 표시됩니다. 선택하지 않으면 전체 부대입니다.')
+            shown_regions = sorted(
+                scoped.loc[scoped['_REGION_GROUP'].isin(selected_regions), 'REGION_NAME'].dropna().unique().tolist(),
+                key=lambda name: (_region_order(_region_group(name)), name),
+            )
+            for region in shown_regions:
+                in_region = scoped.loc[scoped['REGION_NAME'].eq(region)]
+                counts = in_region.groupby('UNIT_NAME')['SOLDIER_ID'].nunique().to_dict()
+                with st.container(border=True, key=f'cardfilter-{prefix}-unit-box_{filter_signature(region)}'):
                     st.caption(region)
                     for unit in sorted(in_region['UNIT_NAME'].dropna().unique().tolist()):
                         pair = (region, unit)
                         selected = pair in selected_units
                         st.button(
                             f'{"✓ " if selected else ""}{unit} · {int(counts.get(unit, 0)):,}명',
-                            key=f'{prefix}-unit-card_{filter_signature(region, unit)}',
+                            key=f'cardfilter-{prefix}-unit-card_{filter_signature(region, unit)}',
                             type='primary' if selected else 'secondary',
                             width='content', on_click=_toggle, args=(unit_key, pair),
                         )
@@ -194,13 +158,14 @@ def render_personnel_cards(
         ]
         rank_counts = rank_base.groupby('RANK_NAME')['SOLDIER_ID'].nunique().to_dict()
         st.markdown('**계급**')
-        for start in range(0, len(ranks), 4):
-            for column, rank in zip(st.columns(4, gap='small'), ranks[start:start + 4]):
+        with st.container(horizontal=True, gap='small', key=f'cardfilter-{prefix}-rank-row'):
+            for rank in ranks:
                 selected = rank in selected_ranks
-                column.button(
+                st.button(
                     f'{"✓ " if selected else ""}{rank} · {int(rank_counts.get(rank, 0)):,}명',
-                    key=f'{prefix}-rank-card_{rank}', type='primary' if selected else 'secondary',
-                    width='stretch', on_click=_toggle, args=(rank_key, rank),
+                    key=f'cardfilter-{prefix}-rank-card_{rank}',
+                    type='primary' if selected else 'secondary',
+                    width='content', on_click=_toggle, args=(rank_key, rank),
                 )
 
     mask = (

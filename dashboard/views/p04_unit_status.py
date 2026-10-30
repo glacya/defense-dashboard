@@ -466,7 +466,7 @@ def _render_analysis(scoped: pd.DataFrame, filters, summary_level: str) -> None:
 
 
 def render() -> None:
-    st.title("🪖 부대 현황")
+    st.title("부대 현황")
     st.caption("지역·부대별 BMI 구성과 체지방률을 비교하고, 구간별 장병 명단을 확인합니다.")
     try:
         measurements, _ = load_main_data()

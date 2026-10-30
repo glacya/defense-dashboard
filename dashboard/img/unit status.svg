@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" width="100%" height="100%">
+  <!-- Background Card -->
+  <rect width="320" height="180" rx="20" fill="#F8FAFC" />
+  
+  <!-- Circle Halo -->
+  <circle cx="160" cy="90" r="65" fill="#FFFFFF" />
+  
+  <!-- Stickman Soldier (Left) -->
+  <circle cx="115" cy="68" r="13" fill="#475569" />
+  <circle cx="115" cy="68" r="7" fill="#F3C8A7" />
+  <path d="M115 81 V120 M115 92 L98 108 M115 92 L132 108 M115 120 L99 144 M115 120 L131 144" stroke="#475569" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+
+  <!-- Triangle Unit Badge (Right) -->
+  <polygon points="205,45 250,125 160,125" fill="#F1F5F9" stroke="#334155" stroke-width="6" stroke-linejoin="round" />
+  
+  <!-- 4 Stars Layout -->
+  <!-- Top Small Star -->
+  <polygon points="205,62 207,67 212,67 208,70 209,75 205,72 201,75 202,70 198,67 203,67" fill="#334155" />
+  <!-- Center Main Star -->
+  <polygon points="205,82 208,90 216,91 210,97 211,105 205,101 199,105 200,97 194,91 202,90" fill="#334155" />
+  <!-- Bottom Left Small Star -->
+  <polygon points="182,107 184,112 189,112 185,115 186,120 182,117 178,120 179,115 175,112 180,112" fill="#334155" />
+  <!-- Bottom Right Small Star -->
+  <polygon points="228,107 230,112 235,112 231,115 232,120 228,117 224,120 225,115 221,112 226,112" fill="#334155" />
+</svg>

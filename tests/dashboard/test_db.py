@@ -16,16 +16,31 @@ DB_SSLMODE=require
 """
 
 
+class FakeDBAPIConnection:
+    """with 블록으로 열리고 닫혔는지 기록하는 가짜 연결."""
+
+    def __init__(self):
+        self.open = False
+
+    def __enter__(self):
+        self.open = True
+        return self
+
+    def __exit__(self, *exc_info):
+        self.open = False
+        return False
+
+
 class FakeConnection:
-    """query()에 넘긴 인자를 기록하고 정해 둔 결과를 돌려주는 가짜 연결."""
+    """connect()로 가짜 연결을 내주고, 열린 횟수와 열린 채 남은 연결을 기록하는 가짜 st.connection."""
 
-    def __init__(self, result: pd.DataFrame):
-        self.result = result
-        self.calls = []
+    def __init__(self):
+        self.opened = []
 
-    def query(self, sql, **kwargs):
-        self.calls.append((sql, kwargs))
-        return self.result
+    def connect(self):
+        connection = FakeDBAPIConnection()
+        self.opened.append(connection)
+        return connection
 
 
 @pytest.fixture
@@ -40,8 +55,17 @@ def env_path(tmp_path, monkeypatch):
 
 @pytest.fixture
 def fake_connection(monkeypatch):
-    connection = FakeConnection(pd.DataFrame({"soldier_id": ["22-1"], "bmi": [Decimal("21.50")]}))
+    """get_connection()이 가짜 연결을, pandas.read_sql이 정해 둔 결과를 돌려주게 하고 읽은 SQL·params를 기록합니다."""
+    connection = FakeConnection()
+    connection.reads = []
+
+    def fake_read_sql(sql, con, params=None):
+        assert con.open, "연결이 with 블록 안에서 쓰여야 합니다."
+        connection.reads.append((str(sql), params))
+        return pd.DataFrame({"soldier_id": ["22-1"], "bmi": [Decimal("21.50")]})
+
     monkeypatch.setattr(db, "get_connection", lambda: connection)
+    monkeypatch.setattr(db.pd, "read_sql", fake_read_sql)
     return connection
 
 
@@ -76,6 +100,7 @@ def test_connection_uses_ssl_options_and_disables_prepared_statements(env_path, 
     assert (captured["dialect"], captured["driver"]) == ("postgresql", "psycopg")
     assert captured["query"] == {"sslmode": "require"}  # channel_binding은 .env에 없어서 넘기지 않음
     assert captured["connect_args"] == {"prepare_threshold": None}
+    assert captured["pool_pre_ping"] is True  # Neon이 끊은 연결을 빌려주기 전에 걸러 낸다
 
 
 def test_tidy_matches_previous_csv_shape():
@@ -97,11 +122,25 @@ def test_tidy_matches_previous_csv_shape():
     assert pd.api.types.is_integer_dtype(tidy["AGE"])
 
 
-def test_run_query_passes_params_and_ttl(fake_connection):
-    """값은 SQL에 넣지 않고 params로, 캐시 시간은 ttl로 넘기는지 확인합니다."""
-    result = db.run_query("SELECT * FROM soldiers WHERE soldier_id = :soldier_id", {"soldier_id": "22-1"}, ttl=30)
+def test_run_query_closes_connection_and_caches(fake_connection):
+    """값은 params로 넘기고, 연결은 with로 열고 닫으며(열린 트랜잭션을 남기지 않음), 같은 조회는 캐시를 쓰는지 확인합니다."""
+    sql = "SELECT * FROM soldiers WHERE soldier_id = :soldier_id -- test_run_query_closes_connection_and_caches"
 
-    sql, kwargs = fake_connection.calls[0]
-    assert sql == "SELECT * FROM soldiers WHERE soldier_id = :soldier_id"
-    assert kwargs["params"] == {"soldier_id": "22-1"} and kwargs["ttl"] == 30
-    assert result.columns.tolist() == ["SOLDIER_ID", "BMI"]
+    result = db.run_query(sql, {"soldier_id": "22-1"}, ttl=30)
+    db.run_query(sql, {"soldier_id": "22-1"}, ttl=30)
+
+    assert fake_connection.reads == [(sql, {"soldier_id": "22-1"})]  # 두 번째는 캐시
+    assert len(fake_connection.opened) == 1 and not fake_connection.opened[0].open
+    assert result.columns.tolist() == ["SOLDIER_ID", "BMI"] and result.BMI.dtype == float
+
+
+def test_each_ttl_has_its_own_cache(fake_connection):
+    """ttl이 다르면 캐시 함수가 따로 있어, 서로의 캐시를 지우지 않는지 확인합니다."""
+    sql = "SELECT 1 -- test_each_ttl_has_its_own_cache"
+
+    db.run_query(sql, ttl=11)
+    db.run_query(sql, ttl=12)
+    db.run_query(sql, ttl=11)
+
+    assert db._cached_reader(11) is not db._cached_reader(12)
+    assert len(fake_connection.reads) == 2

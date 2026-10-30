@@ -1,6 +1,53 @@
 /* ==========================================
    1. 색상 변수 (어두운 프레임 + 밝은 카드 / 팔레트 기준)
    ========================================== */
+.st-key-management-reason-conditions button,
+.st-key-management-event-conditions button {
+    min-height: 64px;
+    padding: 0.85rem 1rem;
+    border-radius: 0.75rem;
+}
+.st-key-management-reason-conditions button p,
+.st-key-management-event-conditions button p {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+.st-key-management-reason-HIGH_BMI_FAIL {
+    --reason-bg: #fff3e8;
+    --reason-accent: #9a4c10;
+}
+.st-key-management-reason-MULTIPLE_FAIL {
+    --reason-bg: #ecf3fc;
+    --reason-accent: #285da8;
+}
+.st-key-management-reason-WORSENED {
+    --reason-bg: #fff0f2;
+    --reason-accent: #b43750;
+}
+.st-key-management-reason-PERSISTENT_FAIL {
+    --reason-bg: #f3eefc;
+    --reason-accent: #7351a8;
+}
+.st-key-management-reason-conditions [class*="st-key-management-reason-"] button {
+    background: var(--reason-bg) !important;
+    border: 1px solid var(--reason-accent) !important;
+    color: var(--reason-accent) !important;
+}
+.st-key-management-reason-conditions [class*="st-key-management-reason-"] button p {
+    color: inherit !important;
+}
+.st-key-management-reason-conditions [class*="st-key-management-reason-"] button:hover {
+    box-shadow: inset 0 0 0 1px var(--reason-accent);
+}
+.st-key-management-reason-conditions [class*="st-key-management-reason-"] button[kind="primary"] {
+    background: var(--reason-accent) !important;
+    color: #ffffff !important;
+    box-shadow: 0 3px 8px rgba(24, 43, 64, 0.15);
+}
+[data-testid="stLayoutWrapper"]:has(> .st-key-management-history-panel),
+.st-key-management-history-panel {
+    border-radius: 16px;
+}
 :root {
     color-scheme: light;
 

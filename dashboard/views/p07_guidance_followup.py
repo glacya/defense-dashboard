@@ -206,7 +206,6 @@ def render() -> None:
                               type='primary' if selected else 'secondary',
                               width='stretch',disabled=count==0,
                               on_click=_toggle_fitness_type,args=(key,))
-    st.button('운동유형 전체 보기',key='followup-types-clear',on_click=_clear_fitness_types)
     unclassified=int(people.FITNESS_TYPE_KEY.isna().sum())
     st.caption(f'선택 유형 {len(selected_types)}개 · 미선택 시 전체 유형 조회 · 최신 측정 분류 없음 {unclassified:,}명. 분류 없는 장병은 전체 조회에만 포함됩니다.')
     if selected_types:

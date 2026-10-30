@@ -18,12 +18,14 @@ from data.scripts.analysis.clustering.build_exercise_recommendations import (
 from data.scripts.utils import require_columns
 
 KEYS = ['AVERAGE_PERCENTILE_GRADE', 'CLUSTER']
-COLUMNS = [*KEYS, 'RECOMMENDATION_RANK', 'TYPE_NAME', 'IMPROVEMENT_FOCUS', 'RECOMMENDED_EXERCISE', 'RELATIVE_GAP']
+COLUMNS = [*KEYS, 'RECOMMENDATION_RANK', 'TYPE_NAME', 'IMPROVEMENT_FOCUS', 'RECOMMENDED_EXERCISE', 'BODY_PARTS', 'RELATIVE_GAP']
 # 체력 요소에 맞는 유형의 상대 편차(fitness_types의 {종목}_relative). 요소 이름은 코드 상수라 SQL에 넣어도 안전하다.
 _GAP_CASES = ' '.join(f"WHEN '{focus}' THEN t.{relative_column(focus).lower()}" for focus in FOCUSES)
 RECOMMENDATION_SQL = f"""
 SELECT r.average_percentile_grade, r.cluster, r.recommendation_rank, t.type_name,
     c.improvement_focus, d.prescription AS recommended_exercise,
+    (SELECT string_agg(b.body_part, ' | ' ORDER BY b.body_part)
+     FROM exercise_body_parts b WHERE b.prescription_type_id = r.prescription_type_id) AS body_parts,
     CASE c.improvement_focus {_GAP_CASES} END AS relative_gap
 FROM recommended_exercises r
 JOIN fitness_types t USING (average_percentile_grade, cluster)
@@ -43,9 +45,13 @@ def _read_tables(stamps: tuple[int, ...]) -> pd.DataFrame:
     types = pd.read_csv(PROCESSED_FITNESS_TYPE_PATH, encoding='utf-8-sig')
     classifications = pd.read_csv(PROCESSED_EXERCISE_CLASSIFICATION_PATH, encoding='utf-8-sig')
     details = pd.read_csv(PROCESSED_PRESCRIPTION_DETAIL_PATH, encoding='utf-8-sig')
+    from data.scripts.paths import PROCESSED_EXERCISE_BODY_PART_PATH
+    parts = pd.read_csv(PROCESSED_EXERCISE_BODY_PART_PATH, encoding='utf-8-sig')
+    parts = parts.groupby('PRESCRIPTION_TYPE_ID')['BODY_PART'].agg(lambda values: ' | '.join(sorted(set(values)))).rename('BODY_PARTS').reset_index()
     data = (recommendations.merge(types, on=KEYS, validate='many_to_one')
             .merge(classifications, on='PRESCRIPTION_TYPE_ID', validate='many_to_one')
             .merge(details, on='PRESCRIPTION_TYPE_ID', validate='many_to_one')
+            .merge(parts, on='PRESCRIPTION_TYPE_ID', how='left', validate='many_to_one')
             .rename(columns={'PRESCRIPTION': 'RECOMMENDED_EXERCISE'}))
     data['RELATIVE_GAP'] = [row[relative_column(row.IMPROVEMENT_FOCUS)] for _, row in data.iterrows()]
     return data.sort_values([*KEYS, 'RECOMMENDATION_RANK'], kind='stable').reset_index(drop=True)[COLUMNS]
@@ -58,6 +64,8 @@ def _read_selected(grade: int, cluster: int, source: str) -> pd.DataFrame:
                                     PROCESSED_PRESCRIPTION_DETAIL_PATH, PROCESSED_RECOMMENDED_EXERCISE_PATH)
     paths = [PROCESSED_RECOMMENDED_EXERCISE_PATH, PROCESSED_FITNESS_TYPE_PATH,
              PROCESSED_EXERCISE_CLASSIFICATION_PATH, PROCESSED_PRESCRIPTION_DETAIL_PATH]
+    from data.scripts.paths import PROCESSED_EXERCISE_BODY_PART_PATH
+    paths.append(PROCESSED_EXERCISE_BODY_PART_PATH)
     data = _read_tables(tuple(path.stat().st_mtime_ns for path in paths))
     return data.loc[data.AVERAGE_PERCENTILE_GRADE.eq(grade) & data.CLUSTER.eq(cluster)].reset_index(drop=True)
 
@@ -83,7 +91,18 @@ def load_recommendation(grade: int, cluster: int, source: str | None = None) -> 
     return selected
 
 
-def render_recommendation(grade: int, cluster: int) -> None:
+def split_by_injuries(recommendation: pd.DataFrame, injuries: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """전체 부상 이력의 부위와 사용 부위가 겹치는 운동을 분리합니다."""
+    locations = set(injuries['INJURY_LOCATION'].dropna().astype(str).str.strip()) if not injuries.empty else set()
+    result = recommendation.copy()
+    result['EXCLUSION_REASON'] = result.BODY_PARTS.map(
+        lambda parts: ' | '.join(sorted(locations & {part.strip() for part in parts.split('|')})))
+    excluded = result.EXCLUSION_REASON.ne('')
+    return result.loc[~excluded].copy(), result.loc[excluded].copy()
+
+
+def render_recommendation(grade: int, cluster: int, injuries: pd.DataFrame | None = None,
+                          injury_present: bool = True) -> None:
     """유형에 지정된 각 약점의 보완 운동과 실행 지침을 표시합니다."""
     st.markdown('### 체력유형별 운동 추천')
     try:
@@ -94,40 +113,37 @@ def render_recommendation(grade: int, cluster: int) -> None:
     if recommendation.empty:
         st.info('선택한 체력유형의 운동 추천 정보가 없습니다.')
         return
-    groups = list(recommendation.groupby('IMPROVEMENT_FOCUS', sort=False))
-    st.caption('보완할 체력 요소: ' + ' · '.join(focus for focus, _ in groups))
-    illustrations = {'근력': 'strength', '근지구력': 'endurance',
-                     '심폐지구력': 'cardio', '유연성': 'flexibility'}
-    for column, (focus, exercises) in zip(st.columns(len(groups)), groups):
-        with column, st.container(border=True):
-            image_name = illustrations.get(focus)
-            if image_name:
-                st.image(str(DASHBOARD_DIR / 'img' / f'exercise_{image_name}.svg'),
-                         caption=f'{focus} 운동 예시', width=180)
-            st.markdown(f'#### {focus} 기르기')
-            for exercise in exercises.RECOMMENDED_EXERCISE:
-                st.markdown(f'- {exercise}')
-            st.markdown('**일반 운동 지침**')
-            for instruction in exercises.TRAINING_GUIDANCE.drop_duplicates():
-                st.write(instruction)
-    for basis in recommendation.RECOMMENDATION_BASIS.drop_duplicates():
+    if not injury_present:
+        st.warning('부상 자료가 없어 부상 부위에 따른 운동 제외를 적용하지 못했습니다.')
+    allowed, excluded = split_by_injuries(recommendation, injuries if injuries is not None else pd.DataFrame())
+    allowed = allowed.sort_values('RECOMMENDATION_RANK', kind='stable').head(4)
+    st.caption('전체 부상 이력과 사용 부위가 겹치는 운동을 제외합니다. 현재 회복 여부를 판정한 결과는 아닙니다.')
+    available_panel, excluded_panel = st.columns([1.4, 1], gap='medium')
+    with excluded_panel:
+        st.markdown(f'#### 제외된 운동 · {len(excluded)}개')
+        if excluded.empty:
+            st.caption('부상 부위와 겹쳐 제외된 운동이 없습니다.' if injury_present else '부상 자료 확인이 필요합니다.')
+        else:
+            st.dataframe(excluded[['RECOMMENDED_EXERCISE', 'EXCLUSION_REASON']].rename(
+                columns={'RECOMMENDED_EXERCISE': '운동명', 'EXCLUSION_REASON': '겹친 부상 부위'}),
+                hide_index=True, width='stretch')
+    with available_panel:
+        st.markdown(f'#### 추천 목록 · {len(allowed)}개')
+        st.caption('부상 부위와 겹치는 운동을 제외한 뒤 추천 순위순으로 최대 4개를 표시합니다.')
+        if allowed.empty:
+            st.info('부상 부위와 겹쳐 추천 목록에 남은 운동이 없습니다.')
+        for focus, exercises in allowed.groupby('IMPROVEMENT_FOCUS', sort=False):
+            st.markdown(f'**{focus}**')
+            for exercise in exercises.itertuples():
+                st.markdown(f'- {exercise.RECOMMENDED_EXERCISE}')
+        for instruction in allowed.TRAINING_GUIDANCE.drop_duplicates():
+            st.write(instruction)
+    for basis in allowed.RECOMMENDATION_BASIS.drop_duplicates():
         st.caption(basis)
     with st.container(border=True):
         st.markdown('**운동 추천의 한계점**')
         st.markdown(
-            '- 원본 처방 자료는 운동명 목록이며, 체력요소별 분류와 추천 연결은 수동으로 구성했습니다. '
-            '실제 장병별 처방 이력이나 운동 효과를 분석한 결과는 아닙니다.\n'
-            '- 약점형은 해당 요소의 운동 8개를, 강점형은 강점 외 세 요소에서 '
-            '상대 체력 편차가 낮은 순으로 운동을 4·2·2개 배분합니다. '
-            '상대 편차가 낮다는 것이 실제 기준 미달을 뜻하지는 않습니다.\n'
-            '- 부상·질환·통증·회복 상태와 개인별 운동 경험을 반영하지 않았습니다. '
-            '개인별 운동 적합성은 별도로 확인해야 합니다.\n'
-            '- 운동에 따라 철봉·덤벨·운동기구 등이 필요하며, 부대별 공간·바닥 상태·훈련 일정·'
-            '기상 여건에 따라 실시 가능 여부가 달라집니다.\n'
-            '- 안내는 일반 지침이며, 개인별 횟수·세트·강도·휴식·진행 계획은 제공하지 않습니다.'
+            '국민체력100 데이터의 운동처방 자료를 기준으로, 16개 체력유형의 등급과 '
+            '종목별 체력 편차 정보를 AI에 제공하여 운동을 분류했습니다. '
+            'AI가 분류한 기준을 코드에 반영한 추천으로, 개인별 운동 효과나 적합성을 검증한 결과는 아닙니다.'
         )
-    with st.expander('운동 추천 참고 자료'):
-        urls = dict.fromkeys(url.strip() for sources in recommendation.SOURCE_URL
-                             for url in sources.split('|') if url.strip())
-        for index, url in enumerate(urls, start=1):
-            st.markdown(f'[일반 운동 지침 {index}]({url})')

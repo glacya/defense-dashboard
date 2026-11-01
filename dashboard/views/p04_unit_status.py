@@ -1,29 +1,39 @@
 """부대 현황: 지역·부대별 BMI 구성과 장병 분포를 확인합니다."""
 
+from types import SimpleNamespace
+
 import altair as alt
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from types import SimpleNamespace
+from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.common.filters import render_personnel_cards
 from dashboard.common.charts import (
     BMI_COLORS, LIGHT_TEXT, NAVY_BACKGROUND, NAVY_BORDER, NAVY_SURFACE, MUTED_TEXT,
     apply_dark_layout, show_plotly, style_altair,
 )
-from dashboard.common.formatting import BMI_CATEGORY_ORDER, filter_signature, latest_measurements
+from dashboard.common.formatting import BMI_CATEGORY_ORDER, classify_bmi, filter_signature
 from dashboard.common.widgets import render_soldier_details
-from dashboard.main_data import load_main_data
-from dashboard.py.followup_fitness_types import load_fitness_types
-from dashboard.py.personal_fitness_profile import load_personal_profile
+from dashboard.py import queries
 from dashboard.py.fitness_judgment import EVENTS
 
-def _render_unit_filters(measurements: pd.DataFrame):
-    """기간 필터를 제외하고 도 단위 지역·지역별 부대 카드 필터를 표시합니다."""
-    date_start = measurements["MESURE_DE"].min().date()
-    date_end = measurements["MESURE_DE"].max().date()
-    population = latest_measurements(measurements, date_start, date_end)
+
+def _load_population() -> pd.DataFrame:
+    """장병별 최신 측정(DB)을 화면이 쓰는 모양으로 바꿉니다(MESURE_ID 정수, 측정일 날짜, BMI 구간)."""
+    rows = queries.load_unit_latest()
+    rows = rows.assign(
+        SOLDIER_ID=rows["SOLDIER_ID"].astype(str),
+        MESURE_ID=pd.to_numeric(rows["MESURE_ID"]).astype("int64"),
+        MESURE_DE=pd.to_datetime(rows["MESURE_DE"], format="%Y%m%d"),
+    )
+    rows["BMI구간"] = classify_bmi(rows["BMI"])
+    return rows
+
+
+def _render_unit_filters(population: pd.DataFrame):
+    """도 단위 지역·지역별 부대 카드 필터를 표시합니다."""
     st.caption("도 단위 지역 카드를 선택하면 해당 지역의 부대가 표시됩니다. 부대 선택이 없으면 선택 지역의 전체 부대를 포함합니다.")
     selection = render_personnel_cards(population, "unit", show_ranks=False)
     st.caption(f"조회 조건 · 장병별 최신 측정 · 현재 조회 {selection.scoped.SOLDIER_ID.nunique():,}명 / 전체 {population.SOLDIER_ID.nunique():,}명")
@@ -113,18 +123,7 @@ def show_bmi_soldiers_panel(group_name: str, category: str, soldiers: pd.DataFra
 def render_soldier_fitness_type(soldier: pd.Series) -> None:
     """선택 장병의 체력유형과 개인 상세 화면과 같은 백분위 레이더를 표시합니다."""
     st.subheader("체력유형")
-    try:
-        classified, _ = load_fitness_types(
-            pd.DataFrame([{
-                "SOLDIER_ID": soldier["SOLDIER_ID"],
-                "MESURE_ID": soldier["MESURE_ID"],
-            }])
-        )
-    except (OSError, ValueError, KeyError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
-        st.info(f"체력유형 자료를 확인할 수 없습니다: {error}")
-        return
-
-    classification = classified.iloc[0]
+    classification = soldier  # 목록 행에 그 측정의 체력유형(등급·군집·유형명)이 들어 있다.
     if pd.isna(classification.TYPE_NAME):
         st.info("선택 측정의 체력유형 분류 정보가 없습니다.")
         return
@@ -135,8 +134,8 @@ def render_soldier_fitness_type(soldier: pd.Series) -> None:
         f"군집 {int(classification.CLUSTER)} · 측정일 {soldier['MESURE_DE']:%Y-%m-%d} 기준"
     )
     try:
-        personal_profile, cluster_profile, member_count = load_personal_profile(soldier["MESURE_ID"])
-    except (OSError, ValueError, KeyError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
+        personal_profile, cluster_profile, member_count = queries.load_measurement_profile(soldier["MESURE_ID"])
+    except (ValueError, KeyError, SQLAlchemyError) as error:
         st.info(f"체력유형 비교 차트를 표시할 수 없습니다: {error}")
         return
 
@@ -277,12 +276,12 @@ def render() -> None:
     st.title("부대 현황")
     st.caption("지역·부대별 BMI 구간과 구간별 장병 분포를 확인합니다.")
     try:
-        measurements, _ = load_main_data()
-    except (FileNotFoundError, ValueError, UnicodeDecodeError, pd.errors.ParserError) as error:
+        population = _load_population()
+    except (ValueError, SQLAlchemyError) as error:
         st.error(f"부대 현황 데이터를 불러오지 못했습니다: {error}")
         st.stop()
 
-    filters = _render_unit_filters(measurements)
+    filters = _render_unit_filters(population)
     if filters.scoped.empty:
         st.info("선택한 지역·부대 조건에 해당하는 장병이 없습니다.")
         st.stop()

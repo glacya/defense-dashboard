@@ -3,8 +3,10 @@
 화면 코드는 이 모듈의 run_query()만 씁니다. 접속 방식이 바뀌어도 이 파일만 고치면 됩니다.
 - 접속 정보: 환경 변수가 dashboard/.env(Git 제외)보다 우선합니다. Streamlit Community Cloud에서는 앱 설정의
   Secrets에 같은 이름(DB_HOST 등)으로 적으면 환경 변수로 들어오므로 .env 없이 같은 코드로 접속합니다.
-- 연결: st.connection(type="sql")을 씁니다(SQLAlchemy + psycopg 3). 연결은 Streamlit이 캐시하고,
-  조회 결과는 ttl 동안 캐시됩니다(st.cache_data와 같은 방식).
+- 연결: st.connection(type="sql")으로 엔진(SQLAlchemy + psycopg 3)을 만들고 Streamlit이 캐시합니다.
+  조회는 매번 연결을 with 블록으로 열고 닫아(끝나면 롤백 후 풀에 반납) 열린 트랜잭션이 남지 않게 하고,
+  결과는 ttl 동안 st.cache_data로 캐시합니다. st.connection의 query()는 연결을 닫지 않아
+  자동으로 시작된 트랜잭션이 끝나지 않은 채 남으므로 쓰지 않습니다.
 - 결과 모양: DB 컬럼 이름은 소문자이지만 기존 화면 코드가 대문자(MESURE_ID 등)를 쓰므로 대문자로 바꾸고,
   NUMERIC 값(Decimal)은 float로, *_ID 컬럼은 문자열로 바꿔 CSV를 읽던 때와 같게 돌려줍니다.
 
@@ -42,7 +44,9 @@ from streamlit.connections import SQLConnection
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 
 CONNECTION_NAME = "defense_db"
-DEFAULT_TTL = 600  # 초. 데이터는 파이프라인을 다시 돌릴 때만 바뀌므로 10분 캐시로 충분하다.
+# 읽기 전용 조회는 만료 없이 캐시한다(사용자 결정). 데이터는 파이프라인을 다시 돌려 DB에 올릴 때만 바뀌므로,
+# 그때는 대시보드를 다시 시작하거나 Streamlit 메뉴의 Clear cache로 비운다. 후속조치 기록은 저장할 때 비운다.
+DEFAULT_TTL = None
 
 REQUIRED_SETTINGS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
 # 값이 있을 때만 접속 옵션으로 넘긴다(libpq의 sslmode, channel_binding).
@@ -96,6 +100,9 @@ def get_connection() -> SQLConnection:
         # 끄는 것은 "같은 문장을 서버에 저장해 재사용"하는 성능 최적화뿐이고, params 값을 SQL과 따로 보내는
         # 파라미터 바인딩(SQL 인젝션 방어)은 그대로 쓴다.
         connect_args={"prepare_threshold": None},
+        # Neon은 쓰지 않는 연결을 끊는다. 끊긴 연결을 그대로 빌려주면 쿼리나 반납 시 롤백이 실패해
+        # "먼저 롤백하라"(PendingRollbackError)류 오류가 날 수 있으므로, 빌려주기 전에 살아 있는지 확인한다.
+        pool_pre_ping=True,
     )
 
 
@@ -116,13 +123,34 @@ def tidy(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _read_closed(sql: str, params: dict[str, Any] | None) -> pd.DataFrame:
+    """연결을 with로 열어 SQL을 읽습니다. 블록이 끝나면 열린 트랜잭션을 롤백하고 연결을 풀에 돌려줍니다."""
+    with get_connection().connect() as connection:
+        return pd.read_sql(text(sql), connection, params=params)
+
+
+# ttl마다 캐시 함수 하나. st.cache_data는 함수 이름(qualname)으로 캐시를 구분하므로 ttl마다 이름을 다르게 한다
+# (Streamlit의 query()와 같은 방식; 같은 이름이면 다른 ttl로 부를 때마다 캐시가 초기화된다).
+_CACHED_READERS: dict[int | None, Any] = {}
+
+
+def _cached_reader(ttl: int | None) -> Any:
+    reader = _CACHED_READERS.get(ttl)
+    if reader is None:
+        def read(sql: str, params: dict[str, Any] | None) -> pd.DataFrame:
+            return _read_closed(sql, params)
+
+        read.__qualname__ = f"run_query_ttl_{ttl}"
+        reader = _CACHED_READERS[ttl] = st.cache_data(ttl=ttl, show_spinner=False)(read)
+    return reader
+
+
 def run_query(sql: str, params: dict[str, Any] | None = None, ttl: int | None = DEFAULT_TTL) -> pd.DataFrame:
     """읽기 전용 SQL을 실행해 DataFrame으로 돌려줍니다. 값은 SQL에 `:이름`으로 적고 params로 넘깁니다.
 
     같은 SQL·params면 ttl초 동안 캐시된 결과를 씁니다(None이면 계속 캐시).
     """
-    result = get_connection().query(sql, params=params, ttl=ttl, show_spinner=False)
-    return tidy(result)
+    return tidy(_cached_reader(ttl)(sql, params))
 
 
 def read_uncached(sql: str, params: dict[str, Any] | None = None) -> pd.DataFrame:

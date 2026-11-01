@@ -16,7 +16,8 @@ import streamlit as st
 from dashboard.data_source import CSV, resolve_source
 from dashboard.db import DEFAULT_TTL, run_query
 from dashboard.py.fitness_judgment import EVENTS, event_labels, join_labels, load_judged_measurements
-from dashboard.py.management_targets_data import load_targets
+from dashboard.py import queries
+from dashboard.py.management_targets_data import build_targets, load_targets, prepare_judgments
 from dashboard.py.roster_data import INJURIES_SQL
 from data.scripts.utils import require_columns
 
@@ -42,6 +43,21 @@ def build_changes(judged: pd.DataFrame) -> pd.DataFrame:
     improved = {event: judged[f'{event}_FIRST_GRADE'].eq(0) & judged[f'{event}_GRADE'].gt(0) for event in EVENTS}
     changes['IMPROVED_EVENTS'] = join_labels(improved, event_labels())
     return changes
+
+
+def load_soldier_history(soldier_id: str) -> pd.DataFrame:
+    """한 장병의 회차별 판정·신상·체력유형에 1차 대비 변화를 붙여 회차 순으로 돌려줍니다."""
+    raw = prepare_judgments(queries.load_soldier_judgments(soldier_id))
+    targets = build_targets(raw)
+    changes = build_changes(raw)
+    keys = ['MESURE_ID', 'SOLDIER_ID']
+    extra = [column for column in changes if column not in targets or column in keys]
+    return targets.merge(changes[extra], on=keys, how='left', validate='one_to_one')
+
+
+def personal_metadata() -> dict:
+    """비교 기준 설명(화면 안내용)."""
+    return {'생성일시': datetime.now(ZoneInfo('Asia/Seoul')).isoformat(), **METADATA_TEXT}
 
 
 @st.cache_data(show_spinner=False)

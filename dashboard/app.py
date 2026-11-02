@@ -6,7 +6,7 @@ from dashboard.common.formatting import NAV_STATE_KEY
 from dashboard.router import build_navigation, build_pages
 
 st.set_page_config(
-    page_title="장병 체력·부상관리 대시보드",
+    page_title="장병 전투체력 관리 대시보드",
     page_icon="🪖",
     layout="wide",
     initial_sidebar_state="expanded",

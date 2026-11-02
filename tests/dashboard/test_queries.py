@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from dashboard.py import injury_overview_data, queries
+from dashboard.py import injury_overview_data, management_targets_data, queries
 
 
 @pytest.fixture
@@ -47,6 +47,7 @@ def test_unit_card_people_pick_latest_round_or_selected_round(monkeypatch):
     assert p01._people_for_metric("measured", 1, "1사단").SOLDIER_ID.tolist() == ["a", "b"]
     assert p01._people_for_metric("deficient", 1, "1사단").SOLDIER_ID.tolist() == ["a"]
     assert p01._people_for_metric("managed", 2, "1사단").empty
+    assert p01._people_for_metric("total", 1, "1사단", ("b",)).SOLDIER_ID.tolist() == ["b"]
     assert set(calls) == {"1사단"}
 
 
@@ -55,6 +56,89 @@ def test_overview_rejects_unknown_group(group_column):
     """조직 구분 컬럼은 허용 목록에서만 SQL에 넣는지 확인합니다."""
     with pytest.raises(ValueError, match="지원하지 않는"):
         queries.load_overview_rounds(group_column)
+
+
+def test_overview_applies_selected_soldiers_with_bound_parameters(calls):
+    """공용 필터에서 고른 장병만 창 함수 전에 좁혀 계산합니다."""
+    queries.load_overview_rounds(soldier_ids=("soldier-1", "soldier-2"))
+
+    sql, params = calls[0]
+    assert "WHERE m.soldier_id = ANY(CAST(:soldier_ids AS text[]))" in sql
+    assert "WHERE j.soldier_id" not in sql
+    assert params == {
+        "high_bmi": queries.HIGH_BMI,
+        "soldier_ids": ["soldier-1", "soldier-2"],
+    }
+
+
+def test_overview_without_soldier_filter_keeps_all_personnel(calls):
+    """기본 전체 조회는 군번 조건을 추가하지 않습니다."""
+    queries.load_overview_events()
+
+    sql, params = calls[0]
+    assert "person_filter" not in sql
+    assert "WHERE m.soldier_id = ANY" not in sql
+    assert params == {"high_bmi": queries.HIGH_BMI}
+
+
+def test_round_details_combines_summary_and_targets_in_one_query(calls):
+    """요약과 대상 명단을 단일 판정 CTE 조회로 가져오며 빈 명단도 보존합니다."""
+    calls.results["next"] = pd.DataFrame({
+        "SUMMARY_MEASURED": [2, 2],
+        "SUMMARY_MANAGED": [1, 1],
+        "SUMMARY_HIGH_BMI_FAIL": [1, 1],
+        "SUMMARY_MULTIPLE_FAIL": [0, 0],
+        "SUMMARY_WORSENED": [0, 0],
+        "SUMMARY_PERSISTENT_FAIL": [0, 0],
+        "SOLDIER_ID": ["s1", "s2"],
+        "SOLDIER_NAME": ["A", "B"],
+    })
+
+    summary, targets = queries.load_round_details(3)
+
+    assert summary["MEASURED"] == 2 and summary["MANAGED"] == 1
+    assert targets["SOLDIER_ID"].tolist() == ["s1", "s2"]
+    assert len(calls) == 1
+    assert "LEFT JOIN targets ON true" in calls[0][0]
+
+
+def test_round_details_targets_include_management_view_columns():
+    """병합 조회 결과도 기존 대상자 가공을 거쳐 표와 상세 카드의 컬럼을 제공해야 합니다."""
+    raw = pd.DataFrame({
+        "MESURE_DE": [20250101],
+        "BMI": [27.0],
+        "FAIL_COUNT": [2],
+        "FIRST_FAIL_COUNT": [1],
+        "STRENGTH_GRADE": [0],
+        "ENDURANCE_GRADE": [2],
+        "CARDIO_GRADE": [1],
+        "FLEXIBILITY_GRADE": [3],
+        "STRENGTH_FIRST_GRADE": [1],
+        "ENDURANCE_FIRST_GRADE": [2],
+        "CARDIO_FIRST_GRADE": [1],
+        "FLEXIBILITY_FIRST_GRADE": [3],
+        "STRENGTH_PERSISTENT": [False],
+        "ENDURANCE_PERSISTENT": [False],
+        "CARDIO_PERSISTENT": [False],
+        "FLEXIBILITY_PERSISTENT": [False],
+        "HIGH_BMI_FAIL": [True],
+        "MULTIPLE_FAIL": [True],
+        "WORSENED": [True],
+        "PERSISTENT_FAIL": [False],
+    })
+
+    targets = management_targets_data.prepare_round_targets(raw)
+
+    assert {
+        "BMI_GROUP",
+        "FAILED_EVENTS",
+        "FAIL_COUNT_CHANGE",
+        "NEW_FAILED_EVENTS",
+        "PERSISTENT_EVENTS",
+        "SELECTION_REASONS",
+    }.issubset(targets.columns)
+    assert targets.loc[0, "BMI_GROUP"] == "높음"
+    assert targets.loc[0, "SELECTION_REASONS"]
 
 
 def test_injury_distribution_passes_none_for_empty_filters(calls):
@@ -74,6 +158,13 @@ def test_injury_records_uses_same_filter_and_picked_category(calls):
     assert params == {"unit_regions": None, "unit_names": None, "ranks": ["병장"],
                       "location": "무릎", "severity": None}
     assert queries.INJURY_FILTER_WHERE in sql
+
+
+def test_injury_records_maps_display_unknown_label_to_source_value(calls):
+    """차트의 '미상' 선택을 기존 원본 분류값으로 조회합니다."""
+    queries.load_injury_records([], [], location='미상')
+
+    assert calls[0][1]['location'] == '미지정'
 
 
 def test_distribution_counts_picks_rows_by_grouping_column():

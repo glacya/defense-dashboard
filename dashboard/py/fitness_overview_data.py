@@ -46,10 +46,67 @@ def summary_tables(rounds: pd.DataFrame, events: pd.DataFrame,
     return rounds.reset_index(drop=True), events[keys + columns].reset_index(drop=True)
 
 
+def combine_rounds(rounds: pd.DataFrame) -> pd.DataFrame:
+    """조직별 집계를 합쳐 전체 지표를 회차별로 계산합니다."""
+    count_columns = [
+        "전체장병수", "측정인원", "미달인원", "관리대상인원",
+    ]
+    combined = rounds.groupby("회차", as_index=False)[count_columns].sum()
+    denominator = combined["측정인원"]
+    combined["미달률"] = combined["미달인원"].div(denominator.where(denominator.gt(0))).mul(100)
+    return combined
+
+
+def combine_events(events: pd.DataFrame) -> pd.DataFrame:
+    """조직별 종목 집계를 인원 기준으로 합쳐 비율을 다시 계산합니다."""
+    count_columns = [
+        "측정인원", "미달인원", "1등급인원", "2등급인원", "3등급인원",
+    ]
+    rows = []
+    for (number, event, unit), groups in events.groupby(
+        ["회차", "종목", "단위"], sort=True
+    ):
+        row = {
+            "회차": number,
+            "종목": event,
+            "단위": unit,
+            **groups[count_columns].sum().to_dict(),
+        }
+        valid = int(row["측정인원"])
+        row["미달률"] = row["미달인원"] / valid * 100 if valid else float("nan")
+
+        measured = groups.loc[groups["측정인원"].gt(0)]
+        measured_count = int(measured["측정인원"].sum())
+        if measured_count:
+            mean = (measured["평균"] * measured["측정인원"]).sum() / measured_count
+            within_variance = (
+                (measured["측정인원"] - 1).clip(lower=0)
+                * measured["표준편차"].fillna(0).pow(2)
+            ).sum()
+            between_variance = (
+                measured["측정인원"] * (measured["평균"] - mean).pow(2)
+            ).sum()
+            row["평균"] = mean
+            row["표준편차"] = (
+                ((within_variance + between_variance) / (measured_count - 1)) ** 0.5
+                if measured_count > 1 else float("nan")
+            )
+        else:
+            row["평균"] = float("nan")
+            row["표준편차"] = float("nan")
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
 @st.cache_data(ttl=DEFAULT_TTL, show_spinner=False)
-def load_overview() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    """전체 장병의 회차별·종목별 집계와 기준 설명을 돌려줍니다."""
-    rounds, events = summary_tables(queries.load_overview_rounds(), queries.load_overview_events())
+def load_overview(
+    soldier_ids: tuple[str, ...] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """선택 장병의 회차별·종목별 집계와 기준 설명을 돌려줍니다."""
+    rounds, events = summary_tables(
+        queries.load_overview_rounds(soldier_ids=soldier_ids),
+        queries.load_overview_events(soldier_ids=soldier_ids),
+    )
     period = queries.load_measure_period()
     metadata = {
         '생성일시': datetime.now(ZoneInfo('Asia/Seoul')).isoformat(),  # 조회 시각
@@ -61,14 +118,23 @@ def load_overview() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     return rounds, events, metadata
 
 
-def load_group_summary(group_column: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_group_summary(
+    group_column: str,
+    soldier_ids: tuple[str, ...] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """지역 또는 부대별·회차별 집계를 돌려줍니다(장병의 현재 소속 기준)."""
     if group_column not in GROUP_COLUMNS:
         raise ValueError(f"지원하지 않는 조직 구분입니다: {group_column}")
-    return _load_group_summary(group_column)
+    return _load_group_summary(group_column, soldier_ids)
 
 
 @st.cache_data(ttl=DEFAULT_TTL, show_spinner=False)
-def _load_group_summary(group_column: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    return summary_tables(queries.load_overview_rounds(group_column), queries.load_overview_events(group_column),
-                          grouped=True)
+def _load_group_summary(
+    group_column: str,
+    soldier_ids: tuple[str, ...] | None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    return summary_tables(
+        queries.load_overview_rounds(group_column, soldier_ids),
+        queries.load_overview_events(group_column, soldier_ids),
+        grouped=True,
+    )

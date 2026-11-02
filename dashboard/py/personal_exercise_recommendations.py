@@ -8,6 +8,8 @@ recommended_exercises에 유형(fitness_types)·운동 분류(exercise_classific
 
 import pandas as pd
 import streamlit as st
+
+from dashboard.common.table_widgets import render_dataframe
 from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.db import DEFAULT_TTL, run_query
@@ -88,7 +90,7 @@ def render_recommendation(grade: int, cluster: int, injuries: pd.DataFrame | Non
         if excluded.empty:
             st.caption('부상 부위와 겹쳐 제외된 운동이 없습니다.' if injury_present else '부상 자료 확인이 필요합니다.')
         else:
-            st.dataframe(excluded[['RECOMMENDED_EXERCISE', 'EXCLUSION_REASON']].rename(
+            render_dataframe(excluded[['RECOMMENDED_EXERCISE', 'EXCLUSION_REASON']].rename(
                 columns={'RECOMMENDED_EXERCISE': '운동명', 'EXCLUSION_REASON': '겹친 부상 부위'}),
                 hide_index=True, width='stretch')
     with available_panel:

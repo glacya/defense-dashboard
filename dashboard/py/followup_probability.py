@@ -1,7 +1,9 @@
 """장병별 다음 회차 미달 확률을 읽어 네 위험 등급을 계산합니다."""
 
 import pandas as pd
+import streamlit as st
 
+from dashboard.db import DEFAULT_TTL
 from dashboard.py import queries
 from data.scripts.utils import require_columns
 
@@ -33,6 +35,7 @@ def type_key(grade, cluster) -> str:
     return f'{int(grade)}-{int(cluster)}'
 
 
+@st.cache_data(ttl=DEFAULT_TTL, show_spinner=False)
 def load_followup_population() -> tuple[pd.DataFrame, pd.DataFrame, int]:
     """(확률이 있는 장병별 신상·위험 등급·최신 측정·체력유형, 유형 16개 표, 확률이 없는 장병 수)를 돌려줍니다."""
     rows = queries.load_followup_population()

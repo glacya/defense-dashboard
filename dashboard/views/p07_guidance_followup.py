@@ -4,16 +4,18 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.py.management_store import DB_TABLES, load_records
-from dashboard.py.management_forms import editor, LABELS
+from dashboard.py.management_forms import display_records, editor, LABELS
 from dashboard.py.followup_probability import RISK_LEVELS, RISK_RANGES, load_followup_population
 from dashboard.py.group_followup import render_group_followup
 from dashboard.py.fitness_judgment import EVENTS
 from data.scripts.fitness_standards import grade_cut
+from dashboard.common.overview_widgets import render_metric_cards
+from dashboard.common.charts import make_bar
+from dashboard.common.table_widgets import render_dataframe
 
 KINDS=['followup_records']
 
@@ -114,7 +116,7 @@ def render() -> None:
     st.caption(f'현재 조회: {" / ".join(chosen) if chosen else "전체 등급"} · {len(eligible):,}명')
     # 측정값은 참고 정보(장병별 최신 측정)이며, 유형은 그 측정의 체력유형이다.
     people=population.loc[population.SOLDIER_ID.isin(eligible)].sort_values('FAILURE_PROBABILITY',ascending=False).copy()
-    st.subheader('운동유형 (16)')
+    st.subheader('운동 유형 (16)')
     st.caption('장병별 최신 측정의 종목별 백분위평균4등급 × 군집 4개입니다. 등급별 유형 버튼을 여러 개 선택할 수 있습니다. 인원은 위에서 선택한 확률 등급 기준입니다.')
     counts=people.groupby('FITNESS_TYPE_KEY').SOLDIER_ID.nunique()
     selected_types=[key for key in st.session_state.get('followup_fitness_types', [])
@@ -185,7 +187,7 @@ def render() -> None:
     if selected_types:
         people=people.loc[people.FITNESS_TYPE_KEY.isin(selected_types)].copy()
     eligible=set(people.SOLDIER_ID)
-    st.caption(f'최종 대상 {len(eligible):,}명 · 확률 등급과 운동유형 조건을 모두 적용합니다.')
+    st.caption(f'최종 대상 {len(eligible):,}명 · 확률 등급과 운동 유형 조건을 모두 적용합니다.')
     st.subheader('후속조치 진행 현황')
     col1,col2=st.columns(2)
     owner=col1.selectbox('집계 담당자',['전체',*sorted(records['followup_records'].loc[records['followup_records'].SOLDIER_ID.isin(eligible),'ASSIGNEE'].unique())])
@@ -205,25 +207,39 @@ def render() -> None:
     completed=int(latest_followup.STATUS.eq('완료').sum())
     ongoing=int(latest_followup.STATUS.eq('진행 중').sum())
     waiting=total-completed-ongoing
-    for column,label,value in zip(st.columns(5),['관리 대상 인원','완료','진행 중','점검 대기','완료율'],
-        [f'{total:,}명',f'{completed:,}명',f'{ongoing:,}명',f'{waiting:,}명',f'{completed/total*100:.1f}%' if total else '해당 없음']):
-        column.metric(label,value,border=True)
+    render_metric_cards(
+        list(zip(
+            ['total', 'completed', 'ongoing', 'waiting', 'completion_rate'],
+            ['관리 대상 인원','완료','진행 중','점검 대기','완료율'],
+            [f'{total:,}명',f'{completed:,}명',f'{ongoing:,}명',f'{waiting:,}명',f'{completed/total*100:.1f}%' if total else '해당 없음'],
+        )),
+        container_key=None,
+        key_prefix='followup_overview_card',
+        clickable=False,
+        clickable_keys=set(),
+        scope_signature='',
+        help_text='',
+    )
     st.caption('완료율 = 완료 인원 ÷ 선택 등급 대상 인원. 상태는 담당자·기간 조건에 맞는 장병별 최신 상담 기록 기준입니다. 해당 기록이 없거나 최신 상태가 점검 대기·취소이면 점검 대기에 포함합니다. 안전만 선택한 경우에도 선택 인원을 기준으로 집계합니다.')
     if not scope.empty:
         counts=scope.STATUS.value_counts().rename_axis('상태').reset_index(name='건수')
-        st.plotly_chart(px.bar(counts,x='상태',y='건수',text='건수'),width='stretch')
+        st.plotly_chart(make_bar(counts,x='상태',y='건수',text='건수'),width='stretch')
     else:
         st.info('장병 정보는 연결되어 있습니다. 현재 범위의 후속조치 입력 기록이 아직 0건입니다.')
     with st.expander('후속조치 전체 명단·점검 예정'):
         view=scope.copy()
         view['점검기한경과']=(view.NEXT_CHECK_DATE.lt(today.isoformat())&~view.STATUS.isin(['완료','취소']))
-        st.dataframe(view.rename(columns=LABELS),hide_index=True,width='stretch')
+        names=dict(zip(population.SOLDIER_ID,population.SOLDIER_NAME))
+        if view.empty:
+            st.info('기록 없음')
+        else:
+            render_dataframe(display_records(view,names),hide_index=True,width='stretch')
     mode=st.radio('후속조치 등록 방식',['장병별','그룹별'],horizontal=True,key='followup-assignment-mode')
     if mode=='그룹별':
         render_group_followup(people)
         st.stop()
     st.subheader('관리할 장병')
-    search=st.text_input('이름·장병번호 검색')
+    search=st.text_input('이름 또는 군번으로 검색')
     shown=people.loc[people.SOLDIER_NAME.str.contains(search,regex=False)|people.SOLDIER_ID.str.contains(search,regex=False)] if search else people
     st.caption(f'검색 결과 {shown.SOLDIER_ID.nunique():,}명')
     if shown.empty:
@@ -234,11 +250,11 @@ def render() -> None:
     with st.container(border=True):
         st.subheader('선택 장병 정보')
         st.write(f'**{person.SOLDIER_NAME} · {person.RANK_NAME} · {person.UNIT_NAME}**')
-        st.caption(f'장병번호: {soldier} · 신상은 합성 자료입니다.')
+        st.caption(f'군번: {soldier} · 신상은 합성 자료입니다.')
         probability_col,level_col=st.columns(2)
         probability_col.metric('다음 체력검정 미달 확률',f'{person.FAILURE_PROBABILITY:.2%}')
         level_col.metric('대상자 등급',person.RISK_LEVEL)
-        st.write('운동유형: '+(f'백분위 {int(person.AVERAGE_PERCENTILE_GRADE)}등급 · {person.TYPE_NAME}'
+        st.write('운동 유형: '+(f'백분위 {int(person.AVERAGE_PERCENTILE_GRADE)}등급 · {person.TYPE_NAME}'
                             if pd.notna(person.FITNESS_TYPE_KEY) else '최신 측정 분류 없음'))
         if pd.notna(person.MESURE_DE):
             st.caption(f'참고용 최신 측정 · 측정일 {person.MESURE_DE:%Y-%m-%d}')
@@ -250,12 +266,13 @@ def render() -> None:
             for event,(label,unit) in EVENTS.items():
                 measurements.append({'종목':label,'측정값':person[event],'단위':unit,
                     '3등급 하한':grade_cut(event,3)})
-            st.dataframe(pd.DataFrame(measurements),hide_index=True,width='stretch')
+            render_dataframe(pd.DataFrame(measurements),hide_index=True,width='stretch')
         else:
             st.info('참고용 측정 정보가 없습니다. 확률 등급에 따른 관리 기록은 이용할 수 있습니다.')
     st.caption('상단 완료율은 선택한 등급에 담당자·기간 필터를 적용한 집계입니다. 아래 기록은 선택 장병 기준입니다.')
     st.subheader('상담·후속조치')
-    editor('followup_records',soldier,records,pd.DataFrame(columns=['SOLDIER_ID']))
+    soldier_names=dict(zip(population.SOLDIER_ID,population.SOLDIER_NAME))
+    editor('followup_records',soldier,records,pd.DataFrame(columns=['SOLDIER_ID']),soldier_names)
     with st.expander('입력 자료 보관 안내'):
         st.write(f"저장 위치: DB {DB_TABLES['followup_records']} 테이블")
         st.write('입력 기록은 분석 데이터와 따로 저장하며 분석 재실행으로 초기화하지 않습니다. 실제 확인한 체력 지도·상담 내용만 입력합니다. 부상 회복·운동 제한은 8번에서 관리합니다.')
@@ -268,7 +285,7 @@ def render() -> None:
     roster=shown[roster_columns].copy()
     roster['FAILURE_PROBABILITY']=roster.FAILURE_PROBABILITY.mul(100)
     roster=roster.rename(columns={
-        'SOLDIER_ID':'장병번호','SOLDIER_NAME':'이름','RANK_NAME':'계급','UNIT_NAME':'소속',
+        'SOLDIER_ID':'군번','SOLDIER_NAME':'이름','RANK_NAME':'계급','UNIT_NAME':'소속',
         'FAILURE_PROBABILITY':'미달 확률(%)','RISK_LEVEL':'대상자 등급',
-        'AVERAGE_PERCENTILE_GRADE':'백분위 등급','CLUSTER':'군집','TYPE_NAME':'운동유형'})
-    st.dataframe(roster,hide_index=True,width='stretch')
+        'AVERAGE_PERCENTILE_GRADE':'백분위 등급','CLUSTER':'군집','TYPE_NAME':'운동 유형'})
+    render_dataframe(roster,hide_index=True,width='stretch')

@@ -6,7 +6,11 @@ import pytest
 
 from dashboard.py import fitness_overview_data
 from dashboard.py.fitness_overview_data import summary_tables
-from dashboard.views.p01_fitness_overview import _combine_events, _combine_rounds
+from dashboard.views.p01_fitness_overview import (
+    _combine_events,
+    _combine_rounds,
+    _round_change_chart,
+)
 
 
 def _sql_results() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -78,3 +82,18 @@ def test_combined_group_summaries_use_weighted_rates_and_means():
     assert combined_events["미달률"] == pytest.approx(100 / 3)
     assert combined_events["평균"] == 12.0
     assert combined_events["표준편차"] == pytest.approx(14**0.5, rel=1e-6)
+
+
+def test_round_change_chart_uses_categorical_rounds_and_shared_3d_bars():
+    chart = _round_change_chart(pd.DataFrame({
+        "회차": [1, 2],
+        "측정인원": [100, 90],
+        "미달인원": [20, 18],
+        "관리대상인원": [15, 14],
+    }))
+
+    front_faces = [trace for trace in chart.data if trace.fillgradient.colorscale]
+    assert len(front_faces) == 6
+    assert all(trace.type == "scatter" for trace in chart.data)
+    assert chart.layout.xaxis.ticktext == ("1차", "2차")
+    assert chart.layout.xaxis.title.text == "측정 회차"

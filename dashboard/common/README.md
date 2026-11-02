@@ -6,10 +6,14 @@
 |---|---|
 | `assets.py` | `inject_assets()`: `config.CSS_PATH`(`dashboard/style.css`)를 `<style>`로 페이지에 넣습니다. `st.markdown`은 빈 줄에서 HTML 블록을 끊으므로 빈 줄을 지우고 넣습니다. `load_text(path)`는 파일을 캐시해 읽으며, `LIVE_RELOAD`가 켜져 있으면 파일 수정 시각을 캐시 키로 써서 저장 즉시 반영합니다. `app.py`에서만 호출합니다. |
 | `brand.py` | 사이드바 로고·제목(`brand_html()`) |
-| `charts.py` | 색상 상수(`CHART_PALETTE`, `CHART_CONTINUOUS_SCALE`, `BMI_COLORS`, `GRADE_COLORS` 등)의 원본. `apply_chart_layout(figure, height, **layout)`는 Plotly 차트에 공통 밝은 테마를, `style_altair(chart, height)`는 Altair 차트에 배경·축 색을 적용합니다. `show_plotly(figure)`는 너비 자동·모드바 숨김으로 그립니다. |
+| `charts.py` | 기본 차트 색상(`CHART_PALETTE`, `PIE_PALETTE`, `BMI_COLORS`, `GRADE_COLORS` 등)과 공통 디자인의 원본. `make_bar()`는 범주형 막대를 개별 세로 그라데이션과 입체 측면으로, `make_line()`은 기본 팔레트로 표시합니다. `apply_chart_layout(figure, height, **layout)`과 `style_altair(chart, height)`는 공통 테마를 적용합니다. 개별 차트 높이·여백은 호출하는 view에서 지정합니다. |
+| `chart_widgets.py` | 재사용 Plotly 파이·스파이더 차트 컴포넌트. 차트 높이는 생성하는 view에서 필수로 지정합니다. |
 | `filters.py` | `render_personnel_cards(people, prefix, show_ranks=True)`: 지역(도 단위로 묶음)·부대·계급 카드를 그리고 `CardSelection`(선택 범위의 지역·부대·계급과 조건에 맞는 행)을 돌려줍니다. 아무것도 고르지 않으면 전체입니다. `prefix`가 같은 화면끼리는 선택이 공유됩니다. |
 | `formatting.py` | 화면 공용 상수(`NAV_STATE_KEY`, `BMI_CATEGORY_ORDER`, `RANK_ORDER`, `FITNESS_ITEM_LABELS`, `GRADE_LABELS`), `classify_bmi()`(저체중 <18.5, 정상 <25, 과체중 <30, 비만 ≥30), `add_deficiency_flags()`(종목별 미달·등급 표시), `filter_signature(*values)`(조건 조합을 짧은 해시로 바꿔 위젯 `key`에 씀) |
-| `widgets.py` | `render_soldier_details(soldier, history, injuries)`: 장병 기본 정보·회차별 변화·부상 이력 패널. `PieChartWidget`·`RadarChartWidget`: 파이·레이더 차트의 기본 정의(홈 화면이 상속해 씀) |
+| `overview_widgets.py` | 개요 화면 공용 UI. `render_metric_cards()`는 클릭 가능 여부를 포함한 요약 카드 표시를, `render_paged_plotly_chart()`는 이전·다음 버튼과 페이지 캡션이 있는 Plotly 차트 표시를 담당합니다. 데이터 집계와 차트 데이터 생성은 하지 않습니다. |
+| `widgets.py` | `render_soldier_details(soldier, history, injuries)`: 장병 기본 정보·회차별 변화·부상 이력 패널. |
+
+앱 전체 Streamlit 테마 색상은 저장소 루트의 `.streamlit/config.toml`에서 설정합니다. Plotly·Altair 기본 팔레트와 차트 레이아웃은 `charts.py`에서 관리합니다.
 
 ## style.css
 

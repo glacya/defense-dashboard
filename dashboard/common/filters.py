@@ -147,7 +147,7 @@ def render_personnel_cards(
                                 )
 
         else:
-            unit_area.empty()
+            unit_area.info('지역을 선택하세요.')
 
     # 계급 (현재 지역·부대 범위 기준 인원수)
     if show_ranks:

@@ -1,17 +1,27 @@
 """대시보드 홈: 체력·부상·후속조치 현황을 native Streamlit으로 표시합니다."""
 
 import html
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
+from plotly.subplots import make_subplots
 from sqlalchemy.exc import SQLAlchemyError
 
-from dashboard.common.charts import CHART_CONTINUOUS_SCALE, CHART_PALETTE
+from dashboard.common.charts import (
+    CHART_PALETTE,
+    FITNESS_DEVIATION_SCALE,
+    LIGHT_TEXT,
+    MUTED_TEXT,
+    NAVY_BORDER,
+    make_choropleth,
+)
 from dashboard.common.formatting import FITNESS_ITEM_LABELS
-from dashboard.common.widgets import PieChartWidget, RadarChartWidget
+from dashboard.common.chart_widgets import PieChartWidget, RadarChartWidget
 from dashboard.py import queries
+from dashboard.py.fitness_judgment import EVENTS
 from dashboard.py.followup_probability import FOLLOWUP_THRESHOLD
 from dashboard.py.management_store import load_completion_counts
 from dashboard.py.personal_exercise_recommendations import load_recommendation
@@ -22,15 +32,7 @@ FITNESS_LEVELS = ["1등급", "2등급", "3등급", "4등급"]
 # figure에는 URL만 넣고 브라우저의 plotly.js가 파일을 직접 받아 재사용하므로, 다시 그릴 때마다
 # 수 MB의 경계 좌표를 서버에서 만들고 직렬화하지 않는다.
 REGION_GEOJSON_PATH = Path(__file__).resolve().parents[1] / "static" / "korea_provinces.geojson"
-REGION_GEOJSON_URL = "app/static/korea_provinces.geojson"
-
-
-class MainPieChart(PieChartWidget):
-    """메인 대시보드에서 사용하는 파이차트 위젯."""
-
-
-class MainRadarChart(RadarChartWidget):
-    """메인 대시보드에서 사용하는 개인 운동유형 위젯."""
+REGION_GEOJSON_URL = "app/static/korea_provinces.geojson?v=2"
 
 
 def _unit_table(units: pd.DataFrame) -> pd.DataFrame:
@@ -47,7 +49,7 @@ def _province_of(region_name: str) -> str | None:
     province_keywords = (
         ("전남광주", "전라남도"),
         ("서울", "서울특별시"), ("부산", "부산광역시"), ("대구", "대구광역시"),
-        ("인천", "인천광역시"), ("광주", "광주광역시"), ("대전", "대전광역시"),
+        ("인천", "인천광역시"), ("광주", "전라남도"), ("대전", "대전광역시"),
         ("울산", "울산광역시"), ("세종", "세종특별자치시"), ("경기", "경기도"),
         ("강원", "강원도"), ("충청북", "충청북도"), ("충북", "충청북도"),
         ("충청남", "충청남도"), ("충남", "충청남도"), ("전라북", "전라북도"),
@@ -69,20 +71,130 @@ def _rate(completed: int, denominator: int, records: int, empty_label: str) -> s
     return f"{completed / denominator * 100:.1f}%"
 
 
-def _render_kpis(total: int, injury_total: int) -> None:
-    try:
-        non_safe = queries.load_non_safe_count(FOLLOWUP_THRESHOLD)
-        risk_value = f"{non_safe / max(total, 1) * 100:.1f}%"
-        risk_detail = f"{non_safe:,}명 · 안전 제외"
-    except (ValueError, KeyError, SQLAlchemyError):
+def _fitness_deviation_band(deviation: float) -> int:
+    """전체 충족률 대비 편차를 5개 색상 구간(단위: %p)으로 나눕니다."""
+    if deviation <= -5:
+        return 0
+    if deviation < -2.5:
+        return 1
+    if deviation < 2.5:
+        return 2
+    if deviation < 5:
+        return 3
+    return 4
+
+
+def _fitness_mean_figure(round_means: pd.DataFrame) -> go.Figure | None:
+    """가장 최근 회차의 종목별 평균을 단위별 축을 가진 막대 차트로 만듭니다."""
+    event_codes = list(EVENTS)
+    if round_means.empty or not {"ROUND", "MEASURED", *event_codes}.issubset(round_means.columns):
+        return None
+    available = round_means.dropna(subset=["ROUND"]).sort_values("ROUND")
+    if available.empty:
+        return None
+
+    latest = available.iloc[-1]
+    figure = make_subplots(rows=1, cols=4, horizontal_spacing=0.08)
+    for index, (event, (label, unit)) in enumerate(EVENTS.items()):
+        value = pd.to_numeric(latest[event], errors="coerce")
+        has_value = pd.notna(value)
+        value = float(value) if has_value else 0.0
+        column = index + 1
+        figure.add_trace(
+            go.Bar(
+                x=[label],
+                y=[value],
+                marker_color=CHART_PALETTE[index % len(CHART_PALETTE)],
+                width=0.58,
+                text=[f"{value:,.1f}" if has_value else "자료 없음"],
+                textposition="outside",
+                textfont=dict(size=9),
+                cliponaxis=False,
+                hovertemplate=(
+                    f"{label} 평균: %{{y:,.1f}} {unit}<extra></extra>"
+                    if has_value
+                    else "표시할 평균 자료가 없습니다.<extra></extra>"
+                ),
+            ),
+            row=1,
+            col=column,
+        )
+        figure.update_xaxes(
+            showgrid=False,
+            showticklabels=True,
+            tickfont=dict(size=9, color=LIGHT_TEXT),
+            tickvals=[label],
+            ticktext=[
+                {
+                    "근력": "근력<br>(%)",
+                    "근지구력": "근지구<br>력<br>(회)",
+                    "심폐지구력": "심폐<br>지구력<br>(mL/kg/min)",
+                    "유연성": "유연성<br>(cm)",
+                }[label]
+            ],
+            ticks="",
+            fixedrange=True,
+            row=1,
+            col=column,
+        )
+        figure.update_yaxes(
+            range=[0, max(value * 1.4, 1)] if has_value else [0, 1],
+            visible=False,
+            fixedrange=True,
+            row=1,
+            col=column,
+        )
+
+    figure.update_layout(
+        height=270,
+        margin=dict(l=8, r=8, t=35, b=46),
+        bargap=0.42,
+        showlegend=False,
+        template="plotly_white",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=LIGHT_TEXT),
+    )
+    return figure
+
+
+def _render_fitness_means(round_means: pd.DataFrame) -> None:
+    st.markdown("#### 종목별 체력 평균")
+    chart = _fitness_mean_figure(round_means)
+    if chart is None:
+        st.info("표시할 회차별 체력 평균 자료가 없습니다.")
+        return
+    latest = round_means.dropna(subset=["ROUND"]).sort_values("ROUND").iloc[-1]
+    st.caption(f"{int(latest['ROUND'])}차 측정 · 유효 측정 {int(latest['MEASURED']):,}명")
+    st.plotly_chart(
+        chart,
+        width="stretch",
+        key="home-fitness-event-means",
+        config={"displayModeBar": False},
+    )
+
+
+def _render_kpis(
+    total: int,
+    injury_total: int,
+    non_safe_count: int | None,
+    completion_counts: dict[str, int] | None,
+) -> None:
+    if non_safe_count is None:
         non_safe = 0
         risk_value = "기록 없음"
         risk_detail = "미달 확률 자료 확인 필요"
-    try:
-        # 기록 테이블이 아직 없으면(SQLAlchemyError) 완료율만 비워 두고 홈 화면은 계속 보여 준다.
-        counts = load_completion_counts(FOLLOWUP_THRESHOLD)
-    except (ValueError, SQLAlchemyError):
+        st.warning("체력 위험인원 자료를 불러오지 못했습니다.")
+    else:
+        non_safe = non_safe_count
+        risk_value = f"{non_safe / max(total, 1) * 100:.1f}%"
+        risk_detail = f"{non_safe:,}명 · 안전 제외"
+
+    if completion_counts is None:
         counts = dict.fromkeys(["fitness_records", "fitness_completed", "injury_records", "injury_completed"], 0)
+        st.warning("후속조치 완료율 자료를 불러오지 못했습니다.")
+    else:
+        counts = completion_counts
     fitness_completion = (_rate(counts["fitness_completed"], non_safe, counts["fitness_records"], "기록 없음")
                           if non_safe else "기록 없음")
     fitness_detail = f'경계1~3등급 {non_safe:,}명 기준 · 안전 제외' if non_safe else "미달 확률 자료 확인 필요"
@@ -106,7 +218,7 @@ def _render_kpis(total: int, injury_total: int) -> None:
         "<section class='home-readiness-banner'>"
         "<div class='home-readiness-banner__copy'>"
         "<div class='home-readiness-banner__eyebrow'>DEFENSE READINESS</div>"
-        "<div class='home-readiness-banner__title'>전투준비태세 종합 현황</div>"
+        "<div class='home-readiness-banner__title'>전투체력·부상 관리 종합 현황</div>"
         "<div class='home-readiness-banner__description'>준비된 오늘, 더 안전한 내일입니다.</div>"
         "</div>"
         "<div class='home-readiness-banner__cards'>"
@@ -117,8 +229,9 @@ def _render_kpis(total: int, injury_total: int) -> None:
 
 
 def _render_fitness_variance(unit: pd.DataFrame) -> None:
-    with st.container(border=True, height=455):
-        st.subheader("부대·지역별 체력 편차")
+    with st.container(border=True, height="content"):
+        st.subheader("지역별 체력 기준 충족률 편차")
+        st.caption("전체 장병 기준 충족률과의 차이(%p)를 2.5%p 간격으로 색상 구분합니다.")
         unit = unit.assign(
             지역=unit["REGION_NAME"].map(_province_of),
             충족인원=unit["충족률"] / 100 * unit["인원"],
@@ -136,29 +249,74 @@ def _render_fitness_variance(unit: pd.DataFrame) -> None:
             포함지역=("REGION_NAME", lambda names: "·".join(sorted(set(map(str, names))))),
         )
         region["충족률"] = region["충족인원"] / region["인원"].clip(lower=1) * 100
+        overall_rate = region["충족인원"].sum() / max(region["인원"].sum(), 1) * 100
+        region["편차"] = region["충족률"] - overall_rate
+        region["편차구간"] = region["편차"].map(_fitness_deviation_band)
         if not REGION_GEOJSON_PATH.exists():
             st.warning(f"시·도 경계 파일을 찾을 수 없습니다: {REGION_GEOJSON_PATH}")
             return None
-        chart = px.choropleth(
+        chart = make_choropleth(
             region,
             geojson=REGION_GEOJSON_URL,
             locations="지역",
             featureidkey="properties.name",
-            color="충족률",
+            color="편차구간",
             hover_name="지역",
-            hover_data={"충족률": ":.1f", "인원": ":,", "포함지역": True},
-            color_continuous_scale=list(CHART_CONTINUOUS_SCALE),
-            range_color=(0, 100),
-            labels={"충족률": "체력 충족률(%)", "인원": "인원(명)", "포함지역": "포함 지역"},
+            hover_data={
+                "편차구간": False,
+                "편차": ":+.1f",
+                "충족률": ":.1f",
+                "인원": ":,",
+                "포함지역": True,
+            },
+            color_continuous_scale=list(FITNESS_DEVIATION_SCALE),
+            range_color=(0, 4),
+            labels={
+                "편차": "전체 대비 편차(%p)",
+                "충족률": "체력 기준 충족률(%)",
+                "인원": "인원(명)",
+                "포함지역": "포함 지역",
+            },
         )
-        chart.update_traces(marker=dict(line=dict(width=1, color="#FFFFFF")))
+        chart.update_traces(marker=dict(line=dict(width=1.25, color="#FFFFFF")))
         chart.update_geos(
-            fitbounds="locations", visible=False, bgcolor="#EAF2F9",
-            projection_type="mercator", showcountries=False,
+            fitbounds="locations",
+            visible=False,
+            bgcolor="rgba(0,0,0,0)",
+            projection_type="mercator",
+            showcountries=False,
+            showcoastlines=False,
+            domain=dict(x=[0, 0.92], y=[0, 1]),
         )
-        chart.update_layout(height=360, margin=dict(t=8, b=8, l=4, r=4),
-                            coloraxis_colorbar=dict(title="충족률(%)"),
-                            dragmode=False)  # 지도 드래그 이동 막기(클릭 선택은 유지)
+        chart.update_layout(
+            height=600,
+            margin=dict(t=4, b=4, l=4, r=36),
+            template="plotly_white",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=LIGHT_TEXT),
+            hoverlabel=dict(
+                bgcolor="#FFFFFF",
+                bordercolor=NAVY_BORDER,
+                font=dict(color=LIGHT_TEXT, size=12),
+            ),
+            coloraxis_colorbar=dict(
+                title=dict(text="편차(%p)", side="top"),
+                orientation="v",
+                x=0.935,
+                xanchor="left",
+                y=0.5,
+                yanchor="middle",
+                len=0.5,
+                thickness=6,
+                outlinewidth=0,
+                tickvals=[0, 1, 2, 3, 4],
+                ticktext=["≤−5", "−5~−2.5", "−2.5~+2.5", "+2.5~+5", "≥+5"],
+                tickfont=dict(size=8, color=MUTED_TEXT),
+                title_font=dict(size=9, color=LIGHT_TEXT),
+            ),
+            dragmode=False,
+        )  # 지도 드래그 이동 막기(클릭 선택은 유지)
         selection = st.plotly_chart(
             chart,
             width="stretch",
@@ -199,8 +357,10 @@ def _pie(
     legend_position: str = "left",
     title_size: str | None = None,
     show_percent: bool = True,
+    *,
+    key: str,
 ) -> None:
-    MainPieChart(
+    PieChartWidget(
         data=data,
         names=names,
         title=title,
@@ -211,33 +371,9 @@ def _pie(
         legend_position=legend_position,
         title_size=title_size,
         show_percent=show_percent,
+        key=key,
     ).render()
     return
-
-    st.subheader(title)
-    palette = colors or PALETTE
-    labels = data[names].astype(str).tolist()
-    color_map = {label: palette[index % len(palette)] for index, label in enumerate(labels)}
-    figure = px.pie(data, names=names, values="인원", hole=0.55, color=names,
-                    color_discrete_map=color_map)
-    figure.update_traces(textinfo="none")
-    figure.update_layout(height=330, margin=dict(t=10, b=10, l=10, r=10), showlegend=False)
-    st.plotly_chart(figure, width="stretch")
-    if show_legend:
-        total = max(float(data["인원"].sum()), 1.0)
-        legend = []
-        for index, row in data.reset_index(drop=True).iterrows():
-            label = str(row[names])
-            count = int(row["인원"])
-            percent = count / total * 100
-            color = color_map[label]
-            legend.append(
-                f"<div style='display:flex;justify-content:space-between;gap:8px;line-height:1.7'>"
-                f"<span><span style='display:inline-block;width:10px;height:10px;background:{color};"
-                f"border-radius:2px;margin-right:6px'></span>{html.escape(label)}</span>"
-                f"<span>{count:,}명 ({percent:.1f}%)</span></div>"
-            )
-        st.markdown("<div style='font-size:.78rem'>" + "".join(legend) + "</div>", unsafe_allow_html=True)
 
 
 def _scope_summary(units: pd.DataFrame) -> dict:
@@ -261,7 +397,71 @@ def _precompute_scope_summaries(unit: pd.DataFrame) -> dict[str, dict]:
     return summaries
 
 
-def _render_people_grade(unit: pd.DataFrame, selected_region: str | None) -> None:
+def _comparison_scopes(
+    summaries: dict[str, dict],
+    selected_region: str | None,
+    selected_unit: str | None,
+) -> tuple[tuple[str, dict], tuple[str, dict]] | None:
+    if selected_region is None:
+        return None
+
+    province = summaries.get(f"지역::{selected_region}")
+    if province is None:
+        return None
+    if selected_unit:
+        selected = summaries.get(f"부대::{selected_region}::{selected_unit}")
+        if selected is None:
+            return None
+        return (selected_region, province), (selected_unit, selected)
+    return (selected_region, province), ("전국", summaries["전체"])
+
+
+def _default_selected_unit(selected_unit: str | None, visible_units: list[str]) -> str | None:
+    if selected_unit in visible_units:
+        return selected_unit
+    return visible_units[0] if len(visible_units) == 1 else None
+
+
+def _render_grade_pie(summary: dict, title: str, height: int, key: str) -> None:
+    _pie(
+        summary["grades"],
+        "등급",
+        title,
+        colors=["#2563EB", "#14B8A6", "#F59E0B", "#F15B70"],
+        show_legend=True,
+        height=height,
+        legend_position="bottom",
+        title_size="0.82rem",
+        center_text=f'{summary["total"]:,}<br>명',
+        key=key,
+    )
+
+
+def _render_multiple_fail_pie(summary: dict, title: str, height: int, key: str) -> None:
+    total = summary["total"]
+    under_ratio = pd.DataFrame({
+        "구분": ["2개 이상 미달", "기준 충족"],
+        "인원": [summary["under"], max(total - summary["under"], 0)],
+    })
+    _pie(
+        under_ratio,
+        "구분",
+        title,
+        colors=[CHART_PALETTE[4], CHART_PALETTE[2]],
+        show_legend=True,
+        height=height,
+        legend_position="bottom",
+        title_size="0.82rem",
+        center_text=f"{total:,}<br>명",
+        key=key,
+    )
+
+
+def _render_people_grade(
+    unit: pd.DataFrame,
+    selected_region: str | None,
+    round_means: pd.DataFrame,
+) -> None:
     with st.container(border=True, height="content"):
         summaries = _precompute_scope_summaries(unit)
         region_units = unit.copy()
@@ -271,12 +471,14 @@ def _render_people_grade(unit: pd.DataFrame, selected_region: str | None) -> Non
         ) if selected_region else []
 
         selected_unit = st.session_state.get("home_selected_unit")
-        if selected_region and selected_unit not in visible_units:
-            selected_unit = None
-            st.session_state["home_selected_unit"] = None
+        if selected_region:
+            selected_unit = _default_selected_unit(selected_unit, visible_units)
+            st.session_state["home_selected_unit"] = selected_unit
 
         if selected_region:
             st.subheader(selected_region)
+            if len(visible_units) == 1:
+                st.caption(f"이 지역은 부대가 하나뿐이어서 해당 부대를 자동 선택했습니다: {visible_units[0]}")
             page_size = 4
             page_count = max((len(visible_units) + page_size - 1) // page_size, 1)
             page = min(max(int(st.session_state.get("home_unit_page", 0)), 0), page_count - 1)
@@ -318,34 +520,32 @@ def _render_people_grade(unit: pd.DataFrame, selected_region: str | None) -> Non
             st.subheader("전체 장병 정보")
             summary_key = "전체"
 
-        summary = summaries.get(summary_key, summaries["전체"])
-        total = summary["total"]
+        comparison = _comparison_scopes(summaries, selected_region, selected_unit)
+        if comparison is None:
+            summary = summaries.get(summary_key, summaries["전체"])
+            grade_columns = st.columns(2)
+            with grade_columns[0]:
+                _render_grade_pie(summary, "체력수준 등급 비율", 220, "home-summary-grade")
+            with grade_columns[1]:
+                _render_multiple_fail_pie(summary, "2개 이상 미달 비율", 220, "home-summary-failure")
+            _render_fitness_means(round_means)
+            return
+
+        (left_name, left_summary), (right_name, right_summary) = comparison
+        st.caption(f"{left_name} · {right_name} 비교")
         grade_columns = st.columns(2)
         with grade_columns[0]:
-            _pie(
-                summary["grades"],
-                "등급",
-                "체력수준 등급 비율",
-                colors=["#2563EB", "#14B8A6", "#F59E0B", "#F15B70"],
-                show_legend=True,
-                height=220,
-                legend_position="bottom",
-                title_size="0.9rem",
-                center_text=f"{total:,}<br>명",
-            )
+            _render_grade_pie(left_summary, f"{left_name} 체력수준 등급", 165, "home-compare-grade-left")
         with grade_columns[1]:
-            under = summary["under"]
-            under_ratio = pd.DataFrame({"구분": ["2개 이상 미달", "기준 충족"], "인원": [under, max(total - under, 0)]})
-            _pie(
-                under_ratio,
-                "구분",
-                "2개 이상 미달 비율",
-                colors=[CHART_PALETTE[4], CHART_PALETTE[2]],
-                show_legend=True,
-                height=220,
-                legend_position="bottom",
-                title_size="0.9rem",
-                center_text=f"{total:,}<br>명",
+            _render_grade_pie(right_summary, f"{right_name} 체력수준 등급", 165, "home-compare-grade-right")
+        failure_columns = st.columns(2)
+        with failure_columns[0]:
+            _render_multiple_fail_pie(
+                left_summary, f"{left_name} 2개 이상 미달", 165, "home-compare-failure-left"
+            )
+        with failure_columns[1]:
+            _render_multiple_fail_pie(
+                right_summary, f"{right_name} 2개 이상 미달", 165, "home-compare-failure-right"
             )
 
 
@@ -373,12 +573,13 @@ def _render_injuries(summary: dict, total_soldiers: int) -> None:
                 show_legend=True,
                 center_text=f"{total:,}<br>&#47749;",
                 title_size="0.9rem",
+                key=f"home-injury-{name}",
             )
 
 
 def _render_exercise_type(types: pd.DataFrame) -> tuple[int, int] | None:
     with st.container(border=True, height="content"):
-        st.subheader("운동유형")
+        st.subheader("운동 유형")
         selector_columns = st.columns(2)
         with selector_columns[0]:
             selected_grade = st.selectbox(
@@ -400,7 +601,7 @@ def _render_exercise_type(types: pd.DataFrame) -> tuple[int, int] | None:
         # 백분위는 분석 단계가 전체 측정 안에서 매겨 저장한 값(사용자 결정, 다시 매기지 않음)
         profile = queries.load_home_type_profile(selected_grade, selected_cluster)
         st.caption(type_names.get(selected_cluster, "선택 유형"))
-        MainRadarChart(
+        RadarChartWidget(
             labels=list(FITNESS_ITEM_LABELS.values()),
             values=[float(profile[event]) for event in FITNESS_ITEM_LABELS],
             height=270,
@@ -410,7 +611,7 @@ def _render_exercise_type(types: pd.DataFrame) -> tuple[int, int] | None:
 
 def _render_recommendations(selected_type: tuple[int, int] | None) -> None:
     with st.container(border=True, height="content"):
-        st.subheader("운동추천리스트")
+        st.subheader("운동 추천 리스트")
         if selected_type is None:
             st.info("운동 유형을 선택하면 해당 유형의 추천 운동이 표시됩니다.")
             return
@@ -423,54 +624,121 @@ def _render_recommendations(selected_type: tuple[int, int] | None) -> None:
         if recommendations.empty:
             st.info("선택한 유형에 연결된 추천 운동 기록이 없습니다.")
             return
-        st.caption(f'{grade}등급 · {recommendations.TYPE_NAME.iloc[0]}')
+        illustrations = {
+            '근력': 'strength',
+            '근지구력': 'endurance',
+            '심폐지구력': 'cardio',
+            '유연성': 'flexibility',
+        }
+        focus = recommendations.sort_values('RECOMMENDATION_RANK').iloc[0].IMPROVEMENT_FOCUS
+        image_name = illustrations.get(focus)
+        title_columns = st.columns([4, 1], vertical_alignment='center')
+        with title_columns[0]:
+            st.caption(f'{grade}등급 · {recommendations.TYPE_NAME.iloc[0]}')
+        if image_name:
+            with title_columns[1]:
+                st.image(
+                    str(Path(__file__).resolve().parents[1] / 'img' / f'exercise_{image_name}.svg'),
+                    caption=f'{focus} 운동 예시',
+                    width=90,
+                )
         recommendation_columns = st.columns(2)
         for index, row in enumerate(recommendations.itertuples()):
             with recommendation_columns[index % 2]:
                 st.markdown(f"**{int(row.RECOMMENDATION_RANK)}. {row.RECOMMENDED_EXERCISE}**")
                 st.caption(f"보완 요소: {row.IMPROVEMENT_FOCUS}")
-        illustrations={'근력':'strength','근지구력':'endurance',
-                       '심폐지구력':'cardio','유연성':'flexibility'}
-        focus=recommendations.sort_values('RECOMMENDATION_RANK').iloc[0].IMPROVEMENT_FOCUS
-        image_name=illustrations.get(focus)
-        if image_name:
-            st.image(str(Path(__file__).resolve().parents[1] / 'img' / f'exercise_{image_name}.svg'),
-                     caption=f'{focus} 운동 예시',width=180)
 
 
-def render_home_overview(units: pd.DataFrame) -> None:
+def render_home_overview(
+    units: pd.DataFrame,
+    injuries: dict,
+    types: pd.DataFrame,
+    non_safe_count: int | None,
+    completion_counts: dict[str, int] | None,
+    round_means: pd.DataFrame,
+) -> None:
     unit = _unit_table(units)
     total = int(unit["인원"].sum())
-    injuries = queries.load_home_injuries()
-    types = queries.load_fitness_types()
-    _render_kpis(total, injuries["injuries"])
-    overview_columns = st.columns(3)
-    with overview_columns[0]:
-        selected_region = _render_fitness_variance(unit)
-        selected_type = _render_exercise_type(types)
-    with overview_columns[1]:
-        _render_people_grade(unit, selected_region)
-        _render_recommendations(selected_type)
-    with overview_columns[2]:
-        _render_injuries(injuries, total)
-        with st.container(border=True,height='content'):
-            notice_title,notice_image=st.columns([1,1],vertical_alignment='center')
-            with notice_title:
-                st.subheader('알림')
-            with notice_image:
-                st.image(str(Path(__file__).resolve().parents[1] / 'img' / 'notification_bell.svg'),width=40)
-            st.info('오늘도 체력에 투자하세요. 근육은 적금처럼 쌓이지만, 이자는 땀으로 지급됩니다! 💪')
+    _render_kpis(total, injuries["injuries"], non_safe_count, completion_counts)
+    with st.container(key="home-overview-layout"):
+        overview_columns = st.columns(3)
+        with overview_columns[0]:
+            selected_region = _render_fitness_variance(unit)
+            selected_type = _render_exercise_type(types)
+        with overview_columns[1]:
+            _render_people_grade(unit, selected_region, round_means)
+            _render_recommendations(selected_type)
+        with overview_columns[2]:
+            _render_injuries(injuries, total)
+            with st.container(border=True,height='content'):
+                notice_title,notice_image=st.columns([1,1],vertical_alignment='center')
+                with notice_title:
+                    st.subheader('알림')
+                with notice_image:
+                    st.image(str(Path(__file__).resolve().parents[1] / 'img' / 'notification_bell.svg'),width=40)
+                st.info('오늘도 체력에 투자하세요. 근육은 적금처럼 쌓이지만, 이자는 땀으로 지급됩니다! 💪')
+                st.info("""오늘의 운동: \n
+• 팔굽혀펴기(푸시up): 100회 \n
+• 윗몸일으키기(시트up): 100회 \n
+• 스쿼트: 100회\n
+• 달리기(러닝): 매일 10km""")
+
+
+
+def _load_home_data() -> tuple[
+    pd.DataFrame,
+    dict,
+    pd.DataFrame,
+    int | None,
+    dict[str, int] | None,
+    pd.DataFrame,
+]:
+    with ThreadPoolExecutor(max_workers=6, thread_name_prefix="dashboard-home") as executor:
+        units_future = executor.submit(queries.load_home_units)
+        injuries_future = executor.submit(queries.load_home_injuries)
+        types_future = executor.submit(queries.load_fitness_types)
+        round_means_future = executor.submit(queries.load_round_means)
+        non_safe_future = executor.submit(
+            _load_optional_non_safe_count,
+        )
+        completion_future = executor.submit(
+            _load_optional_completion_counts,
+        )
+        return (
+            units_future.result(),
+            injuries_future.result(),
+            types_future.result(),
+            non_safe_future.result(),
+            completion_future.result(),
+            round_means_future.result(),
+        )
 
 
 def render() -> None:
     try:
-        units = queries.load_home_units()
+        units, injuries, types, non_safe_count, completion_counts, round_means = _load_home_data()
     except (ValueError, SQLAlchemyError) as error:
         st.error(f"대시보드 데이터를 불러오지 못했습니다: {error}")
         st.info("DB 접속 정보와 데이터 적재(data/scripts/setup_database.py)를 확인하세요.")
         st.stop()
+
     if units.empty:
         st.info("현재 조건에 해당하는 장병이 없습니다.")
         st.stop()
-    render_home_overview(units)
+    render_home_overview(units, injuries, types, non_safe_count, completion_counts, round_means)
     st.caption("이 화면의 데이터는 개인 진단이나 의학적 판단을 대체하지 않습니다.")
+
+
+def _load_optional_non_safe_count() -> int | None:
+    try:
+        return queries.load_non_safe_count(FOLLOWUP_THRESHOLD)
+    except (ValueError, KeyError, SQLAlchemyError):
+        return None
+
+
+def _load_optional_completion_counts() -> dict[str, int] | None:
+    try:
+        # 기록 테이블이 없어도 나머지 홈 화면은 계속 표시합니다.
+        return load_completion_counts(FOLLOWUP_THRESHOLD)
+    except (ValueError, SQLAlchemyError):
+        return None

@@ -47,7 +47,12 @@ def prepare_judgments(raw: pd.DataFrame) -> pd.DataFrame:
 
 def load_round_targets(round_number: int) -> pd.DataFrame:
     """선택 회차의 집중관리 대상자(판정 + 신상 + 종목 이름·선정 사유 등 표시용 컬럼)."""
-    return build_targets(prepare_judgments(queries.load_round_targets(round_number)))
+    return prepare_round_targets(queries.load_round_targets(round_number))
+
+
+def prepare_round_targets(raw: pd.DataFrame) -> pd.DataFrame:
+    """판정 SQL 결과를 집중관리 화면의 표시 컬럼으로 변환합니다."""
+    return build_targets(prepare_judgments(raw))
 
 
 def targets_metadata() -> dict:

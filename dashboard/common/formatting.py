@@ -26,6 +26,12 @@ def filter_signature(*values: object) -> str:
     return hashlib.sha256(repr(values).encode("utf-8")).hexdigest()[:12]
 
 
+def format_timestamp(value: object) -> str:
+    """날짜·시간을 화면 표시용 YYYY-MM-DD HH:MM:SS 형식으로 바꿉니다."""
+    timestamp = pd.to_datetime(value, errors="coerce")
+    return "" if pd.isna(timestamp) else timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def classify_bmi(values: pd.Series) -> pd.Series:
     return pd.Series(
         np.select([values < 18.5, values < 25, values < 30], ["저체중", "정상", "과체중"], default="비만"),
@@ -55,4 +61,3 @@ def add_deficiency_flags(data: pd.DataFrame) -> pd.DataFrame:
     result["체력미달"] = result[fitness_flags].any(axis=1)
     result["관리대상"] = result[management_flags].any(axis=1)
     return result
-

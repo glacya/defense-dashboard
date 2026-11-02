@@ -14,6 +14,7 @@ import streamlit as st
 
 from dashboard.data_source import CSV, resolve_source
 from dashboard.db import DEFAULT_TTL, run_query
+from dashboard.py import queries
 from dashboard.py.fitness_judgment import EVENTS, GRADE_LABELS, load_judged_measurements
 from dashboard.py.roster_data import INJURIES_SQL
 from data.scripts.utils import require_columns
@@ -47,6 +48,31 @@ def build_injury_tables(judged: pd.DataFrame, injuries: pd.DataFrame) -> tuple[p
                              '반복부상인원': int(latest.INJURY_COUNT.ge(2).sum())}])
     personal = latest[[*PEOPLE_COLUMNS, 'INJURY_COUNT']].reset_index(drop=True)
     return personal, pd.DataFrame(rows), summary
+
+
+def injury_grade_table() -> pd.DataFrame:
+    """종목×등급별 부상 집계(queries.load_injury_by_grade)를 화면 표로: 모든 조합(인원 0 포함), 종목·등급 순서, 부상자 비율."""
+    counts = queries.load_injury_by_grade().set_index(['EVENT', 'GRADE'])
+    rows = []
+    for event, (label, _) in EVENTS.items():
+        for grade, text in GRADE_LABELS.items():
+            total, injured, injuries = (int(counts.loc[(event, grade), column]) if (event, grade) in counts.index else 0
+                                        for column in ['TOTAL', 'INJURED', 'INJURIES'])
+            rows.append({'종목': label, '등급': text, '전체인원': total, '부상인원': injured, '부상건수': injuries,
+                         '부상자비율': injured / total * 100 if total else float('nan')})
+    return pd.DataFrame(rows)
+
+
+def injury_people() -> pd.DataFrame:
+    """장병 명단(queries.load_roster)에 장병별 부상 건수(없으면 0)를 붙입니다."""
+    counts = queries.load_soldier_injury_counts().set_index('SOLDIER_ID').INJURY_COUNT
+    roster = queries.load_roster()
+    return roster.assign(INJURY_COUNT=roster.SOLDIER_ID.map(counts).fillna(0).astype('int64'))
+
+
+def injury_metadata() -> dict:
+    """집계 기준 설명(화면 안내용)."""
+    return {'생성일시': datetime.now(ZoneInfo('Asia/Seoul')).isoformat(), **METADATA_TEXT}
 
 
 def _check(personal: pd.DataFrame, grades: pd.DataFrame, summary: pd.DataFrame, injuries: pd.DataFrame) -> None:

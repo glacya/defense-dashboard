@@ -32,7 +32,6 @@ from dashboard.py.personal_detail_data import load_personal
 from dashboard.py.personal_exercise_recommendations import load_recommendation
 from dashboard.py.personal_fitness_profile import load_profiles
 from dashboard.py.roster_data import load_injuries_text, load_latest_measurements, load_personnel_text
-from dashboard.views.mainpage import _load_fitness_type_links, _load_prescription_data
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +63,6 @@ LOADERS: dict[str, Callable[[str], Any]] = {
     "followup_fitness_types.load_fitness_types": _fitness_types,
     "followup_probability.load_probabilities": load_probabilities,
     "personal_fitness_profile.load_profiles": load_profiles,
-    "mainpage._load_fitness_type_links": _load_fitness_type_links,
-    "mainpage._load_prescription_data": _load_prescription_data,
     "roster_data.load_personnel_text": load_personnel_text,
     "roster_data.load_injuries_text": load_injuries_text,
     "roster_data.load_latest_measurements": load_latest_measurements,

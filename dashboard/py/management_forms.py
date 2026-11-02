@@ -4,7 +4,6 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 

@@ -28,6 +28,26 @@ def test_judged_cte_filters_one_soldier_before_windows():
     assert "WHERE m.soldier_id = :soldier_id" in queries.judged_cte(one_soldier=True)
     assert "WHERE m.soldier_id" not in queries.judged_cte()
     assert ":high_bmi" in queries.judged_cte()
+    assert "WHERE unit_name = :unit_name" in queries.judged_cte(one_unit=True)
+
+
+def test_unit_card_people_pick_latest_round_or_selected_round(monkeypatch):
+    """p01 부대 카드 명단: 전체는 장병별 최신 회차(측정 없는 장병 포함), 나머지는 선택 회차에서 조건대로 고르는지 확인합니다."""
+    from dashboard.views import p01_fitness_overview as p01
+
+    calls = []
+    judged = pd.DataFrame({
+        "SOLDIER_ID": ["a", "a", "b", "c"], "ROUND": [1, 2, 1, None],
+        "FAIL_COUNT": [1, 0, 0, None], "MANAGED": [True, False, False, None],
+    })
+    monkeypatch.setattr(p01.queries, "load_unit_judgments", lambda unit: calls.append(unit) or judged)
+
+    assert p01._people_for_metric("total", 1, "1사단").ROUND.tolist()[:2] == [2, 1]
+    assert p01._people_for_metric("total", 1, "1사단").SOLDIER_ID.tolist() == ["a", "b", "c"]
+    assert p01._people_for_metric("measured", 1, "1사단").SOLDIER_ID.tolist() == ["a", "b"]
+    assert p01._people_for_metric("deficient", 1, "1사단").SOLDIER_ID.tolist() == ["a"]
+    assert p01._people_for_metric("managed", 2, "1사단").empty
+    assert set(calls) == {"1사단"}
 
 
 @pytest.mark.parametrize("group_column", ["SOLDIER_NAME", "region_name; DROP TABLE soldiers"])

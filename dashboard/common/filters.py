@@ -44,12 +44,6 @@ def _keys(prefix: str) -> tuple[str, str, str]:
     return f'{prefix}_card_regions', f'{prefix}_card_units', f'{prefix}_card_ranks'
 
 
-def reset_card_filters(prefix: str) -> None:
-    """'전체 조회' 버튼용: 세 필터를 모두 비웁니다."""
-    for key in _keys(prefix):
-        st.session_state[key] = []
-
-
 def _region_group(region_name: str) -> str:
     name = str(region_name)
     keywords = (

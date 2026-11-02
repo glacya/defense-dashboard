@@ -1,18 +1,15 @@
 """1번 화면: 분석 결과 기반 전체 장병 체력 현황입니다."""
 
-import json
-
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.common.charts import CHART_PALETTE, GRADE_COLORS, apply_chart_layout, show_plotly
 from dashboard.common.formatting import filter_signature
-from dashboard.data_source import CSV, resolve_source
-from dashboard.main_data import load_main_data
-from dashboard.py.fitness_judgment import EVENTS, load_judged_measurements
+from dashboard.py import queries
+from dashboard.py.fitness_judgment import EVENTS
 from dashboard.py.fitness_overview_data import load_group_summary, load_overview
-from dashboard.py.roster_data import load_personnel_text
 
 EVENT_ORDER = ['근력','근지구력','심폐지구력','유연성']
 GRADE_ORDER = ['1등급', '2등급', '3등급', '3등급 미만']
@@ -84,48 +81,19 @@ def _change_comparison_page(page_key: str, offset: int, page_count: int) -> None
     st.session_state[page_key] = min(max(current_page + offset, 0), page_count - 1)
 
 
-def _load_people_judgments() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """현재 데이터 모드의 회차별 판정 행과 전체 장병 명단을 읽습니다."""
-    if resolve_source() == CSV:
-        from data.scripts.analysis.analysis2.fitness_overview import judge_measurements
-
-        measurements, _ = load_main_data(CSV)
-        judged = judge_measurements(measurements)
-    else:
-        judged = load_judged_measurements()
-    if 'EVALUATED_COUNT' not in judged:
-        judged = judged.assign(EVALUATED_COUNT=len(EVENTS))
-    return judged, load_personnel_text()
-
-
-def _people_for_metric(
-    judged: pd.DataFrame,
-    roster: pd.DataFrame,
-    metric: str,
-    round_number: int,
-    unit_name: str,
-) -> pd.DataFrame:
+def _people_for_metric(metric: str, round_number: int, unit_name: str) -> pd.DataFrame:
+    """부대 카드에 해당하는 장병(전체는 장병별 최신 회차, 나머지는 선택 회차의 판정 행)을 돌려줍니다."""
+    judged = queries.load_unit_judgments(unit_name)
     if metric == 'total':
-        latest = judged.sort_values(['ROUND', 'MESURE_DE', 'MESURE_ID']).drop_duplicates(
-            'SOLDIER_ID', keep='last',
-        )
-        profile_columns = ['SOLDIER_NAME', 'REGION_NAME', 'UNIT_NAME', 'RANK_NAME']
-        details = latest.drop(columns=profile_columns, errors='ignore')
-        people = roster[['SOLDIER_ID', *profile_columns]].merge(
-            details, on='SOLDIER_ID', how='left', validate='one_to_one',
-        )
-        return people.loc[people['UNIT_NAME'].eq(unit_name)]
-
-    current = judged.loc[judged['UNIT_NAME'].eq(unit_name) & judged['ROUND'].eq(round_number)]
+        # 회차 순으로 정렬돼 있으므로 마지막 행이 최신 측정이다(측정이 없는 장병은 판정 칸이 빈 1행).
+        return judged.drop_duplicates('SOLDIER_ID', keep='last')
+    current = judged.loc[judged['ROUND'].eq(round_number)]
     if metric == 'measured':
         return current
-    if metric in {'deficient', 'managed'}:
-        if metric == 'deficient':
-            return current.loc[
-                current['EVALUATED_COUNT'].eq(len(EVENTS))
-                & current['FAIL_COUNT'].fillna(0).ge(1)
-            ]
-        return current.loc[current['MANAGED'].fillna(False)]
+    if metric == 'deficient':
+        return current.loc[current['FAIL_COUNT'].ge(1)]
+    if metric == 'managed':
+        return current.loc[current['MANAGED'].astype(bool)]
     raise ValueError(f'지원하지 않는 카드 구분입니다: {metric}')
 
 
@@ -133,8 +101,8 @@ def _show_metric_people(title: str, people: pd.DataFrame, signature: str) -> Non
     display = people.copy()
 
     def failed_events(row: pd.Series) -> str:
-        if pd.isna(row['EVALUATED_COUNT']) or row['EVALUATED_COUNT'] < len(EVENTS):
-            return '판정 불가'
+        if pd.isna(row['ROUND']):
+            return '측정 없음'
         failed = [
             label for event, (label, _) in EVENTS.items()
             if pd.notna(row[f'{event}_GRADE']) and row[f'{event}_GRADE'] == 0
@@ -174,11 +142,7 @@ def render() -> None:
     st.write('부대의 체력 수준과 미달 추이를 확인합니다.')
     try:
         rounds, events, metadata = load_overview()
-    except FileNotFoundError:
-        st.warning('전체 현황 분석 결과가 없습니다. 먼저 아래 명령을 실행해 주세요.')
-        st.code('python -m data.scripts.analysis.analysis2.fitness_overview', language='powershell')
-        st.stop()
-    except (ValueError, KeyError, pd.errors.EmptyDataError, json.JSONDecodeError) as error:
+    except (ValueError, KeyError, SQLAlchemyError) as error:
         st.error(f'분석 결과를 확인해 주세요: {error}')
         st.stop()
     if rounds.empty:
@@ -193,7 +157,7 @@ def render() -> None:
         try:
             group_column = 'REGION_NAME' if level == '지역별' else 'UNIT_NAME'
             comparison_rounds, comparison_events = load_group_summary(group_column)
-        except (FileNotFoundError, ValueError, KeyError, pd.errors.ParserError) as error:
+        except (ValueError, KeyError, SQLAlchemyError) as error:
             st.error(f'{level} 체력 현황을 계산하지 못했습니다: {error}')
             st.stop()
         all_comparison_rounds = comparison_rounds
@@ -252,8 +216,7 @@ def render() -> None:
     if unit_selected:
         st.caption('부대를 선택한 상태에서 네 가지 요약 카드를 클릭하면 해당 장병 명단을 확인할 수 있습니다.')
     if clicked_metric:
-        judged, roster = _load_people_judgments()
-        people = _people_for_metric(judged, roster, clicked_metric, int(number), selected_group_name)
+        people = _people_for_metric(clicked_metric, int(number), selected_group_name)
         metric_label = next(label for key, label, _ in metrics if key == clicked_metric)
         modal_title = f'{selected_group_name} · {number}차 · {metric_label}'
         if clicked_metric == 'total':

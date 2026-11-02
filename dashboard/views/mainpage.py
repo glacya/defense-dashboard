@@ -23,33 +23,6 @@ FITNESS_LEVELS = ["1등급", "2등급", "3등급", "4등급"]
 # 수 MB의 경계 좌표를 서버에서 만들고 직렬화하지 않는다.
 REGION_GEOJSON_PATH = Path(__file__).resolve().parents[1] / "static" / "korea_provinces.geojson"
 REGION_GEOJSON_URL = "app/static/korea_provinces.geojson"
-# 지도는 9개 도 단위로 그립니다. 특별시·광역시·특별자치시는 둘러싼 도에 편입합니다.
-# (경도 최소, 경도 최대, 위도 최소, 위도 최대) — 서로 겹치지 않는 도식 지도용 사각형
-PROVINCE_BOXES = {
-    "경기": (126.4, 127.7, 36.9, 38.0),
-    "강원": (127.7, 129.2, 36.9, 38.5),
-    "충남": (125.9, 127.3, 35.95, 36.9),
-    "충북": (127.3, 128.4, 35.7, 36.9),
-    "경북": (128.4, 129.6, 35.7, 36.9),
-    "전북": (126.3, 127.3, 35.0, 35.95),
-    "경남": (127.3, 129.3, 34.7, 35.7),
-    "전남": (125.9, 127.3, 34.2, 35.0),
-    "제주": (126.1, 126.9, 33.1, 33.65),
-}
-# REGION_NAME에 키워드가 포함되면 해당 도로 묶습니다. 위에서부터 먼저 맞는 항목을 사용하므로 순서를 바꾸지 마세요.
-# 정식 명칭(경기도, 서울특별시 …)과 줄임말(경기, 서울 …)을 모두 처리합니다.
-PROVINCE_KEYWORDS = (
-    ("전남광주", "전남"),  # 전남광주통합특별시: '광주'보다 먼저 확인
-    ("서울", "경기"), ("인천", "경기"), ("경기", "경기"),
-    ("강원", "강원"),
-    ("충청북", "충북"), ("충북", "충북"),
-    ("충청남", "충남"), ("충남", "충남"), ("대전", "충남"), ("세종", "충남"),
-    ("전라북", "전북"), ("전북", "전북"),
-    ("전라남", "전남"), ("전남", "전남"), ("광주", "전남"),
-    ("경상북", "경북"), ("경북", "경북"), ("대구", "경북"),
-    ("경상남", "경남"), ("경남", "경남"), ("부산", "경남"), ("울산", "경남"),
-    ("제주", "제주"),
-)
 
 
 class MainPieChart(PieChartWidget):
@@ -443,7 +416,7 @@ def _render_recommendations(selected_type: tuple[int, int] | None) -> None:
             return
         grade, cluster = selected_type
         try:
-            recommendations = load_recommendation(grade, cluster, source='db')
+            recommendations = load_recommendation(grade, cluster)
         except (OSError,ValueError,KeyError,pd.errors.EmptyDataError,SQLAlchemyError) as error:
             st.info(f'추천 운동 자료를 확인할 수 없습니다: {error}')
             return

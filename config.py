@@ -19,8 +19,6 @@ SAMPLE_DIR = DATA_DIR / "samples"  # 가상·샘플 데이터
 SYNTHETIC_DIR = DATA_DIR / "synthetic"  # 합성 단계가 만드는 가상 장병 명단·부상 기록
 DATA_SCRIPTS_DIR = DATA_DIR / "scripts"
 DATA_LOG_DIR = DATA_SCRIPTS_DIR / "logs"
-# 대시보드에서 직접 입력하는 기록. 분석 재실행으로 갱신하지 않습니다.
-MANAGEMENT_DIR = PROCESSED_DIR / "analysis2" / "management"
 
 # ============================================================================
 # dashboard 영역
@@ -30,12 +28,10 @@ DB_DIR = DATA_DIR / "database"
 DB_FINAL_DIR = DB_DIR / "db_final"
 BASE64_DIR = ROOT_DIR / "dashboard" / "img" / "base64.json"
 CSS_PATH = ROOT_DIR / "dashboard" / "style.css"
-JS_PATH = ROOT_DIR / "dashboard" / "scripts.js"
 DIR_DICT = {
     "ROOT_DIR": ROOT_DIR,
     "DB_DIR": DB_DIR,
     "CSV_FINAL_DIR": DB_FINAL_DIR,
     "BASE64_DIR": BASE64_DIR,
     "CSS_PATH": CSS_PATH,
-    "JS_PATH": JS_PATH,
 }

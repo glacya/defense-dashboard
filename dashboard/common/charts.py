@@ -1,7 +1,7 @@
 """Plotly·Altair 차트의 공통 색상과 밝은 레이아웃입니다."""
 
 import streamlit as st
-
+import plotly.graph_objects as go
 CHART_PALETTE = (
     "#0F766E",
     "#0891B2",

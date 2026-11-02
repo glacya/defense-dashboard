@@ -10,6 +10,54 @@ import streamlit as st
 from dashboard.common.formatting import FITNESS_ITEM_LABELS, add_deficiency_flags
 
 
+def make_pseudo_3d_donut(labels, values, colors, center_text="", height=300):
+    """그림자 레이어와 본 차트를 겹쳐 입체감 있는 도넛 차트를 만듭니다."""
+    shadow = go.Pie(
+        labels=labels,
+        values=values,
+        hole=0.55,
+        sort=False,
+        direction="clockwise",
+        marker=dict(colors=["rgba(31,51,73,0.25)"] * len(values)),
+        textinfo="none",
+        hoverinfo="skip",
+        showlegend=False,
+        domain=dict(x=[0.04, 0.98], y=[0.04, 0.95]),
+    )
+
+    main = go.Pie(
+        labels=labels,
+        values=values,
+        hole=0.55,
+        sort=False,
+        direction="clockwise",
+        pull=[0.04] * len(values),
+        marker=dict(
+            colors=colors,
+            line=dict(color="#FFFFFF", width=3),
+        ),
+        textinfo="percent",
+        textfont=dict(color="#FFFFFF", size=13),
+        domain=dict(x=[0.02, 0.98], y=[0.08, 1.00]),
+    )
+
+    figure = go.Figure(data=[shadow, main])
+    if center_text:
+        figure.add_annotation(
+            text=center_text,
+            x=0.5,
+            y=0.54,
+            showarrow=False,
+            font=dict(size=15, color="#1F3349"),
+        )
+    figure.update_layout(
+        height=height,
+        margin=dict(t=0, b=0, l=0, r=0),
+        showlegend=False,
+    )
+    return figure
+
+
 class PlotlyWidget:
     """Streamlit에서 재사용하는 Plotly 위젯의 기본 정의."""
 
@@ -63,41 +111,20 @@ class PieChartWidget(PlotlyWidget):
             min(100, max(0, int(5 * math.floor((float(value) / total * 100) / 5 + 0.5))))
             for value in self.data[self.values]
         ]
-        figure = px.pie(
-            self.data,
-            names=self.names,
-            values=self.values,
-            hole=0.55,
-            color=self.names,
-            color_discrete_map=color_map,
+        figure = make_pseudo_3d_donut(
+            labels=labels,
+            values=self.data[self.values].tolist(),
+            colors=[color_map[label] for label in labels],
+            center_text=self.center_text or "",
+            height=self.height,
         )
-        figure.update_traces(
+        figure.data[1].update(
             text=[str(value) for value in display_percent],
             textinfo="text" if self.show_percent else "none",
             texttemplate="%{text}%" if self.show_percent else None,
             textposition="inside",
             insidetextorientation="horizontal",
-            domain=(
-                dict(x=[0.12, 0.88], y=[0.08, 0.92])
-                if self.legend_position == "bottom"
-                else dict(x=[0.28, 0.72], y=[0.12, 0.88])
-            ),
         )
-        figure.update_layout(
-            height=self.height,
-            margin=dict(t=0, b=0, l=0, r=0),
-            showlegend=False,
-        )
-        if self.center_text:
-            figure.add_annotation(
-                x=0.5,
-                y=0.5,
-                xref="paper",
-                yref="paper",
-                text=self.center_text,
-                showarrow=False,
-                font=dict(size=15, color="#1F344A"),
-            )
         return figure
 
     def render(self) -> None:
@@ -159,11 +186,11 @@ class RadarChartWidget(PlotlyWidget):
     def __init__(
         self,
         labels: list[str],
-        values: list[float],
+        values: list[float] | list[list[float]],
         title: str | None = None,
-        name: str = "현재 조건",
-        line_color: str = "#2589FF",
-        fill_color: str = "rgba(37, 137, 255, 0.25)",
+        name: str | list[str] = "현재 조건",
+        line_color: str | list[str] = "#2563EB",
+        fill_color: str | list[str] = "rgba(37, 99, 235, 0.18)",
         height: int = 360,
     ) -> None:
         super().__init__(title=title, height=height)
@@ -175,22 +202,65 @@ class RadarChartWidget(PlotlyWidget):
 
     def build_figure(self):
         labels = self.labels + [self.labels[0]] if self.labels else []
-        values = self.values + [self.values[0]] if self.values else []
-        figure = go.Figure(go.Scatterpolar(
-            r=values,
-            theta=labels,
-            fill="toself",
-            line=dict(color=self.line_color, width=2),
-            fillcolor=self.fill_color,
-            name=self.name,
-        ))
+        if self.values and isinstance(self.values[0], (list, tuple, pd.Series)):
+            value_series = [list(series) for series in self.values]
+        else:
+            value_series = [list(self.values)]
+        names = self.name if isinstance(self.name, list) else [self.name]
+        line_colors = self.line_color if isinstance(self.line_color, list) else [self.line_color]
+        fill_colors = self.fill_color if isinstance(self.fill_color, list) else [self.fill_color]
+        depth = 7
+
+        figure = go.Figure()
+        for index, raw_values in enumerate(value_series):
+            scores = [
+                float(value) if value is not None and not pd.isna(value) else None
+                for value in raw_values
+            ]
+            values = scores + scores[:1]
+            line = line_colors[index % len(line_colors)]
+            fill = fill_colors[index % len(fill_colors)]
+            series_name = names[index % len(names)]
+            shadow_values = [max(0, value - depth) if value is not None else None for value in values]
+            middle_values = [max(0, value - depth / 2) if value is not None else None for value in values]
+
+            figure.add_trace(go.Scatterpolar(
+                r=shadow_values,
+                theta=labels,
+                fill="toself",
+                line=dict(color="rgba(31, 51, 73, 0.25)", width=6),
+                fillcolor="rgba(31, 51, 73, 0.10)",
+                hoverinfo="skip",
+                showlegend=False,
+            ))
+            figure.add_trace(go.Scatterpolar(
+                r=middle_values,
+                theta=labels,
+                fill="toself",
+                line=dict(color=line, width=5),
+                fillcolor=fill,
+                hoverinfo="skip",
+                showlegend=False,
+            ))
+            figure.add_trace(go.Scatterpolar(
+                r=values,
+                theta=labels,
+                mode="lines+markers",
+                fill="toself",
+                line=dict(color=line, width=3),
+                fillcolor=fill,
+                name=series_name,
+                hovertemplate="%{theta}<br>백분위: %{r:.1f}<extra>%{fullData.name}</extra>",
+            ))
         figure.update_layout(
             height=self.height,
-            margin=dict(t=22, b=24, l=34, r=34),
-            showlegend=False,
+            margin=dict(t=35, b=45, l=65, r=65),
+            showlegend=len(value_series) > 1,
+            legend=dict(orientation="h", y=-0.12, x=0.5, xanchor="center"),
             polar=dict(
-                radialaxis=dict(visible=True, range=[0, 100], ticksuffix="%"),
+                radialaxis=dict(visible=True, range=[0, 100], dtick=20),
                 angularaxis=dict(direction="clockwise"),
+                gridshape="linear",
             ),
         )
         return figure

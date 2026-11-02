@@ -14,7 +14,7 @@ from dashboard.common.charts import (
     style_altair,
 )
 from dashboard.common.formatting import BMI_CATEGORY_ORDER, classify_bmi, filter_signature
-from dashboard.common.widgets import render_soldier_details
+from dashboard.common.widgets import RadarChartWidget, render_soldier_details
 from dashboard.py import queries
 from dashboard.py.fitness_judgment import EVENTS
 
@@ -139,25 +139,18 @@ def render_soldier_fitness_type(soldier: pd.Series) -> None:
         return
 
     axes = [EVENTS[event][0] for event in personal_profile.index]
-    radar = go.Figure()
-    for name, values, color in [
-        ("선택 장병", personal_profile, "#2563eb"),
-        ("같은 체력유형 평균", cluster_profile, "#ea580c"),
-    ]:
-        scores = [float(value) if pd.notna(value) else None for value in values]
-        radar.add_trace(go.Scatterpolar(
-            r=scores + scores[:1], theta=axes + axes[:1],
-            mode="lines+markers", name=name,
-            line={"color": color, "width": 3},
-            hovertemplate="%{theta}<br>백분위 %{r:.1f}<extra>%{fullData.name}</extra>",
-        ))
-    radar.update_layout(
-        polar={"radialaxis": {"visible": True, "range": [0, 100], "dtick": 20},
-               "angularaxis": {"direction": "clockwise"}, "gridshape": "linear"},
-        height=310, margin={"t": 20, "b": 35, "l": 35, "r": 35},
-        legend={"orientation": "h", "y": -0.08, "x": 0.5, "xanchor": "center", "font": {"size": 10}},
+    radar = RadarChartWidget(
+        labels=axes,
+        values=[
+            [float(value) if pd.notna(value) else None for value in personal_profile],
+            [float(value) if pd.notna(value) else None for value in cluster_profile],
+        ],
+        name=["선택 장병", "같은 체력유형 평균"],
+        line_color=["#2563eb", "#ea580c"],
+        fill_color=["rgba(37, 99, 235, 0.18)", "rgba(234, 88, 12, 0.18)"],
+        height=310,
     )
-    st.plotly_chart(radar, width="stretch", key=f"unit_soldier_fitness_type_{soldier['MESURE_ID']}",
+    st.plotly_chart(radar.build_figure(), width="stretch", key=f"unit_soldier_fitness_type_{soldier['MESURE_ID']}",
                     config={"displayModeBar": False})
     st.caption(
         f"바깥쪽일수록 종목 백분위가 높습니다. 같은 체력유형의 전체 회차 측정 "

@@ -13,6 +13,7 @@ from dashboard.py.personal_detail_data import load_soldier_history, personal_met
 from dashboard.py.personal_exercise_recommendations import render_recommendation
 from dashboard.py.fitness_judgment import EVENTS
 from data.scripts.fitness_standards import grade_cut
+from dashboard.common.widgets import RadarChartWidget
 
 
 def _toggle_personal_rank(rank: str) -> None:
@@ -198,25 +199,18 @@ def render() -> None:
                         st.info(f'클러스터 비교 차트를 표시할 수 없습니다: {error}')
                     else:
                         axes=[EVENTS[event][0] for event in personal_profile.index]
-                        radar=go.Figure()
-                        for name,values,color in [
-                            ('선택 장병',personal_profile,'#2563eb'),
-                            ('같은 체력유형 평균',cluster_profile,'#ea580c'),
-                        ]:
-                            scores=[float(value) if pd.notna(value) else None for value in values]
-                            radar.add_trace(go.Scatterpolar(
-                                r=scores+scores[:1],theta=axes+axes[:1],
-                                mode='lines+markers',name=name,
-                                line={'color':color,'width':3},
-                                hovertemplate='%{theta}<br>백분위 %{r:.1f}<extra>%{fullData.name}</extra>',
-                            ))
-                        radar.update_layout(
-                            polar={'radialaxis':{'visible':True,'range':[0,100],'dtick':20},
-                                   'angularaxis':{'direction':'clockwise'},'gridshape':'linear'},
-                            height=380,margin={'t':35,'b':45,'l':65,'r':65},
-                            legend={'orientation':'h','y':-0.12,'x':0.5,'xanchor':'center'},
+                        radar = RadarChartWidget(
+                            labels=axes,
+                            values=[
+                                [float(value) if pd.notna(value) else None for value in personal_profile],
+                                [float(value) if pd.notna(value) else None for value in cluster_profile],
+                            ],
+                            name=['선택 장병', '같은 체력유형 평균'],
+                            line_color=['#2563eb', '#ea580c'],
+                            fill_color=['rgba(37, 99, 235, 0.18)', 'rgba(234, 88, 12, 0.18)'],
+                            height=380,
                         )
-                        st.plotly_chart(radar,width='stretch',key='personal_cluster_radar')
+                        st.plotly_chart(radar.build_figure(), width='stretch', key='personal_cluster_radar')
                         st.caption(f'바깥쪽일수록 종목 백분위가 높습니다. 같은 등급·클러스터의 전체 회차 측정 {member_count:,}건 평균이며 선택 측정도 포함합니다. 백분위는 전체 측정 기준으로 계산합니다.')
             with recommendation_panel,st.container(border=True):
                 render_recommendation(int(classification.AVERAGE_PERCENTILE_GRADE),int(classification.CLUSTER),

@@ -266,16 +266,6 @@ class RadarChartWidget(PlotlyWidget):
         return figure
 
 
-def reset_soldier_detail_dismissal() -> None:
-    """새 장병 행을 선택하면 상세정보 모달을 다시 열 수 있게 합니다."""
-    st.session_state["soldier_detail_dismissed_id"] = None
-
-
-def dismiss_soldier_detail_dialog() -> None:
-    """모달을 닫으면 현재 장병을 기록해 재실행 시 자동으로 다시 열리지 않게 합니다."""
-    st.session_state["soldier_detail_dismissed_id"] = st.session_state.get("selected_soldier_id")
-
-
 def render_soldier_details(
     soldier: pd.Series,
     history: pd.DataFrame | None = None,
@@ -346,7 +336,3 @@ def render_soldier_details(
                 width="stretch",
             )
 
-
-@st.dialog("장병 상세정보", width="large", on_dismiss=dismiss_soldier_detail_dialog)
-def show_soldier_detail_dialog(soldier: pd.Series, history: pd.DataFrame, injuries: pd.DataFrame) -> None:
-    render_soldier_details(soldier, history, injuries)

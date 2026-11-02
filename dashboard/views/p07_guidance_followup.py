@@ -8,8 +8,7 @@ import plotly.express as px
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
-from config import MANAGEMENT_DIR
-from dashboard.py.management_store import DB_TABLES, load_records, uses_db
+from dashboard.py.management_store import DB_TABLES, load_records
 from dashboard.py.management_forms import editor, LABELS
 from dashboard.py.followup_probability import RISK_LEVELS, RISK_RANGES, load_followup_population
 from dashboard.py.group_followup import render_group_followup
@@ -24,11 +23,6 @@ def _select_grade(label: str) -> None:
     selected=set(st.session_state.get('followup_selected_grades', []))
     selected.symmetric_difference_update([label])
     st.session_state['followup_selected_grades']=[grade for grade in RISK_LEVELS if grade in selected]
-
-
-def _clear_fitness_types() -> None:
-    """운동유형 필터를 해제합니다."""
-    st.session_state['followup_fitness_types']=[]
 
 
 def _toggle_fitness_type(type_key: str) -> None:
@@ -263,8 +257,7 @@ def render() -> None:
     st.subheader('상담·후속조치')
     editor('followup_records',soldier,records,pd.DataFrame(columns=['SOLDIER_ID']))
     with st.expander('입력 자료 보관 안내'):
-        st.write('저장 위치: '+(f"DB {DB_TABLES['followup_records']} 테이블" if uses_db('followup_records')
-                              else str(MANAGEMENT_DIR / 'followup_records.csv')))
+        st.write(f"저장 위치: DB {DB_TABLES['followup_records']} 테이블")
         st.write('입력 기록은 분석 데이터와 따로 저장하며 분석 재실행으로 초기화하지 않습니다. 실제 확인한 체력 지도·상담 내용만 입력합니다. 부상 회복·운동 제한은 8번에서 관리합니다.')
         st.caption('여러 화면에서 동시에 수정하면 충돌을 안내합니다. 최신 기록을 다시 읽고 수정하세요. 원본 신상·부상은 합성 자료입니다.')
 

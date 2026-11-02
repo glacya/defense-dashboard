@@ -4,14 +4,14 @@ from types import SimpleNamespace
 
 import altair as alt
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.common.filters import render_personnel_cards
 from dashboard.common.charts import (
     BMI_COLORS, LIGHT_TEXT, NAVY_BACKGROUND, NAVY_BORDER, NAVY_SURFACE, MUTED_TEXT,
-    apply_dark_layout, show_plotly, style_altair,
+    style_altair,
 )
 from dashboard.common.formatting import BMI_CATEGORY_ORDER, classify_bmi, filter_signature
 from dashboard.common.widgets import RadarChartWidget, render_soldier_details

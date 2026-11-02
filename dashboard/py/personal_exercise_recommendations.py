@@ -1,8 +1,8 @@
 """개인 체력유형의 등급·군집에 해당하는 추천 운동을 표시합니다.
 
 추천 운동은 분석 단계(build_exercise_recommendations)가 저장한 표를 읽습니다.
-DB 모드는 recommended_exercises에 유형(fitness_types)·운동 분류(exercise_classifications)·
-처방 이름(exercise_prescription_details)을 JOIN하고, CSV 모드는 같은 CSV들을 pandas로 잇습니다.
+recommended_exercises에 유형(fitness_types)·운동 분류(exercise_classifications)·
+처방 이름(exercise_prescription_details)·사용 부위(exercise_body_parts)를 JOIN합니다.
 운동 지침·추천 근거 문장은 저장하지 않고 분석 단계와 같은 함수로 만듭니다.
 """
 
@@ -10,8 +10,6 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
-from config import DASHBOARD_DIR
-from dashboard.data_source import CSV, resolve_source
 from dashboard.db import DEFAULT_TTL, run_query
 from data.scripts.analysis.clustering.build_exercise_recommendations import (
     FOCUSES, SOURCE_URL, recommendation_basis, relative_column, training_guidance)
@@ -36,43 +34,9 @@ ORDER BY r.recommendation_rank
 """
 
 
-@st.cache_data(show_spinner=False)
-def _read_tables(stamps: tuple[int, ...]) -> pd.DataFrame:
-    """CSV 모드: 추천·유형·운동 분류·처방 이름을 이어 DB 모드와 같은 컬럼으로 만듭니다."""
-    from data.scripts.paths import (PROCESSED_EXERCISE_CLASSIFICATION_PATH, PROCESSED_FITNESS_TYPE_PATH,
-                                    PROCESSED_PRESCRIPTION_DETAIL_PATH, PROCESSED_RECOMMENDED_EXERCISE_PATH)
-    recommendations = pd.read_csv(PROCESSED_RECOMMENDED_EXERCISE_PATH, encoding='utf-8-sig')
-    types = pd.read_csv(PROCESSED_FITNESS_TYPE_PATH, encoding='utf-8-sig')
-    classifications = pd.read_csv(PROCESSED_EXERCISE_CLASSIFICATION_PATH, encoding='utf-8-sig')
-    details = pd.read_csv(PROCESSED_PRESCRIPTION_DETAIL_PATH, encoding='utf-8-sig')
-    from data.scripts.paths import PROCESSED_EXERCISE_BODY_PART_PATH
-    parts = pd.read_csv(PROCESSED_EXERCISE_BODY_PART_PATH, encoding='utf-8-sig')
-    parts = parts.groupby('PRESCRIPTION_TYPE_ID')['BODY_PART'].agg(lambda values: ' | '.join(sorted(set(values)))).rename('BODY_PARTS').reset_index()
-    data = (recommendations.merge(types, on=KEYS, validate='many_to_one')
-            .merge(classifications, on='PRESCRIPTION_TYPE_ID', validate='many_to_one')
-            .merge(details, on='PRESCRIPTION_TYPE_ID', validate='many_to_one')
-            .merge(parts, on='PRESCRIPTION_TYPE_ID', how='left', validate='many_to_one')
-            .rename(columns={'PRESCRIPTION': 'RECOMMENDED_EXERCISE'}))
-    data['RELATIVE_GAP'] = [row[relative_column(row.IMPROVEMENT_FOCUS)] for _, row in data.iterrows()]
-    return data.sort_values([*KEYS, 'RECOMMENDATION_RANK'], kind='stable').reset_index(drop=True)[COLUMNS]
-
-
-def _read_selected(grade: int, cluster: int, source: str) -> pd.DataFrame:
-    if source != CSV:
-        return run_query(RECOMMENDATION_SQL, {'grade': grade, 'cluster': cluster}, ttl=DEFAULT_TTL)[COLUMNS]
-    from data.scripts.paths import (PROCESSED_EXERCISE_CLASSIFICATION_PATH, PROCESSED_FITNESS_TYPE_PATH,
-                                    PROCESSED_PRESCRIPTION_DETAIL_PATH, PROCESSED_RECOMMENDED_EXERCISE_PATH)
-    paths = [PROCESSED_RECOMMENDED_EXERCISE_PATH, PROCESSED_FITNESS_TYPE_PATH,
-             PROCESSED_EXERCISE_CLASSIFICATION_PATH, PROCESSED_PRESCRIPTION_DETAIL_PATH]
-    from data.scripts.paths import PROCESSED_EXERCISE_BODY_PART_PATH
-    paths.append(PROCESSED_EXERCISE_BODY_PART_PATH)
-    data = _read_tables(tuple(path.stat().st_mtime_ns for path in paths))
-    return data.loc[data.AVERAGE_PERCENTILE_GRADE.eq(grade) & data.CLUSTER.eq(cluster)].reset_index(drop=True)
-
-
-def load_recommendation(grade: int, cluster: int, source: str | None = None) -> pd.DataFrame:
+def load_recommendation(grade: int, cluster: int) -> pd.DataFrame:
     """등급과 군집의 조합에 해당하는 추천 운동(순위 순)과 운동 지침·추천 근거 문장을 돌려줍니다."""
-    selected = _read_selected(int(grade), int(cluster), resolve_source(source))
+    selected = run_query(RECOMMENDATION_SQL, {'grade': int(grade), 'cluster': int(cluster)}, ttl=DEFAULT_TTL)[COLUMNS]
     require_columns(selected, COLUMNS)
     if selected.duplicated([*KEYS, 'IMPROVEMENT_FOCUS', 'RECOMMENDED_EXERCISE']).any():
         raise ValueError('같은 등급·군집의 추천 운동이 중복되었습니다.')

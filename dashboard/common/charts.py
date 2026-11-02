@@ -21,24 +21,16 @@ NAVY_SURFACE = "#F4F8FB"
 NAVY_BORDER = "#D9E3EC"
 LIGHT_TEXT = "#1F3349"
 MUTED_TEXT = "#53657A"
-BLUE_ACCENT = "#2563EB"
 CYAN_ACCENT = "#0891B2"
 OK_COLOR = "#0F766E"
 WARN_COLOR = "#D97706"
 ALERT_COLOR = "#DC5C6A"
-RANK_BAR_COLOR = "#2563EB"
 
 BMI_COLORS = {
     "저체중": "#2563EB",
     "정상": "#0F766E",
     "과체중": "#D97706",
     "비만": "#DC5C6A",
-}
-FITNESS_ITEM_COLORS = {
-    "근력": "#2563EB",
-    "근지구력": "#0891B2",
-    "심폐지구력": "#0F766E",
-    "유연성": "#6366F1",
 }
 GRADE_COLORS = {
     "1등급": OK_COLOR,
@@ -75,11 +67,6 @@ def apply_chart_layout(figure, height: int = 300, **layout) -> None:
         title_font_color=LIGHT_TEXT,
     )
     figure.update_traces(textfont_color=LIGHT_TEXT)
-
-
-def apply_dark_layout(figure, height: int = 300, **layout) -> None:
-    """이전 페이지 호출을 유지하면서 공통 밝은 차트 스타일을 적용합니다."""
-    apply_chart_layout(figure, height, **layout)
 
 
 def style_altair(chart, height: int = 340):

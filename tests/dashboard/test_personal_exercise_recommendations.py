@@ -14,13 +14,13 @@ def test_db_mode_joins_tables_and_builds_texts(monkeypatch):
         calls.append((sql, params))
         return pd.DataFrame({
             'AVERAGE_PERCENTILE_GRADE': [1, 1], 'CLUSTER': [0, 0], 'RECOMMENDATION_RANK': [1, 2],
-            'TYPE_NAME': ['유형0: 근력 약점형'] * 2, 'IMPROVEMENT_FOCUS': ['근력'] * 2,
+            'TYPE_NAME': ['유형1: 근력 약점형'] * 2, 'IMPROVEMENT_FOCUS': ['근력'] * 2,
             'RECOMMENDED_EXERCISE': ['턱걸이', '스쿼트'], 'RELATIVE_GAP': [-28.28, -28.28], 'BODY_PARTS': ['?? | ?', '?? | ???'],
         })
 
     monkeypatch.setattr(recommendations, 'run_query', fake_query)
 
-    result = recommendations.load_recommendation(1, 0, 'db')
+    result = recommendations.load_recommendation(1, 0)
 
     sql, params = calls[0]
     assert params == {'grade': 1, 'cluster': 0}
@@ -33,13 +33,13 @@ def test_db_mode_joins_tables_and_builds_texts(monkeypatch):
 def test_duplicated_exercise_is_rejected(monkeypatch):
     frame = pd.DataFrame({
         'AVERAGE_PERCENTILE_GRADE': [1, 1], 'CLUSTER': [0, 0], 'RECOMMENDATION_RANK': [1, 2],
-        'TYPE_NAME': ['유형0: 근력 약점형'] * 2, 'IMPROVEMENT_FOCUS': ['근력'] * 2,
+        'TYPE_NAME': ['유형1: 근력 약점형'] * 2, 'IMPROVEMENT_FOCUS': ['근력'] * 2,
         'RECOMMENDED_EXERCISE': ['턱걸이', '턱걸이'], 'RELATIVE_GAP': [-1.0, -1.0], 'BODY_PARTS': ['??', '??'],
     })
     monkeypatch.setattr(recommendations, 'run_query', lambda sql, params=None, ttl=None: frame)
 
     with pytest.raises(ValueError, match='중복'):
-        recommendations.load_recommendation(1, 0, 'db')
+        recommendations.load_recommendation(1, 0)
 
 
 def test_injury_filter_matches_individual_parts_and_keeps_order():

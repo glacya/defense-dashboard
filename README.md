@@ -9,7 +9,7 @@
 
 | 폴더 | 내용 |
 |---|---|
-| `dashboard/` | Streamlit 대시보드 앱과 화면 구성 코드. 자세한 내용은 `dashboard/README.md` (작성 예정) |
+| `dashboard/` | Streamlit 대시보드 앱과 화면 구성 코드. 자세한 내용은 [dashboard/README.md](dashboard/README.md) |
 | `data/` | 데이터 파일과 데이터 파이프라인(전처리 -> 가상 데이터 합성 -> 분석). 자세한 내용은 [data/README.md](data/README.md) |
 | `docs/` | 팀 작업 규칙. 코드를 쓰기 전에 읽어 주세요. [모듈 작성 요령](docs/모듈-작성-요령.md), [테스트 작성법](docs/테스트-작성법.md), [데이터 관리 요령](docs/데이터-관리-요령.md) |
 | `tests/` | pytest 테스트. 대상 코드 위치에 맞춰 `dashboard/`, `data/`, `utils/`로 나눕니다. |
@@ -32,13 +32,13 @@
 
 ## 실행 환경: 로컬 개발과 CI·배포
 
-**conda는 로컬 개발(Windows)에서만 씁니다.** CI와 추후 배포에서는 conda를 쓰지 않고, Python 3.10에 `requirements.txt`를 pip로 설치합니다.
+**`*.ps1` 스크립트와 conda 환경 `kdt-project-1`은 로컬 개발(Windows)용입니다.** CI는 conda 없이 Python 3.10에 `requirements.txt`를 pip로 설치합니다. 의존성 목록의 기준은 `requirements.txt`이며, `environment.yml`은 이를 참조합니다.
 
 | 구분 | 환경 | 설치·실행 |
 |---|---|---|
 | 로컬 개발 | conda 환경 `kdt-project-1` (`environment.yml`) | `*.ps1` 스크립트 (아래 [시작하기](#시작하기-로컬-개발)) |
 | CI (GitHub Actions) | Ubuntu·Windows의 Python 3.10 | `.github/workflows/test.yml`에서 pip로 설치 후 `pytest` |
-| 배포 (예정) | Python 3.10 | CI와 같은 pip 방식 |
+| 배포 (Streamlit Community Cloud) | Python 3.10 | 저장소 루트의 `environment.yml`(안에서 `requirements.txt`와 `-e .`을 pip로 설치)로 환경을 만들고 `dashboard/app.py`를 실행합니다. 데이터는 DB에서 읽습니다. |
 
 conda 없이 실행할 때는 Python 3.10에서 프로젝트 루트 기준으로 다음과 같이 합니다. CI가 하는 일과 같습니다.
 

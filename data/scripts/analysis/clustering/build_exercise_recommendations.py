@@ -109,7 +109,7 @@ def relative_column(focus: str) -> str:
 
 
 def type_focus(type_name: str) -> tuple[str, bool]:
-    """유형명에서 (체력 요소, 약점형 여부)를 읽습니다(예: '유형0: 근력 약점형' -> ('근력', True)).
+    """유형명에서 (체력 요소, 약점형 여부)를 읽습니다(예: '유형1: 근력 약점형' -> ('근력', True)).
 
     Raises:
         ValueError: '○○ 약점형'·'○○ 강점형' 형식이 아닐 때

@@ -3,13 +3,10 @@
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
-from config import MANAGEMENT_DIR
 from dashboard.common.filters import render_personnel_cards
-from dashboard.py.management_store import DB_TABLES, load_records, uses_db
+from dashboard.py.management_store import DB_TABLES, load_records
 from dashboard.py.management_forms import editor, LABELS
 from dashboard.py import queries
-from dashboard.py.roster_data import load_injuries_text
-
 
 def render() -> None:
     """부상 원본에 있는 장병과 부상 식별자 기준으로 후속 확인을 저장합니다."""
@@ -21,7 +18,8 @@ def render() -> None:
     try:
         # 장병 명단은 다른 화면과 함께 쓰는 캐시. 군번 고유·부상-장병 연결은 DB의 PK·FK가 보장한다.
         people=queries.load_roster().astype({'SOLDIER_ID':str})
-        injuries=load_injuries_text()
+        # 후속조치 기록(management_store, 모두 문자열)과 부상 번호·군번으로 잇기 위해 문자열로 바꾼다.
+        injuries=queries.load_injuries().astype(str).astype(object)
         records=load_records('injury_followup')
     except (OSError,ValueError,SQLAlchemyError) as error:
         st.error(f'부상 관리 자료를 읽을 수 없습니다: {error}');st.stop()
@@ -64,5 +62,4 @@ def render() -> None:
     st.subheader(f'{person.SOLDIER_NAME} · {person.RANK_NAME} · {person.UNIT_NAME}')
     st.dataframe(injuries.loc[injuries.SOLDIER_ID.eq(soldier)].rename(columns={'INJURY_ID':'부상 번호','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류','INJURY_LOCATION':'부상 부위','SEVERITY':'심각도','PREVENTABILITY':'예방 가능 여부'}),hide_index=True,width='stretch')
     editor('injury_followup',soldier,{'injury_followup':records},injuries)
-    location=f"DB {DB_TABLES['injury_followup']} 테이블" if uses_db('injury_followup') else MANAGEMENT_DIR / 'injury_followup.csv'
-    st.caption(f'저장: {location} · 기존 기록은 유지됩니다. 합성 부상 이력으로 회복 상태나 운동 제한을 추정하지 않습니다.')
+    st.caption(f"저장: DB {DB_TABLES['injury_followup']} 테이블 · 기존 기록은 유지됩니다. 합성 부상 이력으로 회복 상태나 운동 제한을 추정하지 않습니다.")

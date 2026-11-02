@@ -67,13 +67,14 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/preprocessing
 
 데이터를 전처리하지 않고 통계·탐색·모델 결과를 내는 스크립트입니다. 각 모듈은 `paths.py`의 기본 경로로 단독 실행할 수 있습니다.
 
-`main.py analysis`(`analysis/pipeline.py`)는 다음 순서로 실행합니다. 대시보드용 결과를 미리 만들던 `analysis2/`는 대시보드 쪽 SQL 조회로 옮길 예정이라 파이프라인에서 뺐습니다. 학습된 모델은 Git에 넣어 두고 그대로 쓰며(매번 학습하지 않음), 다시 학습할 때만 `train_*.py`를 직접 실행합니다.
+`main.py analysis`(`analysis/pipeline.py`)는 다음 순서로 실행합니다. 학습된 모델은 Git에 넣어 두고 그대로 쓰며(매번 학습하지 않음), 다시 학습할 때만 `train_*.py`를 직접 실행합니다.
 
 | 순서 | 모듈 | 결과 |
 |---|---|---|
 | 1 | `clustering/classify_measurements_by_percentile` | 최종 측정을 4종목 평균 백분위(전체 측정 기준)로 1~4등급(70/50/30 이상)으로 나눈 `intermediate/clustering/grade_1~4.csv` |
 | 2 | `clustering/assign_grade_and_cluster` | 등급별 K-means 모델(`data_model/cluster_models/`)로 측정마다 군집을 정해 `processed/MEASUREMENT_CLASSIFICATION.csv`(`MESURE_ID`, `AVERAGE_PERCENTILE_GRADE`, `CLUSTER`)와 등급·군집별 유형명 `processed/FITNESS_TYPE.csv` 저장 |
-| 3 | `failure_prediction/predict_failure_probability` | 미달 예측 모델(`data_model/final/models/`)로 장병별 다음(4회차) 미달 확률 `processed/SOLDIER_FAILURE_PROBABILITY.csv`(`SOLDIER_ID`, `FAILURE_PROBABILITY`) 저장 |
+| 3 | `clustering/build_exercise_recommendations` | 체력 유형(등급·군집)마다 보완할 체력 요소와 등급별 난이도에 맞는 추천 운동을 골라 `processed/EXERCISE_CLASSIFICATION.csv`(운동 분류), `processed/EXERCISE_BODY_PART.csv`(운동별 사용 부위), `processed/RECOMMENDED_EXERCISE.csv`(유형별 추천 순위) 저장 |
+| 4 | `failure_prediction/predict_failure_probability` | 미달 예측 모델(`data_model/final/models/`)로 장병별 다음(4회차) 미달 확률 `processed/SOLDIER_FAILURE_PROBABILITY.csv`(`SOLDIER_ID`, `FAILURE_PROBABILITY`) 저장 |
 
 모델 학습: `clustering/train_cluster_model`(등급별 K-means k=4, 시드 42), `failure_prediction/train_failure_probability_model`(1·2차로 3차 미달을 예측하는 로지스틱 회귀). 군집 단계가 함께 쓰는 설정과 특성 계산은 `clustering/cluster_features.py`에 있습니다.
 
@@ -83,8 +84,6 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/preprocessing
 |---|---|---|
 | `summarize_official_cut_ratios` | 심폐지구력(`CARDIO`, VO₂max)에 공식 등급 컷(42.0/44.8/47.6)을 적용해 등급별 비율과 컷 미만 비율을 설계(30/50/70%)와 함께 정리합니다. | `intermediate/official_cut_ratios/` |
 | `view_fitness_statistics` | 최종 측정 데이터(`processed/KS_NFA_PROCESSED.csv`)의 프로파일링 보고서를 만들고 한국어로 바꿉니다. 30분 넘게 걸립니다. | `intermediate/fitness_profile/` |
-
-심폐지구력을 종목별로 비교하던 실험 스크립트(셔틀런 잠재 점수, 종목별 Z점수, 컷 기준 선형 변환, 종목 집단 비교)는 VO₂max 통일 결정 뒤 삭제했습니다. 코드는 Git 기록에 남아 있습니다.
 
 ```powershell
 python data/scripts/analysis/summarize_official_cut_ratios.py

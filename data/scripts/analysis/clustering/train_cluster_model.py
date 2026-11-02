@@ -84,7 +84,7 @@ def train_cluster_model(df: pd.DataFrame) -> dict:
     centroids = pd.DataFrame(kmeans.cluster_centers_, columns=feature_columns)
     centroid_relative = relative_profile(centroids)
     type_names = {
-        int(cluster): f"유형{cluster}: {type_name(row)}"
+        int(cluster): f"유형{cluster + 1}: {type_name(row)}"  # 번호(키)는 0~3, 화면 표시만 1~4
         for cluster, row in centroid_relative.iterrows()
     }
     return {

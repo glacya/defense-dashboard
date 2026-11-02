@@ -7,7 +7,7 @@ from sqlalchemy import text
 from dashboard import data_source, main_data
 from dashboard.py import fitness_overview_data, followup_probability
 from dashboard.py.fitness_judgment import JUDGED_SQL
-from dashboard.py.fitness_overview_data import summarize_judged
+from dashboard.py.fitness_overview_data import summary_tables
 from dashboard.py.injury_overview_data import build_injury_tables
 from dashboard.py.management_targets_data import build_targets
 from dashboard.py.personal_detail_data import build_changes
@@ -75,16 +75,22 @@ def test_judged_sql_binds_only_high_bmi():
     assert set(text(JUDGED_SQL).compile().params) == {"high_bmi"}
 
 
-def test_summarize_judged_counts_rounds_and_events():
-    rounds, events = summarize_judged(_judged())
-    second = rounds.loc[rounds["회차"].eq(2)].iloc[0]
-    assert (second["전체장병수"], second["측정인원"], second["미달인원"], second["미달률"]) == (2, 2, 2, 100.0)
-    strength = events.loc[events["회차"].eq(1) & events["종목"].eq("근력")].iloc[0]
-    assert (strength["미달인원"], strength["1등급인원"], strength["미달률"]) == (1, 1, 50.0)
-    assert events["종목"].tolist()[:4] == ["근력", "근지구력", "심폐지구력", "유연성"]
+def test_summary_tables_shape_sql_results_for_screen():
+    """SQL 집계 결과를 화면 표(한글 컬럼, 종목 이름·단위, 미달률, 종목 순서)로 바꾸는지 확인합니다."""
+    rounds = pd.DataFrame({"GRP": ["서울", "부산"], "ROUND": [1, 1], "TOTAL_SOLDIERS": [2, 1],
+                           "MEASURED": [2, 1], "FAILED": [1, 0], "MANAGED": [1, 0]})
+    events = pd.DataFrame({"GRP": ["서울"] * 4, "ROUND": [1] * 4, "EVENT": ["FLEXIBILITY", "STRENGTH", "CARDIO", "ENDURANCE"],
+                           "MEASURED": [2] * 4, "MEAN": [1.0] * 4, "STD": [0.5] * 4, "FAILED": [0, 1, 0, 0],
+                           "GRADE_1": [1] * 4, "GRADE_2": [0] * 4, "GRADE_3": [1, 0, 1, 1]})
 
-    group_rounds, _ = summarize_judged(_judged(), "REGION_NAME")
-    assert group_rounds["그룹"].unique().tolist() == ["부산", "서울"] and group_rounds["전체장병수"].eq(1).all()
+    round_table, event_table = summary_tables(rounds, events, grouped=True)
+
+    assert round_table.columns.tolist() == ["그룹", "회차", "전체장병수", "측정인원", "미달인원", "미달률", "관리대상인원"]
+    assert round_table["미달률"].tolist() == [50.0, 0.0]
+    assert event_table["종목"].tolist() == ["근력", "근지구력", "심폐지구력", "유연성"]
+    assert event_table.loc[0, ["단위", "미달률"]].tolist() == ["%", 50.0]
+    overall_rounds, _ = summary_tables(rounds.drop(columns="GRP").iloc[:1], events.drop(columns="GRP"))
+    assert "그룹" not in overall_rounds
 
 
 def test_build_targets_names_events_and_reasons():

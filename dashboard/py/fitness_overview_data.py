@@ -1,7 +1,7 @@
 """전체 체력 현황용 회차·종목 집계와 기준 설명을 읽습니다.
 
-DB 모드는 캐시된 판정표(fitness_judgment.load_judged_measurements)를 pandas로 집계하고,
-CSV 모드는 analysis2가 만든 CSV를 읽습니다.
+DB 모드는 회차별·회차×종목별 집계를 SQL(dashboard.py.queries)에서 끝내고 결과 행(수~수백 행)만 받습니다.
+CSV 모드는 analysis2가 만든 CSV를 읽습니다(전환 기간용).
 """
 
 import json
@@ -14,7 +14,8 @@ import streamlit as st
 
 from dashboard.data_source import CSV, resolve_source
 from dashboard.db import DEFAULT_TTL
-from dashboard.py.fitness_judgment import EVENTS, grade_standards, load_judged_measurements
+from dashboard.py import queries
+from dashboard.py.fitness_judgment import EVENTS, grade_standards
 from data.scripts.utils import require_columns
 
 GROUP_COLUMNS = {"REGION_NAME", "UNIT_NAME"}
@@ -29,38 +30,27 @@ METADATA_TEXT = {
 CSV_EVENT_RENAMES = {'유효측정인원': '측정인원'}
 
 
-def summarize_judged(judged: pd.DataFrame, group_column: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """판정표를 회차별(group_column이 있으면 그룹·회차별)로 집계합니다."""
-    keys = ['ROUND'] if group_column is None else [group_column, 'ROUND']
-    data = judged.assign(FAILED=judged.FAIL_COUNT.ge(1))
-    rounds = data.groupby(keys, sort=True).agg(
-        측정인원=('MESURE_ID', 'size'), 미달인원=('FAILED', 'sum'), 관리대상인원=('MANAGED', 'sum'),
-    ).reset_index()
-    if group_column is None:
-        rounds.insert(1, '전체장병수', judged.SOLDIER_ID.nunique())
-    else:
-        population = judged.groupby(group_column).SOLDIER_ID.nunique().rename('전체장병수')
-        rounds = rounds.merge(population, on=group_column)
+def summary_tables(rounds: pd.DataFrame, events: pd.DataFrame,
+                   grouped: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """SQL 집계 결과(queries.load_overview_rounds/events)를 화면 표 모양(한글 컬럼, 종목 이름·단위, 미달률)으로 바꿉니다."""
+    keys = [GROUP_LABEL] if grouped else []
+    renames = {'GRP': GROUP_LABEL, 'ROUND': '회차', 'TOTAL_SOLDIERS': '전체장병수', 'MEASURED': '측정인원',
+               'FAILED': '미달인원', 'MANAGED': '관리대상인원', 'MEAN': '평균', 'STD': '표준편차',
+               'GRADE_1': '1등급인원', 'GRADE_2': '2등급인원', 'GRADE_3': '3등급인원'}
+    rounds = rounds.rename(columns=renames)
     rounds['미달률'] = rounds.미달인원 / rounds.측정인원 * 100
+    rounds = rounds[keys + ['회차', '전체장병수', '측정인원', '미달인원', '미달률', '관리대상인원']]
 
-    tables = []
-    for order, (event, (label, unit)) in enumerate(EVENTS.items()):
-        grade = data[f'{event}_GRADE']
-        table = data.assign(**{f'_{level}': grade.eq(level) for level in (0, 1, 2, 3)}).groupby(keys, sort=True).agg(
-            측정인원=('MESURE_ID', 'size'), 평균=(event, 'mean'), 표준편차=(event, 'std'),
-            미달인원=('_0', 'sum'), **{f'{level}등급인원': (f'_{level}', 'sum') for level in (1, 2, 3)},
-        ).reset_index()
-        table.insert(len(keys), '종목', label)
-        table.insert(len(keys) + 1, '단위', unit)
-        table.insert(len(keys) + 6, '미달률', table.미달인원 / table.측정인원 * 100)
-        table['_ORDER'] = order
-        tables.append(table)
-    events = pd.concat(tables, ignore_index=True).sort_values([*keys, '_ORDER'], kind='stable').drop(columns='_ORDER')
-
-    round_columns = ['ROUND', '전체장병수', '측정인원', '미달인원', '미달률', '관리대상인원']
-    rounds = rounds[keys[:-1] + round_columns]
-    renames = {'ROUND': '회차'} if group_column is None else {'ROUND': '회차', group_column: GROUP_LABEL}
-    return rounds.rename(columns=renames), events.reset_index(drop=True).rename(columns=renames)
+    order = {event: index for index, event in enumerate(EVENTS)}
+    events = events.rename(columns=renames)
+    events = events.assign(
+        종목=events.EVENT.map(lambda event: EVENTS[event][0]),
+        단위=events.EVENT.map(lambda event: EVENTS[event][1]),
+        미달률=events.미달인원 / events.측정인원 * 100,
+        _ORDER=events.EVENT.map(order),
+    ).sort_values([*keys, '회차', '_ORDER'], kind='stable')
+    columns = ['회차', '종목', '단위', '측정인원', '평균', '표준편차', '미달인원', '미달률', '1등급인원', '2등급인원', '3등급인원']
+    return rounds.reset_index(drop=True), events[keys + columns].reset_index(drop=True)
 
 
 @st.cache_data(show_spinner=False)
@@ -78,13 +68,12 @@ def _read_tables(directory: str, versions: tuple[int, ...]) -> tuple[pd.DataFram
 
 @st.cache_data(ttl=DEFAULT_TTL, show_spinner=False)
 def _load_overview_db() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    judged = load_judged_measurements()
-    rounds, events = summarize_judged(judged)
-    dates = pd.to_datetime(judged.MESURE_DE.astype(str), format='%Y%m%d')
+    rounds, events = summary_tables(queries.load_overview_rounds(), queries.load_overview_events())
+    period = queries.load_measure_period()
     metadata = {
         '생성일시': datetime.now(ZoneInfo('Asia/Seoul')).isoformat(),  # DB 모드에서는 조회 시각
-        '측정시작': dates.min().strftime('%Y-%m-%d'),
-        '측정종료': dates.max().strftime('%Y-%m-%d'),
+        '측정시작': pd.to_datetime(period.FIRST_DATE, format='%Y%m%d').strftime('%Y-%m-%d'),
+        '측정종료': pd.to_datetime(period.LAST_DATE, format='%Y%m%d').strftime('%Y-%m-%d'),
         **METADATA_TEXT,
         '등급기준': grade_standards(),
     }
@@ -103,7 +92,8 @@ def load_overview(source: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame
 
 @st.cache_data(ttl=DEFAULT_TTL, show_spinner=False)
 def _load_group_summary_db(group_column: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    return summarize_judged(load_judged_measurements(), group_column)
+    return summary_tables(queries.load_overview_rounds(group_column), queries.load_overview_events(group_column),
+                          grouped=True)
 
 
 def load_group_summary(group_column: str, source: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:

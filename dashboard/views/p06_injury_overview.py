@@ -7,8 +7,10 @@ import altair as alt
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
-from dashboard.py.injury_overview_data import filter_injuries_by_personnel, load_injury_overview
+from dashboard.py import queries
+from dashboard.py.injury_overview_data import injury_grade_table, injury_metadata, injury_people
 from dashboard.py.fitness_judgment import EVENTS, GRADE_LABELS
 from dashboard.common.filters import render_personnel_cards
 from dashboard.common.formatting import filter_signature
@@ -59,20 +61,18 @@ def _style_injury_chart(chart):
     return chart
 
 
-def _render_injury_distributions(injuries: pd.DataFrame, people: pd.DataFrame) -> None:
-    """필터된 부상 기록으로 부위·심각도·조직별 그래프를 표시합니다."""
+def _render_injury_distributions(
+    distribution: pd.DataFrame, units: list[tuple[str, str]], ranks: list[str],
+) -> None:
+    """필터를 건 부상 건수 집계(queries.load_injury_distribution)로 부위·심각도·조직별 그래프를 표시합니다.
+
+    막대·조각을 클릭하면 그때만 해당 부상 기록을 같은 필터로 조회합니다(queries.load_injury_records).
+    """
     left, right = st.columns(2)
-    chart_injuries = injuries.assign(
-        INJURY_LOCATION=injuries['INJURY_LOCATION'].fillna('(미상)'),
-        SEVERITY=injuries['SEVERITY'].astype('string').str.strip().fillna('(미상)'),
-    )
-    chart_scope_signature = filter_signature(tuple(injuries['INJURY_ID']))
+    chart_scope_signature = filter_signature(tuple(units), tuple(ranks))
     location_counts = (
-        chart_injuries.groupby('INJURY_LOCATION', dropna=False)
-        .size()
-        .rename('건수')
-        .reset_index()
-        .rename(columns={'INJURY_LOCATION': '부위'})
+        queries.distribution_counts(distribution, 'INJURY_LOCATION')
+        .rename(columns={'INJURY_LOCATION': '부위', 'INJURIES': '건수'})
         .sort_values('건수', ascending=False)
     )
     with left, st.container(border=True):
@@ -102,11 +102,9 @@ def _render_injury_distributions(injuries: pd.DataFrame, people: pd.DataFrame) -
         )
 
     severity_counts = (
-        chart_injuries.groupby('SEVERITY', dropna=False)
-        .size()
-        .rename('건수')
-        .reset_index()
-        .rename(columns={'SEVERITY': '심각도'})
+        queries.distribution_counts(distribution, 'SEVERITY')
+        .rename(columns={'SEVERITY': '심각도', 'INJURIES': '건수'})
+        .sort_values('심각도', kind='stable')
     )
     severity_order = [*SEVERITY_COLORS]
     severity_order.extend(sorted(set(severity_counts['심각도']) - set(severity_order)))
@@ -197,39 +195,29 @@ def _render_injury_distributions(injuries: pd.DataFrame, people: pd.DataFrame) -
     modal_dismissed = st.session_state.get('injury_chart_modal_dismissed', False)
     location = _selected_chart_category(location_event, '부위') if active_chart == 'location' else None
     if location is not None:
-        matching = chart_injuries.loc[chart_injuries['INJURY_LOCATION'].eq(location)]
-        signature = filter_signature('location', chart_scope_signature, location, tuple(matching['INJURY_ID']))
+        signature = filter_signature('location', chart_scope_signature, location)
         if not modal_dismissed and st.session_state.get('injury_chart_modal_dismissed_signature') != signature:
-            named_records = matching.merge(
-                people[['SOLDIER_ID', 'SOLDIER_NAME']],
-                on='SOLDIER_ID', how='left', validate='many_to_one',
-            )
-            _show_injury_group_modal(f'부위: {location}', named_records, signature, chart_modal=True)
+            records = queries.load_injury_records(units, ranks, location=location)
+            _show_injury_group_modal(f'부위: {location}', records, signature, chart_modal=True)
 
     severity = (
         _selected_altair_category(severity_event, 'severity_click', '심각도')
         if active_chart == 'severity' else None
     )
     if severity is not None:
-        matching = chart_injuries.loc[chart_injuries['SEVERITY'].eq(severity)]
-        signature = filter_signature('severity', chart_scope_signature, severity, tuple(matching['INJURY_ID']))
+        signature = filter_signature('severity', chart_scope_signature, severity)
         if not modal_dismissed and st.session_state.get('injury_chart_modal_dismissed_signature') != signature:
-            named_records = matching.merge(
-                people[['SOLDIER_ID', 'SOLDIER_NAME']],
-                on='SOLDIER_ID', how='left', validate='many_to_one',
-            )
-            _show_injury_group_modal(f'심각도: {severity}', named_records, signature, chart_modal=True)
+            records = queries.load_injury_records(units, ranks, severity=severity)
+            _show_injury_group_modal(f'심각도: {severity}', records, signature, chart_modal=True)
 
     group_label = st.selectbox('부상 건수 비교 기준', list(GROUP_COLUMNS), key='injury_group_by')
     group_column = GROUP_COLUMNS[group_label]
     group_label_name = group_label.removesuffix('별')
     grouped_counts = (
-        injuries.groupby(group_column, dropna=False)
-        .size()
-        .rename('부상 건수')
-        .reset_index()
-        .rename(columns={group_column: group_label_name})
-        .sort_values('부상 건수', ascending=True)
+        queries.distribution_counts(distribution, group_column)
+        .rename(columns={group_column: group_label_name, 'INJURIES': '부상 건수'})
+        .sort_values([group_label_name], kind='stable')
+        .sort_values('부상 건수', ascending=True, kind='stable')
     )
     with st.container(border=True):
         st.subheader(f'{group_label} 부상 건수')
@@ -354,54 +342,41 @@ def _show_injury_history_modal(person: pd.Series, injuries: pd.DataFrame, signat
     _modal()
 
 
-def _render_personnel_filter_cards(people: pd.DataFrame, injuries: pd.DataFrame) -> pd.DataFrame:
-    """지역·부대·계급 카드를 표시하고 조건에 맞는 부상 기록을 반환합니다."""
-    selection = render_personnel_cards(people, 'injury')
-    filtered_injuries = filter_injuries_by_personnel(
-        injuries,
-        people,
-        regions=selection.regions,
-        ranks=selection.ranks,
-    )
-    return filtered_injuries.loc[selection.unit_mask(filtered_injuries)]
-
-
 def render() -> None:
     """부상 기록 전체를 기준으로 현황과 개인 기록을 표시합니다."""
     st.caption('장병 체력관리 / 06')
     st.title('부상 현황')
     st.write('부상 인원과 건수를 구분하고, 체력등급에 따른 분포와 개인별 기록을 확인합니다.')
     try:
-        people,grades,summary,metadata,injuries=load_injury_overview()
-    except FileNotFoundError:
-        st.warning('분석 결과 또는 원본 파일이 없습니다. 아래 명령으로 생성하세요.')
-        st.code('python -m data.scripts.analysis.analysis2.injury_overview',language='powershell');st.stop()
-    except (ValueError,KeyError,pd.errors.EmptyDataError) as error:
+        summary=queries.load_injury_summary()
+        people=injury_people()
+    except (ValueError,KeyError,SQLAlchemyError) as error:
         st.error(f'자료를 확인해 주세요: {error}');st.stop()
-    if summary.empty:
-        st.info('표시할 집계 자료가 없습니다.');st.stop()
     st.info('합성 부상 자료 · 발생일이 없어 전체 보유 기록을 집계합니다. 최신 체력등급과의 비교이며 실제 부상 위험을 입증하는 결과가 아닙니다.')
-    row=summary.iloc[0]
-    values=[f'{int(row["전체장병수"]):,}명',f'{int(row["부상인원"]):,}명',f'{int(row["부상건수"]):,}건',
-            f'{row["부상자비율"]:.1f}%' if pd.notna(row['부상자비율']) else '해당 없음',f'{int(row["반복부상인원"]):,}명']
+    total=int(summary.TOTAL_SOLDIERS)
+    injured=int(summary.INJURED_SOLDIERS)
+    values=[f'{total:,}명',f'{injured:,}명',f'{int(summary.INJURIES):,}건',
+            f'{injured/total*100:.1f}%' if total else '해당 없음',f'{int(summary.REPEATED_SOLDIERS):,}명']
     for col,label,value in zip(st.columns(5),['전체 장병 수','부상 기록 보유 인원','부상 건수','부상자 비율','2건 이상 부상 기록'],values):
         col.metric(label,value,border=True)
     st.caption('전체 장병 명단이 분모입니다. 한 장병에게 부상이 여러 건 있어도 부상 인원은 1명입니다.')
     overall,comparison,individual=st.tabs(['전체 부상 분포','체력등급별 비교','개인별 부상 이력'])
     with overall:
-        if injuries.empty:
-            st.info('부상 파일에 기록이 없습니다.')
+        if int(summary.INJURIES)==0:
+            st.info('부상 기록이 없습니다.')
         else:
             st.caption('지역·부대·계급 카드 선택은 아래 분포 그래프에 적용됩니다. 상단 요약 지표는 전체 자료 기준입니다.')
-            filtered_injuries = _render_personnel_filter_cards(people, injuries)
-            st.caption(f'선택 조건에 해당하는 부상 기록 {len(filtered_injuries):,}건')
-            if filtered_injuries.empty:
+            selection = render_personnel_cards(people, 'injury')
+            distribution = queries.load_injury_distribution(selection.units, selection.ranks)
+            filtered_total = queries.distribution_counts(distribution, None)
+            st.caption(f'선택 조건에 해당하는 부상 기록 {filtered_total:,}건')
+            if filtered_total == 0:
                 st.info('선택한 지역·부대·계급 조건에 해당하는 부상 기록이 없습니다.')
             else:
-                _render_injury_distributions(filtered_injuries, people)
+                _render_injury_distributions(distribution, selection.units, selection.ranks)
     with comparison:
         event=st.selectbox('비교할 체력 종목',list(EVENTS),format_func=lambda key:EVENTS[key][0])
-        grade_table=grades.loc[grades['종목'].eq(EVENTS[event][0])]
+        grade_table=injury_grade_table().loc[lambda table: table['종목'].eq(EVENTS[event][0])]
         left,right=st.columns(2)
         with left:
             chart=px.bar(grade_table,x='등급',y='부상자비율',text='부상자비율',
@@ -447,11 +422,12 @@ def render() -> None:
                 person = shown.iloc[selected_rows[0]]
                 modal_signature = filter_signature(table_key, person.SOLDIER_ID)
                 if st.session_state.get('injury_modal_dismissed_signature') != modal_signature:
-                    records = injuries.loc[injuries.SOLDIER_ID.eq(person.SOLDIER_ID)].rename(columns=INJURY_LABELS).copy()
+                    records = queries.load_soldier_injuries(person.SOLDIER_ID).rename(columns=INJURY_LABELS)
                     if not records.empty:
                         records['예방 가능 여부'] = records['예방 가능 여부'].map({'Y': '가능', 'N': '불가능'}).fillna('정보 없음')
                     _show_injury_history_modal(person, records, modal_signature)
     with st.expander('집계 기준·자료 출처'):
+        metadata=injury_metadata()
         for key in ['집계범위','등급','기간','합성','중복']:
             st.write(metadata[key])
         st.caption('분석 생성일: '+metadata['생성일시'])

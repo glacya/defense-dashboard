@@ -1,6 +1,8 @@
 [server]
 runOnSave = true
 fileWatcherType = "poll"
+# dashboard/static의 파일을 app/static/<파일명>으로 제공한다(홈 지도의 시·도 경계 GeoJSON).
+enableStaticServing = true
 
 [theme]
 base = "light"

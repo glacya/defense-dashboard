@@ -79,6 +79,8 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/preprocessing
 
 모델을 고를 때 해 본 실험은 `clustering/experiments/`(등급 나누기·군집·운동처방 추천 모델)와 `failure_prediction/experiments/`(미달 예측 모델 검증, 사람과 모델 비교 실험)에 있습니다. 파이프라인에는 들어 있지 않습니다. 각 폴더의 README를 참고하세요.
 
+사람과 판정 알고리즘·대시보드 입력을 비교하는 실험 페이지(취약 체력 요소 판별, 후속조치 입력 시간)는 `human_experiments/`에 있습니다. 만든 페이지는 Git에서 제외되는 `data/intermediate/human_experiments/`에 저장됩니다.
+
 파이프라인에 넣지 않은 스크립트:
 
 | 모듈 | 하는 일 | 출력 |

@@ -51,7 +51,7 @@ def _toggle_fitness_type(type_key: str) -> None:
 
 def render() -> None:
     """확률 등급별 대상과 기존 체력 관리 기록을 조회합니다."""
-    st.caption('장병 체력관리 / 07')
+    # st.caption('장병 체력관리 / 07')
     st.title('체력 지도·후속조치 관리')
     st.write('예측 확률에 따라 안전·경계1등급·경계2등급·경계3등급으로 나누어 체력 지도·후속조치를 관리합니다.')
     st.caption(' 다음 체력검정 미달 확률입니다. 안전은 30% 미만이며, 30%·50%·70% 경계값은 각각 경계1·2·3등급에 포함합니다. 등급 계산 결과는 CSV로 저장하지 않습니다.')
@@ -273,10 +273,12 @@ def render() -> None:
             bmi=f'{person.BMI:.2f}' if pd.notna(person.BMI) else '정보 없음'
             for col,label,value in zip(st.columns(2),['측정 당시 나이','BMI'],[age,bmi]):
                 col.metric(label,value)
+            # 근지구력은 횟수라 정수, 나머지 종목은 소수 첫째 자리까지 표기한다.
+            number=lambda event,value:f'{value:.0f}' if event=='ENDURANCE' else f'{value:.1f}'
             measurements=[]
             for event,(label,unit) in EVENTS.items():
-                measurements.append({'종목':label,'측정값':person[event],'단위':unit,
-                    '3등급 하한':grade_cut(event,3)})
+                measurements.append({'종목':f'{label}({unit})','측정값':number(event,person[event]),
+                    '3등급 하한':number(event,grade_cut(event,3))})
             render_dataframe(pd.DataFrame(measurements),hide_index=True,width='stretch')
         else:
             st.info('참고용 측정 정보가 없습니다. 확률 등급에 따른 관리 기록은 이용할 수 있습니다.')
@@ -284,10 +286,6 @@ def render() -> None:
     st.subheader('상담·후속조치')
     soldier_names=dict(zip(population.SOLDIER_ID,population.SOLDIER_NAME))
     editor('followup_records',soldier,records,pd.DataFrame(columns=['SOLDIER_ID']),soldier_names)
-    with st.expander('입력 자료 보관 안내'):
-        st.write(f"저장 위치: DB {DB_TABLES['followup_records']} 테이블")
-        st.write('입력 기록은 분석 데이터와 따로 저장하며 분석 재실행으로 초기화하지 않습니다. 실제 확인한 체력 지도·상담 내용만 입력합니다. 부상 회복·운동 제한은 8번에서 관리합니다.')
-        st.caption('여러 화면에서 동시에 수정하면 충돌을 안내합니다. 최신 기록을 다시 읽고 수정하세요. 원본 신상·부상은 합성 자료입니다.')
 
     st.subheader('선택 조건에 해당하는 장병 명단')
     st.write('대상자 등급: '+(' / '.join(chosen) if chosen else '전체 · 안전 포함'))

@@ -146,7 +146,7 @@ def test_invalid_dates_and_completion_are_rejected_before_db(session):
 
 
 def test_group_validation_prevents_partial_save(session):
-    """그룹 중 장병번호가 빈 사람이 있으면 아무 기록도 저장하지 않는지 확인합니다."""
+    """그룹 중 군번이 빈 사람이 있으면 아무 기록도 저장하지 않는지 확인합니다."""
     with pytest.raises(ValueError):
         store.save_followups_batch(['a', ''], _followup())
     assert not session.calls

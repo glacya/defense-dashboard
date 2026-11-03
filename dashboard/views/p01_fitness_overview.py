@@ -126,7 +126,7 @@ def _show_metric_people(title: str, people: pd.DataFrame, signature: str) -> Non
 
 def render() -> None:
     """전체 지표·종목 통계·등급 분포·회차별 추이를 표시합니다."""
-    st.caption('장병 체력관리 / 01')
+    # st.caption('장병 체력관리 / 01')
     st.title('전체 체력 현황')
     st.write('선택한 조회 범위의 체력 수준과 미달 추이를 확인합니다.')
     try:
@@ -384,11 +384,16 @@ def render() -> None:
         st.caption('현재 집계에는 위 지역·부대·계급 카드 필터가 적용됩니다.')
         st.write(f'측정 기간: {metadata["측정시작"]} ~ {metadata["측정종료"]}')
         st.caption('분석 생성일: '+format_timestamp(metadata['생성일시']))
-        standards = pd.DataFrame(metadata['등급기준']).T.rename(
-            index={event: EVENTS[event][0] for event in EVENTS},
-            columns={'1':'1등급 하한','2':'2등급 하한','3':'3등급 하한'},
-        )
-        render_dataframe(standards)
+        # 근지구력은 횟수라 정수, 나머지 종목은 소수 첫째 자리까지 표기한다.
+        standards = pd.DataFrame([
+            {'종목': f'{EVENTS[event][0]}({EVENTS[event][1]})',
+             **{f'{level}등급 하한': f'{value:.0f}' if event == 'ENDURANCE' else f'{value:.1f}'
+                for level, value in metadata['등급기준'][event].items()}}
+            for event in EVENTS
+        ])
+        # 종목 이름이 '심폐지구력(mL/kg/min)'처럼 길어 잘리지 않도록 열 폭을 넓힌다.
+        render_dataframe(standards, hide_index=True,
+                         column_config={'종목': st.column_config.TextColumn(width='medium')})
     if (
         soldier_ids is not None
         and not all_comparison_rounds.empty

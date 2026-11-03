@@ -286,7 +286,7 @@ def _show_injury_history_modal(person: pd.Series, injuries: pd.DataFrame, signat
 
 def render() -> None:
     """부상 기록 전체를 기준으로 현황과 개인 기록을 표시합니다."""
-    st.caption('장병 체력관리 / 06')
+    # st.caption('장병 체력관리 / 06')
     st.title('부상 현황')
     st.write('부상 인원과 건수를 구분하고, 체력등급에 따른 분포와 개인별 기록을 확인합니다.')
     try:
@@ -338,7 +338,10 @@ def render() -> None:
                 selector={'mode': 'text'},
             )
             chart.update_layout(yaxis_range=[0,100],yaxis_title='부상자 비율 (%)',title='최신 종목 등급별 부상자 비율')
-            st.plotly_chart(_style_injury_chart(chart),width='stretch',theme=None)
+            chart=_style_injury_chart(chart)
+            # 공통 위 여백(24px)으로는 제목 한 줄이 잘리므로 이 그래프만 제목 자리를 둔다.
+            chart.update_layout(margin_t=64,title=dict(y=0.97,yanchor='top'))
+            st.plotly_chart(chart,width='stretch',theme=None)
         with right:
             render_dataframe(grade_table.drop(columns='종목'),hide_index=True,width='stretch',
                 column_config={'부상자비율':st.column_config.NumberColumn(format='%.1f%%')})

@@ -78,7 +78,7 @@ def _load_soldier_probability(
 
 def render() -> None:
     """장병 선택 후 측정 시점별 상세와 개인 이력을 표시합니다."""
-    st.caption('장병 체력관리 / 03')
+    # st.caption('장병 체력관리 / 03')
     st.title('개인 장병 상세')
     st.write('한 장병의 신체·체력 변화와 부상 기록을 함께 확인합니다.')
     try:
@@ -304,9 +304,16 @@ def render() -> None:
         st.write('집중관리 사유: '+(row.SELECTION_REASONS or '해당 없음'))
     with changes:
         st.subheader('1차 대비 선택 회차 변화')
+        def change_text(event,unit,value):
+            """변화량을 부호와 함께 표기합니다(근지구력은 정수, 나머지는 소수 첫째 자리, % 단위는 %p)."""
+            if pd.isna(value):
+                return ''
+            digits=0 if event=='ENDURANCE' else 1
+            value=round(value,digits)+0.0  # +0.0: 반올림 결과 -0이 '-0.0'으로 찍히지 않게
+            return f'{value:+.{digits}f}'+('%p' if unit=='%' else '')
         rows=[]
         for event,(label,unit) in EVENTS.items():
-            rows.append({'종목':f'{label}({unit})','직전 회차 측정 대비 측정값 변화':row[f'{event}_CHANGE'],'등급 변화':row[f'{event}_GRADE_CHANGE']})
+            rows.append({'종목':f'{label}({unit})','직전 회차 측정 대비 측정값 변화':change_text(event,unit,row[f'{event}_CHANGE']),'등급 변화':row[f'{event}_GRADE_CHANGE']})
         render_dataframe(pd.DataFrame(rows),hide_index=True,width='stretch')
         delta=row.FAIL_COUNT_CHANGE
         if pd.isna(delta):

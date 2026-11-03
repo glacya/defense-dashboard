@@ -16,7 +16,7 @@ FOLLOWUP_THRESHOLD = .3  # 이 확률 이상(경계1~3등급)이 후속조치 �
 def classify_probabilities(frame: pd.DataFrame) -> pd.DataFrame:
     """장병별 미달 확률에 위험 등급과 후속조치 대상 여부를 붙입니다.
 
-    장병번호(PK)·확률(NOT NULL)은 DB가 보장하므로 다시 검사하지 않습니다.
+    군번(PK)·확률(NOT NULL)은 DB가 보장하므로 다시 검사하지 않습니다.
     """
     result = frame[['SOLDIER_ID', 'FAILURE_PROBABILITY']].copy()
     values = result.FAILURE_PROBABILITY

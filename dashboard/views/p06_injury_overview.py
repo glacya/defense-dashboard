@@ -1,6 +1,7 @@
 """6번 화면: 전체 부상·종목별 등급 비교·개인 부상 이력입니다."""
 
 from html import escape
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 import streamlit as st
@@ -34,6 +35,17 @@ GROUP_MODAL_COLUMNS = [
 
 SEVERITY_COLORS = {'경증': '#0F766E', '중등증': '#0891B2', '중증': '#2563EB', '미상': '#94A3B8'}
 GROUP_COLUMNS = {'지역별': 'REGION_NAME', '부대별': 'UNIT_NAME', '계급별': 'RANK_NAME'}
+
+
+def _load_page_data() -> tuple[pd.Series, pd.DataFrame, pd.DataFrame]:
+    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="injury-overview-data") as executor:
+        summary_future = executor.submit(queries.load_injury_summary)
+        people_future = executor.submit(injury_people)
+        grade_table_future = executor.submit(injury_grade_table)
+        summary = summary_future.result()
+        people = people_future.result()
+        grade_table = grade_table_future.result()
+    return summary, people, grade_table
 
 
 def _style_injury_chart(chart):
@@ -278,8 +290,7 @@ def render() -> None:
     st.title('부상 현황')
     st.write('부상 인원과 건수를 구분하고, 체력등급에 따른 분포와 개인별 기록을 확인합니다.')
     try:
-        summary=queries.load_injury_summary()
-        people=injury_people()
+        summary, people, grade_table = _load_page_data()
     except (ValueError,KeyError,SQLAlchemyError) as error:
         st.error(f'자료를 확인해 주세요: {error}');st.stop()
     st.info('합성 부상 자료 · 발생일이 없어 전체 보유 기록을 집계합니다. 최신 체력등급과의 비교이며 실제 부상 위험을 입증하는 결과가 아닙니다.')
@@ -317,7 +328,7 @@ def render() -> None:
                 _render_injury_distributions(distribution, selection.units, selection.ranks)
     with comparison:
         event=st.selectbox('비교할 체력 종목',list(EVENTS),format_func=lambda key:EVENTS[key][0])
-        grade_table=injury_grade_table().loc[lambda table: table['종목'].eq(EVENTS[event][0])]
+        grade_table=grade_table.loc[lambda table: table['종목'].eq(EVENTS[event][0])]
         left,right=st.columns(2)
         with left:
             chart=make_bar(grade_table,x='등급',y='부상자비율',text='부상자비율',

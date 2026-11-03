@@ -4,6 +4,7 @@
 """
 
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -35,8 +36,11 @@ def injury_grade_table() -> pd.DataFrame:
 
 def injury_people() -> pd.DataFrame:
     """장병 명단(queries.load_roster)에 장병별 부상 건수(없으면 0)를 붙입니다."""
-    counts = queries.load_soldier_injury_counts().set_index('SOLDIER_ID').INJURY_COUNT
-    roster = queries.load_roster()
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="injury-people-data") as executor:
+        counts_future = executor.submit(queries.load_soldier_injury_counts)
+        roster_future = executor.submit(queries.load_roster)
+        counts = counts_future.result().set_index('SOLDIER_ID').INJURY_COUNT
+        roster = roster_future.result()
     return roster.assign(INJURY_COUNT=roster.SOLDIER_ID.map(counts).fillna(0).astype('int64'))
 
 

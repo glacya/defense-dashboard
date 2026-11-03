@@ -33,7 +33,7 @@
 | 메뉴 | 파일 | URL | 내용 | 주요 데이터 |
 |---|---|---|---|---|
 | 대시보드 홈 | `mainpage.py` | `home` | 지역·부대별 체력 충족률 지도(시·도 GeoJSON), 전체 장병 KPI(미달·경계 등급·후속조치 완료율), 부상 현황, 운동유형 16개와 선택 유형의 평균 백분위·추천 운동 | `queries.load_home_*`, `load_non_safe_count`, `load_fitness_types`, `management_store.load_completion_counts`, `load_recommendation` |
-| 부대 현황 | `p04_unit_status.py` | `units` | 지역·부대별 인원 요약, BMI 구간별 요약과 해당 장병 목록, 선택 장병의 체력유형 | `queries.load_unit_latest`, `load_measurement_profile` |
+| 부대 현황 | `p04_unit_status.py` | `units` | 지역·부대별 인원 요약, 현재 필터 기준 미달 확률 등급 분포와 선택 등급의 CSV 명단, BMI 구간별 요약과 해당 장병 목록, 선택 장병의 체력유형 | `queries.load_unit_latest`, `load_measurement_profile` |
 | 전체 체력 현황 | `p01_fitness_overview.py` | `fitness-overview` | 공용 지역·부대·계급 카드 필터 기준 회차 요약, 종목별 미달률·등급 분포·측정 수준, 회차별 변화와 조회 범위 내 부대 비교. 측정 회차는 가로 선택으로 표시하고, 단일 부대를 선택하면 요약 카드를 눌러 장병 명단(모달)을 봅니다. | `fitness_overview_data.load_overview`, `load_group_summary`, `queries.load_unit_judgments` |
 | 미달·악화 대상자 | `p02_management_targets.py` | `management-targets` | 회차별 집중관리 대상자(BMI≥25·근력 또는 심폐 미달, 2종목 이상 미달, 1차 대비 악화, 최근 3회 지속 미달) 명단과 개인별 선정 근거 | `queries.load_round_summary`, `management_targets_data.load_round_targets`, `personal_detail_data.load_soldier_history` |
 | 개인 장병 상세 | `p03_personal_detail.py` | `personal-detail` | 장병 찾기 → 신체 정보, 체력유형, 종목별 기준 비교, 1차 대비 변화, 전체 평균과 비교, 부상 이력, 추천 운동 | `queries.load_roster`, `load_soldier_history`, `load_measurement_profile`, `load_round_means`, `load_soldier_injuries`, `render_recommendation` |

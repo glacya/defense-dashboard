@@ -286,10 +286,6 @@ def render() -> None:
     st.subheader('상담·후속조치')
     soldier_names=dict(zip(population.SOLDIER_ID,population.SOLDIER_NAME))
     editor('followup_records',soldier,records,pd.DataFrame(columns=['SOLDIER_ID']),soldier_names)
-    with st.expander('입력 자료 보관 안내'):
-        st.write(f"저장 위치: DB {DB_TABLES['followup_records']} 테이블")
-        st.write('입력 기록은 분석 데이터와 따로 저장하며 분석 재실행으로 초기화하지 않습니다. 실제 확인한 체력 지도·상담 내용만 입력합니다. 부상 회복·운동 제한은 8번에서 관리합니다.')
-        st.caption('여러 화면에서 동시에 수정하면 충돌을 안내합니다. 최신 기록을 다시 읽고 수정하세요. 원본 신상·부상은 합성 자료입니다.')
 
     st.subheader('선택 조건에 해당하는 장병 명단')
     st.write('대상자 등급: '+(' / '.join(chosen) if chosen else '전체 · 안전 포함'))

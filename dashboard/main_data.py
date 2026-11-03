@@ -100,42 +100,12 @@ def _load_measurements(
     if fitness["SOLDIER_ID"].isna().any():
         raise ValueError("측정 데이터에 군번이 비어 있는 행이 있습니다.")
 
-<<<<<<< HEAD
-    measure_ids = pd.to_numeric(fitness["MESURE_ID"], errors="coerce")
-    if measure_ids.isna().any() or measure_ids.duplicated().any():
-        raise ValueError("측정 데이터의 MESURE_ID는 유효하고 고유해야 합니다.")
-    fitness["MESURE_ID"] = measure_ids.astype("int64")
-
-    fitness["MESURE_DE"] = pd.to_datetime(fitness["MESURE_DE"].astype("string"), format="%Y%m%d", errors="coerce")
-    if fitness["MESURE_DE"].isna().any():
-        raise ValueError("측정 데이터에 형식이 잘못된 측정일(MESURE_DE)이 있습니다.")
-
-    numeric_columns = [
-        "AGE", "HEIGHT", "WEIGHT", "BMI", "BODY_FAT_PERCENTAGE",
-        *FITNESS_ITEM_COLUMNS,
-    ]
-    for column in numeric_columns:
-        fitness[column] = pd.to_numeric(fitness[column], errors="coerce")
-    invalid = fitness[numeric_columns].isna().any(axis=1)
-    if invalid.any():
-        raise ValueError(f"측정 데이터 {int(invalid.sum()):,}행에 유효하지 않은 나이 또는 신체 측정값이 있습니다.")
-    if (fitness["BMI"] <= 0).any():
-        raise ValueError("BMI는 0보다 커야 합니다.")
-
-=======
->>>>>>> main
     missing_ids = set(fitness["SOLDIER_ID"]) - set(personnel["SOLDIER_ID"])
     if missing_ids:
         raise ValueError(f"측정 데이터에 명단과 연결되지 않는 군번이 {len(missing_ids):,}개 있습니다.")
 
     merged = fitness.merge(personnel, on="SOLDIER_ID", how="left", validate="many_to_one")
-<<<<<<< HEAD
-    merged["BMI구간"] = classify_bmi(merged["BMI"])
-    merged = add_fitness_deficiency_flags(merged)
-    return merged.sort_values(["MESURE_DE", "MESURE_ID"], kind="stable").reset_index(drop=True)
-=======
     return _prepare_measurements(merged)
->>>>>>> main
 
 
 @st.cache_data(show_spinner=False)

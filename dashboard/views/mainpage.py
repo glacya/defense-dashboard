@@ -141,24 +141,6 @@ def _render_kpis(total: int, injury_total: int) -> None:
         + "</div></section>",
         unsafe_allow_html=True,
     )
-<<<<<<< HEAD
-    round_deficiency = (
-        add_deficiency_flags(scoped_history).groupby("측정회차", as_index=False)
-        .agg(
-            미달인원=("체력미달", "sum"),
-            판정가능인원=("체력판정가능", "sum"),
-            관리대상=("관리대상", "sum"),
-        )
-    )
-    round_summary = round_summary.merge(round_deficiency, on="측정회차", how="left")
-    recent = set(round_summary["측정회차"].sort_values().tail(3))
-    round_summary = round_summary.loc[round_summary["측정회차"].isin(recent)].copy()
-    round_summary["회차"] = round_summary["측정회차"].astype(int).map(lambda v: f"{v}회차")
-    round_summary["미달비율"] = (
-        round_summary["미달인원"] / round_summary["판정가능인원"].clip(lower=1) * 100
-    )
-=======
->>>>>>> main
 
 
 def _render_fitness_variance(unit: pd.DataFrame) -> None:
@@ -517,16 +499,5 @@ def render() -> None:
     if units.empty:
         st.info("현재 조건에 해당하는 장병이 없습니다.")
         st.stop()
-<<<<<<< HEAD
-
-    render_home_overview(filters, measurements)
-    render_personnel_list(filters, measurements, injuries)
-    st.divider()
-    st.caption(
-        "BMI 구간은 일반적인 성인 기준(저체중 <18.5, 정상 18.5–25, 과체중 25–30, 비만 ≥30)으로 표시합니다. "
-        "이 화면의 데이터는 개인 진단이나 의학적 판단을 대체하지 않습니다."
-    )
-=======
     render_home_overview(units)
     st.caption("이 화면의 데이터는 개인 진단이나 의학적 판단을 대체하지 않습니다.")
->>>>>>> main

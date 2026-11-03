@@ -224,16 +224,6 @@ def render() -> None:
     )
     st.sidebar.caption(scope_caption)
     row = scope.loc[scope['회차'].eq(number)].iloc[0]
-<<<<<<< HEAD
-    selected = events.loc[events['회차'].eq(number)]
-    st.subheader(f'전체 장병 · {number}차')
-    metrics = [('전체 장병 수',f'{int(row["전체장병수"]):,}명'), ('측정 인원',f'{int(row["측정인원"]):,}명'),
-        ('미달 인원',f'{int(row["미달인원"]):,}명'), ('미달 비율',f'{row["미달률"]:.1f}%' if pd.notna(row['미달률']) else '판정 불가'),
-        ('집중관리 대상',f'{int(row["관리대상인원"]):,}명')]
-    for column,(label,value) in zip(st.columns(5), metrics):
-        column.metric(label,value,border=True)
-    st.caption(f'4종목 판정 가능 {int(row["판정가능인원"]):,}명 · 판정 불완전 {int(row["판정불완전인원"]):,}명. 전체 미달률은 4종목 모두 판정 가능한 인원 중 2종목 이상 미달 비율입니다.')
-=======
     selected = scoped_events.loc[scoped_events['회차'].eq(number)]
     title_scope = f'{level} · {selected_group}' if level != '전체' else '전체 장병'
     st.subheader(f'{title_scope} · {number}차')
@@ -270,7 +260,6 @@ def render() -> None:
             modal_title = f'{selected_group_name} · 전체 장병 수'
         _show_metric_people(modal_title, people, f'{scope_signature}_{clicked_metric}')
     st.caption('전체 미달률은 측정 인원 중 1종목 이상 미달한 인원의 비율입니다.')
->>>>>>> main
     if row['측정인원']==0:
         st.info('선택한 조건에서 측정한 장병이 없습니다.')
     left,right=st.columns(2)
@@ -450,8 +439,6 @@ def render() -> None:
         st.write(f'측정 기간: {metadata["측정시작"]} ~ {metadata["측정종료"]}')
         st.caption('분석 생성일: '+metadata['생성일시'])
         st.dataframe(pd.DataFrame(metadata['등급기준']).T.rename(columns={'1':'1등급 하한','2':'2등급 하한','3':'3등급 하한'}))
-<<<<<<< HEAD
-=======
     if level != '전체':
         compare = all_comparison_rounds.loc[all_comparison_rounds['회차'].eq(number)].copy()
         compare = compare.sort_values('미달률', ascending=False, na_position='last', kind='stable')
@@ -515,4 +502,3 @@ def render() -> None:
                 '관리대상인원': st.column_config.NumberColumn('집중관리 대상', format='%d명'),
             },
         )
->>>>>>> main

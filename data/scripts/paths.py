@@ -74,8 +74,14 @@ INTERMEDIATE_OFFICIAL_CUT_RATIOS = INTERMEDIATE_DIR / "official_cut_ratios"
 # 군집 분석(analysis/clustering): 최종 측정을 평균 백분위 등급별로 나눈 grade_1.csv ~ grade_4.csv
 INTERMEDIATE_CLUSTERING = INTERMEDIATE_DIR / "clustering"
 # 학습된 모델(Git 추적, 사용자 결정: 매번 학습하지 않고 고정 모델을 씀). 다시 학습할 때만 train_*.py를 직접 실행한다.
-CLUSTER_MODEL_DIR = DATA_SCRIPTS_DIR / "analysis" / "data_model" / "cluster_models"
-FAILURE_MODEL_PATH = DATA_SCRIPTS_DIR / "analysis" / "data_model" / "final" / "models" / "fail_probability_model.joblib"
+CLUSTER_MODEL_DIR = DATA_SCRIPTS_DIR / "analysis" / "clustering" / "models"
+FAILURE_MODEL_PATH = DATA_SCRIPTS_DIR / "analysis" / "failure_prediction" / "models" / "fail_probability_model.joblib"
+# 모델을 고를 때 해 본 실험(clustering/experiments, failure_prediction/experiments)의 출력(Git 제외)
+INTERMEDIATE_EXPERIMENTS = INTERMEDIATE_DIR / "experiments"
+# 통계 분석(analysis/statistics): 스크립트가 서로의 결과를 읽으므로 결과 폴더를 한곳에 둔다(Git 추적)
+STATISTICS_DIR = DATA_SCRIPTS_DIR / "analysis" / "statistics"
+STATISTICS_RESULTS_DIR = STATISTICS_DIR / "results"
+STATISTICS_REPORTS_DIR = STATISTICS_DIR / "reports"
 
 # DB 접속 정보(Git 제외, 형식은 data/.env.example). setup_database.py가 쓴다.
 DB_ENV_PATH = DATA_DIR / ".env"

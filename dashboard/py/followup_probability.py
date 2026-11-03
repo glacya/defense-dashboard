@@ -5,7 +5,6 @@ import streamlit as st
 
 from dashboard.db import DEFAULT_TTL
 from dashboard.py import queries
-from data.scripts.utils import require_columns
 
 RISK_LEVELS = ['안전', '경계1등급', '경계2등급', '경계3등급']
 RISK_RANGES = ['30% 미만', '30% 이상 · 50% 미만', '50% 이상 · 70% 미만', '70% 이상']
@@ -13,17 +12,12 @@ FOLLOWUP_THRESHOLD = .3  # 이 확률 이상(경계1~3등급)이 후속조치 �
 
 
 def classify_probabilities(frame: pd.DataFrame) -> pd.DataFrame:
-    """확률과 장병번호를 검증한 후 중복 없이 등급을 계산합니다."""
-    require_columns(frame, ['SOLDIER_ID', 'FAILURE_PROBABILITY'])
+    """장병별 미달 확률에 위험 등급과 후속조치 대상 여부를 붙입니다.
+
+    장병번호(PK)·확률(NOT NULL)은 DB가 보장하므로 다시 검사하지 않습니다.
+    """
     result = frame[['SOLDIER_ID', 'FAILURE_PROBABILITY']].copy()
-    if result.SOLDIER_ID.isna().any() or result.SOLDIER_ID.astype(str).str.strip().eq('').any():
-        raise ValueError('확률 자료에 장병번호가 없습니다.')
-    if result.SOLDIER_ID.duplicated().any():
-        raise ValueError('확률 자료의 장병번호가 중복됩니다.')
-    values = pd.to_numeric(result.FAILURE_PROBABILITY, errors='coerce')
-    if values.isna().any() or not values.between(0, 1).all():
-        raise ValueError('미달 확률은 결측 없이 0~1 사이의 숫자여야 합니다.')
-    result['FAILURE_PROBABILITY'] = values
+    values = result.FAILURE_PROBABILITY
     result['RISK_LEVEL'] = pd.cut(values, [-float('inf'), .3, .5, .7, float('inf')],
                                  labels=RISK_LEVELS, right=False).astype(str)
     result['FOLLOWUP_TARGET'] = values.ge(FOLLOWUP_THRESHOLD)

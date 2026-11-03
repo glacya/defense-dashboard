@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>장병 체력관리 DB 구성도</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* 레이아웃: 위에서 요약·범례 → 가로로 넓은 구성도(열 5개: 운영 기록 | 장병·부상 | 측정 | 처방·유형 | 참조표) → 중요도 검토 표 */
+:root {
+  --bg: #f2f4f0;          /* 연한 회녹색 바탕 */
+  --surface: #ffffff;
+  --ink: #1b221d;
+  --muted: #5e6a61;
+  --line: #d3d9d0;
+  --core: #3f4f25;        /* 핵심: 짙은 올리브 */
+  --core-ink: #f4f6ee;
+  --core-soft: #e7ecdb;
+  --record: #a2531c;      /* 운영 기록: 녹슨 주황 */
+  --record-soft: #f6e8dc;
+  --derived: #5b6b78;     /* 분석 결과·참조표: 청회색 */
+  --derived-soft: #e9edf0;
+  --edge: #7d877f;
+  --edge-hi: #3f4f25;
+  --font-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141916; --surface: #1d2420; --ink: #e5ebe4; --muted: #9aa69c; --line: #323c35;
+    --core: #9db36a; --core-ink: #151b0c; --core-soft: #27301b;
+    --record: #e08a4f; --record-soft: #33241a;
+    --derived: #9fb0bd; --derived-soft: #232b31;
+    --edge: #78857b; --edge-hi: #b9cf86;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141916; --surface: #1d2420; --ink: #e5ebe4; --muted: #9aa69c; --line: #323c35;
+  --core: #9db36a; --core-ink: #151b0c; --core-soft: #27301b;
+  --record: #e08a4f; --record-soft: #33241a;
+  --derived: #9fb0bd; --derived-soft: #232b31;
+  --edge: #78857b; --edge-hi: #b9cf86;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.page { max-width: 1680px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+header { display: flex; flex-direction: column; gap: 6px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+h1 { margin: 0; font-size: clamp(24px, 3vw, 32px); font-weight: 700; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 72ch; }
+h2 { margin: 0 0 12px; font-size: 19px; font-weight: 700; text-wrap: balance; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; font-size: 13px; color: var(--muted); }
+.legend .item { display: inline-flex; align-items: center; gap: 8px; }
+.swatch { width: 18px; height: 12px; border-radius: 3px; border: 2px solid; }
+.swatch.core { background: var(--core); border-color: var(--core); }
+.swatch.record { background: var(--record-soft); border-color: var(--record); }
+.swatch.derived { background: var(--derived-soft); border-color: var(--derived); }
+.legend svg { overflow: visible; }
+
+.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.toolbar button {
+  font: 500 13px var(--font-ui); color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 12px; cursor: pointer;
+}
+.toolbar button:hover { border-color: var(--edge); }
+.toolbar button:focus-visible, .card:focus-visible { outline: 2px solid var(--edge-hi); outline-offset: 2px; }
+.hint { font-size: 12px; color: var(--muted); }
+
+.viewport { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); padding: 20px; }
+.scaler { position: relative; }
+.canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+.canvas svg.edges { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+.edges path { fill: none; stroke: var(--edge); stroke-width: 1.6; transition: stroke .15s, opacity .15s; }
+.edges path.hi { stroke: var(--edge-hi); stroke-width: 2.4; }
+.canvas.focus .edges path:not(.hi) { opacity: .18; }
+.canvas.focus .card:not(.hi) { opacity: .45; }
+.marker-stroke { stroke: var(--edge); fill: none; stroke-width: 1.4; }
+
+.card { position: absolute; background: var(--surface); border: 1.5px solid var(--line); border-radius: 8px; overflow: hidden; transition: opacity .15s; }
+.card header { padding: 8px 12px; gap: 2px; border-bottom: 1px solid var(--line); }
+.card .ko { font-weight: 700; font-size: 14px; }
+.card .en { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.card .meta { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.card .count { font-family: var(--font-mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.card ul { list-style: none; margin: 0; padding: 4px 0; }
+.card li { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 0 10px; height: 24px; font-size: 12px; }
+.card li .name { font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card li .label { color: var(--muted); font-size: 11px; margin-left: 4px; font-family: var(--font-ui); }
+.card li .type { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.badge { font: 600 9.5px var(--font-mono); padding: 1px 3px; border-radius: 3px; text-align: center; letter-spacing: .02em; }
+.badge.pk { background: var(--ink); color: var(--surface); }
+.badge.fk { border: 1px solid var(--edge); color: var(--muted); }
+.badge.pkfk { background: var(--ink); color: var(--surface); }
+.card li.null .name::after { content: " ?"; color: var(--muted); }
+
+.card.core { border: 2px solid var(--core); box-shadow: 0 2px 0 var(--core-soft); }
+.card.core header { background: var(--core); color: var(--core-ink); border-bottom: 0; padding: 12px 14px; }
+.card.core .ko { font-size: 18px; }
+.card.core .en, .card.core .count { color: var(--core-ink); opacity: .82; }
+.card.core li { height: 30px; font-size: 13px; padding: 0 12px; }
+.card.core li .label { font-size: 12px; }
+.card.record { border: 1.5px dashed var(--record); }
+.card.record header { background: var(--record-soft); }
+.card.record .ko { color: var(--record); }
+.card.derived header { background: var(--derived-soft); }
+
+.review { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 13px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; background: var(--bg); }
+td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; font-family: var(--font-mono); font-size: 12px; }
+td code { font-family: var(--font-mono); font-size: 12px; }
+.tier { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.tier.core { background: var(--core); color: var(--core-ink); }
+.tier.record { background: var(--record-soft); color: var(--record); border: 1px solid var(--record); }
+.tier.derived { background: var(--derived-soft); color: var(--derived); border: 1px solid var(--derived); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.note { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+.note h3 { margin: 0 0 6px; font-size: 14px; }
+.note p { margin: 0; color: var(--muted); font-size: 13px; }
+.note code { font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header>
+    <span class="eyebrow">PostgreSQL · 테이블 13개 · 외래 키 13개</span>
+    <h1>장병 체력관리 DB 구성도</h1>
+    <p class="lede">국민체력100 측정을 바탕으로 만든 장병 체력·부상 데이터와, 대시보드에서 입력하는 후속조치 기록의 테이블 관계입니다. 컬럼·자료형·키는 <code>data/definitions/</code>의 정의서와 <code>data/scripts/setup_database.py</code>가 만드는 테이블을 따릅니다. 행 수는 현재 DB 기준입니다.</p>
+  </header>
+
+  <section class="legend" aria-label="범례">
+    <span class="item"><span class="swatch core"></span>핵심 데이터</span>
+    <span class="item"><span class="swatch record"></span>운영 기록 (대시보드 입력)</span>
+    <span class="item"><span class="swatch derived"></span>분석 결과·참조표</span>
+    <span class="item"><svg width="44" height="14" viewBox="0 0 44 14" aria-hidden="true"><path class="marker-stroke" d="M2 7H42M2 1L12 7L2 13M36 1V13"/></svg>여러 행 → 한 행</span>
+    <span class="item"><svg width="44" height="14" viewBox="0 0 44 14" aria-hidden="true"><path class="marker-stroke" d="M2 7H42M8 1V13M36 1V13"/></svg>한 행 ↔ 한 행</span>
+    <span class="item"><span class="badge pk">PK</span>기본 키 <span class="badge fk">FK</span>외래 키 · <code>?</code> 빈 값 허용</span>
+  </section>
+
+  <section>
+    <div class="toolbar">
+      <span class="hint">테이블에 마우스를 올리거나 누르면 연결된 관계만 강조합니다.</span>
+      <button type="button" id="fit-toggle" aria-pressed="true">원래 크기로 보기</button>
+    </div>
+    <div class="viewport" id="viewport">
+      <div class="scaler" id="scaler">
+        <div class="canvas" id="canvas">
+          <svg class="edges" id="edges" aria-hidden="true">
+            <defs>
+              <marker id="m-many" viewBox="-14 -8 16 16" refX="0" refY="0" markerWidth="16" markerHeight="16" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                <path class="marker-stroke" d="M-12 0L0 -6M-12 0L0 0M-12 0L0 6"/>
+              </marker>
+              <marker id="m-one" viewBox="-14 -8 16 16" refX="0" refY="0" markerWidth="16" markerHeight="16" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                <path class="marker-stroke" d="M-7 -6V6"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>테이블 중요도 검토</h2>
+    <div class="review">
+      <table>
+        <thead><tr><th>테이블</th><th>구분</th><th style="text-align:right">행 수</th><th>내용</th><th>판단 근거</th></tr></thead>
+        <tbody id="review-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div class="note"><h3>핵심 4개 테이블</h3><p>장병 명단(<code>soldiers</code>)을 중심으로 측정(<code>fitness_measurements</code>)과 부상(<code>injuries</code>)이 군번으로, 운동 처방(<code>exercise_prescriptions</code>)이 측정 번호로 이어집니다. 다른 테이블은 모두 이 넷에서 계산하거나 이 넷을 가리킵니다.</p></div>
+    <div class="note"><h3>운영 기록은 따로 보호</h3><p>후속조치 기록 두 테이블은 사람이 입력한 내용이라 다시 만들 수 없습니다. 데이터를 다시 적재해도 지우지 않으며, 외래 키는 적재가 끝난 뒤 다시 연결합니다. 부상 후속조치에는 군번이 없고 부상 기록을 거쳐 장병과 이어집니다.</p></div>
+    <div class="note"><h3>외래 키가 아닌 연결</h3><p>운동 사용 부위(<code>exercise_body_parts.body_part</code>)와 부상 부위(<code>injuries.injury_location</code>)는 같은 한글 이름을 씁니다. 대시보드는 이 값을 비교해 다친 부위를 쓰는 추천 운동을 뺍니다.</p></div>
+    <div class="note"><h3>체력 유형의 키</h3><p>체력 유형은 평균 백분위 등급(1~4)과 군집 번호(0~3)를 묶은 복합 키로 구분합니다(16개). 측정 분류와 추천 운동은 이 두 컬럼을 함께 외래 키로 가집니다.</p></div>
+  </section>
+</div>
+
+<script>
+const T = (name, label, type, key, nullable) => ({ name, label, type, key: key || "", nullable: !!nullable });
+const TABLES = {
+  soldiers: { tier: "core", ko: "장병 명단", rows: 3582, cols: [
+    T("soldier_id", "군번", "VARCHAR(20)", "PK"), T("soldier_name", "이름", "VARCHAR(10)"), T("region_name", "지역", "VARCHAR(20)"),
+    T("unit_name", "부대", "VARCHAR(20)"), T("rank_name", "계급", "VARCHAR(8)"), T("front_rear_classification", "전후방 구분", "VARCHAR(6)") ] },
+  fitness_measurements: { tier: "core", ko: "체력 측정", rows: 10746, cols: [
+    T("mesure_id", "측정식별번호", "INTEGER", "PK"), T("soldier_id", "군번", "VARCHAR(20)", "FK"), T("age", "나이", "INTEGER"),
+    T("strength", "근력", "NUMERIC(5,2)"), T("endurance", "근지구력", "INTEGER"), T("cardio", "심폐지구력", "NUMERIC(5,2)"),
+    T("flexibility", "유연성", "NUMERIC(5,2)"), T("height", "키(cm)", "NUMERIC(5,2)"), T("weight", "체중(kg)", "NUMERIC(5,2)"),
+    T("bmi", "BMI", "NUMERIC(5,2)"), T("body_fat_percentage", "체지방률", "NUMERIC(5,2)"), T("mesure_de", "측정일", "VARCHAR(8)"),
+    T("expected_injury_count_per_year", "연간 기대 부상 건수", "NUMERIC(7,6)") ] },
+  exercise_prescriptions: { tier: "core", ko: "운동 처방", rows: 51729, cols: [
+    T("prescription_id", "처방식별번호", "INTEGER", "PK"), T("mesure_id", "측정식별번호", "INTEGER", "FK"),
+    T("prescription_type_id", "처방유형번호", "INTEGER", "FK") ] },
+  injuries: { tier: "core", ko: "부상 기록", rows: 1048, cols: [
+    T("injury_id", "부상식별번호", "INTEGER", "PK"), T("soldier_id", "군번", "VARCHAR(20)", "FK"), T("injury_category", "부상 대분류", "VARCHAR(10)"),
+    T("injury_location", "부상 세부 부위", "VARCHAR(20)"), T("preventability", "예방 가능 여부", "VARCHAR(1)"), T("severity", "심각도", "VARCHAR(10)") ] },
+  fitness_followups: { tier: "record", ko: "체력 후속조치", rows: 10748, cols: [
+    T("record_id", "기록식별번호", "IDENTITY", "PK"), T("soldier_id", "군번", "VARCHAR(20)", "FK"), T("created_at", "최초 저장", "TIMESTAMPTZ"),
+    T("updated_at", "최종 수정", "TIMESTAMPTZ"), T("assignee", "담당자", "VARCHAR(30)"), T("counseling_date", "상담일", "DATE"),
+    T("counseling_content", "상담 내용", "VARCHAR(1000)", "", true), T("action_content", "후속조치 내용", "VARCHAR(1000)"),
+    T("next_check_date", "다음 점검일", "DATE"), T("status", "진행 상태", "VARCHAR(10)"), T("completed_date", "완료일", "DATE", "", true) ] },
+  injury_followups: { tier: "record", ko: "부상 후속조치", rows: 1, cols: [
+    T("record_id", "기록식별번호", "IDENTITY", "PK"), T("created_at", "최초 저장", "TIMESTAMPTZ"), T("updated_at", "최종 수정", "TIMESTAMPTZ"),
+    T("injury_id", "부상식별번호", "INTEGER", "FK"), T("check_date", "확인일", "DATE"), T("status", "후속조치 상태", "VARCHAR(10)"),
+    T("action_content", "후속조치 내용", "VARCHAR(1000)", "", true), T("recovery_status", "회복 상태", "VARCHAR(10)"),
+    T("restriction", "운동 제한 내용", "VARCHAR(500)", "", true), T("restriction_start", "제한 시작일", "DATE", "", true),
+    T("restriction_end", "제한 종료일", "DATE", "", true), T("note", "비고", "VARCHAR(500)", "", true) ] },
+  soldier_failure_probabilities: { tier: "derived", ko: "다음 회차 미달 확률", rows: 3582, cols: [
+    T("soldier_id", "군번", "VARCHAR(20)", "PK·FK"), T("failure_probability", "미달 확률", "NUMERIC(5,4)") ] },
+  measurement_classifications: { tier: "derived", ko: "측정 분류(등급·군집)", rows: 10746, cols: [
+    T("mesure_id", "측정식별번호", "INTEGER", "PK·FK"), T("average_percentile_grade", "평균 백분위 등급", "INTEGER", "FK"), T("cluster", "군집 번호", "INTEGER", "FK"),
+    T("strength_grade", "근력 등급", "INTEGER"), T("endurance_grade", "근지구력 등급", "INTEGER"), T("cardio_grade", "심폐 등급", "INTEGER"),
+    T("flexibility_grade", "유연성 등급", "INTEGER"), T("strength_percentile", "근력 백분위", "NUMERIC(5,2)"),
+    T("endurance_percentile", "근지구력 백분위", "NUMERIC(5,2)"), T("cardio_percentile", "심폐 백분위", "NUMERIC(5,2)"),
+    T("flexibility_percentile", "유연성 백분위", "NUMERIC(5,2)") ] },
+  fitness_types: { tier: "derived", ko: "체력 유형", rows: 16, cols: [
+    T("average_percentile_grade", "평균 백분위 등급", "INTEGER", "PK"), T("cluster", "군집 번호", "INTEGER", "PK"), T("type_name", "유형명", "VARCHAR(30)"),
+    T("strength_relative", "근력 상대 편차", "NUMERIC(5,2)"), T("endurance_relative", "근지구력 상대 편차", "NUMERIC(5,2)"),
+    T("cardio_relative", "심폐 상대 편차", "NUMERIC(5,2)"), T("flexibility_relative", "유연성 상대 편차", "NUMERIC(5,2)") ] },
+  recommended_exercises: { tier: "derived", ko: "유형별 추천 운동", rows: 128, cols: [
+    T("average_percentile_grade", "평균 백분위 등급", "INTEGER", "PK·FK"), T("cluster", "군집 번호", "INTEGER", "PK·FK"),
+    T("recommendation_rank", "추천 순위", "INTEGER", "PK"), T("prescription_type_id", "처방유형번호", "INTEGER", "FK") ] },
+  exercise_prescription_details: { tier: "derived", ko: "처방 이름표", rows: 521, cols: [
+    T("prescription_type_id", "처방유형번호", "INTEGER", "PK"), T("prescription", "운동 처방", "VARCHAR(100)") ] },
+  exercise_classifications: { tier: "derived", ko: "운동 분류", rows: 40, cols: [
+    T("prescription_type_id", "처방유형번호", "INTEGER", "PK·FK"), T("improvement_focus", "향상 체력 요소", "VARCHAR(10)"),
+    T("exercise_difficulty", "동작 난이도", "INTEGER"), T("required_equipment", "필요 장비", "VARCHAR(20)") ] },
+  exercise_body_parts: { tier: "derived", ko: "운동 사용 부위", rows: 154, cols: [
+    T("prescription_type_id", "처방유형번호", "INTEGER", "PK·FK"), T("body_part", "사용 부위", "VARCHAR(20)", "PK") ] },
+};
+
+// [자식 테이블, 자식 컬럼, 부모 테이블, 부모 컬럼, 자식 쪽 기수(many|one), 같은 열일 때 선을 낼 쪽]
+const EDGES = [
+  ["fitness_measurements", "soldier_id", "soldiers", "soldier_id", "many"],
+  ["injuries", "soldier_id", "soldiers", "soldier_id", "many", "right"],
+  ["soldier_failure_probabilities", "soldier_id", "soldiers", "soldier_id", "one", "left"],
+  ["exercise_prescriptions", "mesure_id", "fitness_measurements", "mesure_id", "many"],
+  ["exercise_prescriptions", "prescription_type_id", "exercise_prescription_details", "prescription_type_id", "many"],
+  ["measurement_classifications", "mesure_id", "fitness_measurements", "mesure_id", "one", "right"],
+  ["measurement_classifications", "average_percentile_grade", "fitness_types", "average_percentile_grade", "many"],
+  ["exercise_classifications", "prescription_type_id", "exercise_prescription_details", "prescription_type_id", "one", "right"],
+  ["exercise_body_parts", "prescription_type_id", "exercise_classifications", "prescription_type_id", "many", "right"],
+  ["recommended_exercises", "average_percentile_grade", "fitness_types", "average_percentile_grade", "many"],
+  ["recommended_exercises", "prescription_type_id", "exercise_classifications", "prescription_type_id", "many", "right"],
+  ["fitness_followups", "soldier_id", "soldiers", "soldier_id", "many"],
+  ["injury_followups", "injury_id", "injuries", "injury_id", "many"],
+];
+
+// 열 위치와 배치 순서. alignTo가 있으면 그 테이블과 위쪽을 맞춘다(같은 열의 위 카드와 겹치지 않는 범위에서).
+const WIDTH = { core: 300, record: 248, derived: 236 };
+// 오른쪽 끝 열의 카드끼리 잇는 고리선이 캔버스 밖으로 나가 잘리지 않도록 오른쪽에 여백(LOOP_ROOM)을 둔다.
+const LOOP_ROOM = 96;
+const COLUMN_X = [0, 320, 690, 1060, 1430];
+const GAP = 44;
+const LAYOUT = [
+  { id: "soldiers", col: 1, top: 40 },
+  { id: "soldier_failure_probabilities", col: 1 },
+  { id: "injuries", col: 1 },
+  { id: "fitness_followups", col: 0, alignTo: "soldiers" },
+  { id: "injury_followups", col: 0, alignTo: "injuries" },
+  { id: "fitness_measurements", col: 2, top: 0 },
+  { id: "measurement_classifications", col: 2 },
+  { id: "exercise_prescriptions", col: 3, top: 40 },
+  { id: "fitness_types", col: 3, alignTo: "measurement_classifications" },
+  { id: "exercise_prescription_details", col: 4, top: 40 },
+  { id: "exercise_classifications", col: 4 },
+  { id: "exercise_body_parts", col: 4 },
+  { id: "recommended_exercises", col: 4 },
+];
+
+const REVIEW = [
+  ["soldiers", "장병 한 명당 한 행. 측정·부상·확률·후속조치가 모두 군번으로 이 표를 가리킵니다.", "모든 데이터의 기준이 되는 명단입니다."],
+  ["fitness_measurements", "장병마다 측정 3회의 체력 4종목과 체격 값, 연간 기대 부상 건수.", "분석과 화면 대부분의 출발점입니다."],
+  ["exercise_prescriptions", "측정 한 건에 받은 운동 처방을 처방 하나당 한 행으로.", "측정과 처방을 잇는 원천 기록입니다."],
+  ["injuries", "장병별 부상 기록(부위·심각도·예방 가능 여부).", "부상 화면과 부상 후속조치의 기준입니다."],
+  ["fitness_followups", "체력 상담·후속조치 기록(장병별, 그룹 일괄 등록 포함).", "사람이 입력한 유일한 체력 관리 기록이라 다시 만들 수 없습니다. 재적재 때도 지우지 않으므로 백업 대상입니다. 핵심 4개와 같은 수준으로 보호하되, 출처가 달라 따로 표시합니다."],
+  ["injury_followups", "부상별 회복 상태·운동 제한 확인 기록.", "체력 후속조치와 같은 이유로 운영 기록으로 분류합니다."],
+  ["measurement_classifications", "측정 한 건당 평균 백분위 등급·군집·종목별 등급과 백분위.", "화면 대부분이 쓰지만, 측정과 Git의 군집 모델로 언제든 다시 계산되는 1:1 확장 표입니다."],
+  ["soldier_failure_probabilities", "장병별 다음 회차 미달 확률.", "측정과 미달 예측 모델로 다시 만드는 예측값입니다."],
+  ["fitness_types", "등급·군집 조합 16개의 유형명과 종목별 상대 편차.", "16행짜리 이름표입니다."],
+  ["recommended_exercises", "유형마다 추천 운동 8개와 순위(16 × 8).", "운동 분류 규칙과 유형에서 계산되는 결과입니다."],
+  ["exercise_classifications", "추천에 쓰는 처방 40개의 향상 체력 요소·난이도·장비.", "사람이 정한 분류 규칙(코드의 RULES)을 표로 옮긴 참조표입니다."],
+  ["exercise_body_parts", "운동별 사용 부위(운동 하나에 여러 부위).", "운동 분류에 딸린 참조표입니다."],
+  ["exercise_prescription_details", "처방유형번호와 처방 이름 521개.", "처방 번호를 이름으로 바꾸는 코드표입니다."],
+];
+const TIER_LABEL = { core: "핵심 데이터", record: "운영 기록", derived: "분석 결과·참조표" };
+
+const canvas = document.getElementById("canvas");
+const svg = document.getElementById("edges");
+const scaler = document.getElementById("scaler");
+const viewport = document.getElementById("viewport");
+const fmt = (n) => n.toLocaleString("ko-KR");
+
+function badge(key) {
+  if (!key) return "<span></span>";
+  const cls = key === "PK" ? "pk" : key === "FK" ? "fk" : "pkfk";
+  return `<span class="badge ${cls}">${key}</span>`;
+}
+
+for (const [id, t] of Object.entries(TABLES)) {
+  const card = document.createElement("article");
+  card.className = `card ${t.tier}`;
+  card.dataset.table = id;
+  card.tabIndex = 0;
+  card.style.width = WIDTH[t.tier] + "px";
+  card.setAttribute("aria-label", `${t.ko} (${id}), ${fmt(t.rows)}행`);
+  card.innerHTML = `
+    <header>
+      <div class="meta"><span class="ko">${t.ko}</span><span class="count">${fmt(t.rows)}행</span></div>
+      <span class="en">${id}</span>
+    </header>
+    <ul>${t.cols.map(c => `
+      <li data-col="${c.name}" class="${c.nullable ? "null" : ""}" title="${c.label} · ${c.type}${c.nullable ? " · 빈 값 허용" : ""}">
+        ${badge(c.key)}<span class="name">${c.name}<span class="label">${c.label}</span></span><span class="type">${c.type}</span>
+      </li>`).join("")}
+    </ul>`;
+  canvas.appendChild(card);
+}
+
+function placeCards() {
+  const pos = {};
+  const colBottom = {};
+  for (const item of LAYOUT) {
+    const card = canvas.querySelector(`[data-table="${item.id}"]`);
+    let top = item.top ?? 0;
+    if (item.alignTo) top = pos[item.alignTo].top;
+    if (colBottom[item.col] !== undefined) top = Math.max(top, colBottom[item.col] + GAP);
+    card.style.left = COLUMN_X[item.col] + "px";
+    card.style.top = top + "px";
+    pos[item.id] = { top, left: COLUMN_X[item.col], width: card.offsetWidth, height: card.offsetHeight };
+    colBottom[item.col] = top + card.offsetHeight;
+  }
+  const width = Math.max(...Object.values(pos).map(p => p.left + p.width)) + LOOP_ROOM;
+  const height = Math.max(...Object.values(pos).map(p => p.top + p.height));
+  canvas.style.width = width + "px";
+  canvas.style.height = height + "px";
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+  return pos;
+}
+
+function rowY(pos, table, col) {
+  const li = canvas.querySelector(`[data-table="${table}"] li[data-col="${col}"]`);
+  return pos[table].top + li.offsetTop + li.offsetHeight / 2;
+}
+
+function drawEdges(pos) {
+  svg.querySelectorAll("path.edge").forEach(p => p.remove());
+  const loopCount = {};
+  for (const [child, childCol, parent, parentCol, childEnd, side] of EDGES) {
+    const a = pos[child], b = pos[parent];
+    const y1 = rowY(pos, child, childCol), y2 = rowY(pos, parent, parentCol);
+    let d;
+    if (a.left + a.width < b.left || b.left + b.width < a.left) {
+      const toRight = a.left + a.width < b.left;
+      const x1 = toRight ? a.left + a.width : a.left;
+      const x2 = toRight ? b.left : b.left + b.width;
+      const mid = (x1 + x2) / 2;
+      d = `M${x1} ${y1}C${mid} ${y1} ${mid} ${y2} ${x2} ${y2}`;
+    } else {
+      // 같은 열: 카드 옆으로 고리 모양으로 돌아 나간다. 같은 쪽 고리가 겹치지 않게 조금씩 벌린다.
+      const key = `${a.left}-${side}`;
+      loopCount[key] = (loopCount[key] || 0) + 1;
+      const reach = 18 + 22 * loopCount[key];
+      const x1 = side === "left" ? a.left : a.left + a.width;
+      const x2 = side === "left" ? b.left : b.left + b.width;
+      const dx = side === "left" ? -reach : reach;
+      d = `M${x1} ${y1}C${x1 + dx} ${y1} ${x2 + dx} ${y2} ${x2} ${y2}`;
+    }
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("class", "edge");
+    path.dataset.from = child;
+    path.dataset.to = parent;
+    path.setAttribute("marker-start", childEnd === "many" ? "url(#m-many)" : "url(#m-one)");
+    path.setAttribute("marker-end", "url(#m-one)");
+    svg.appendChild(path);
+  }
+}
+
+let fit = true;
+const fitButton = document.getElementById("fit-toggle");
+function applyScale() {
+  const w = parseFloat(canvas.style.width), h = parseFloat(canvas.style.height);
+  const available = viewport.clientWidth - 40;
+  const scale = fit ? Math.min(1, available / w) : 1;
+  canvas.style.transform = `scale(${scale})`;
+  scaler.style.width = w * scale + "px";
+  scaler.style.height = h * scale + "px";
+  fitButton.textContent = fit ? "원래 크기로 보기" : "화면에 맞추기";
+  fitButton.setAttribute("aria-pressed", String(fit));
+}
+fitButton.addEventListener("click", () => { fit = !fit; applyScale(); });
+
+function focusTable(id) {
+  if (!id) { canvas.classList.remove("focus"); canvas.querySelectorAll(".hi").forEach(e => e.classList.remove("hi")); return; }
+  canvas.classList.add("focus");
+  canvas.querySelectorAll(".hi").forEach(e => e.classList.remove("hi"));
+  const related = new Set([id]);
+  svg.querySelectorAll("path.edge").forEach(p => {
+    if (p.dataset.from === id || p.dataset.to === id) { p.classList.add("hi"); related.add(p.dataset.from); related.add(p.dataset.to); }
+  });
+  related.forEach(t => canvas.querySelector(`[data-table="${t}"]`).classList.add("hi"));
+}
+let pinned = null;
+canvas.querySelectorAll(".card").forEach(card => {
+  card.addEventListener("mouseenter", () => { if (!pinned) focusTable(card.dataset.table); });
+  card.addEventListener("mouseleave", () => { if (!pinned) focusTable(null); });
+  const toggle = () => { pinned = pinned === card.dataset.table ? null : card.dataset.table; focusTable(pinned); };
+  card.addEventListener("click", toggle);
+  card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+});
+
+document.getElementById("review-body").innerHTML = REVIEW.map(([id, what, why]) => {
+  const t = TABLES[id];
+  return `<tr><td><strong>${t.ko}</strong><br><code>${id}</code></td>
+    <td><span class="tier ${t.tier}">${TIER_LABEL[t.tier]}</span></td>
+    <td class="num">${fmt(t.rows)}</td><td>${what}</td><td>${why}</td></tr>`;
+}).join("");
+
+function render() { const pos = placeCards(); drawEdges(pos); applyScale(); }
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(render);
+render();
+window.addEventListener("resize", applyScale);
+</script>
+
+</body>
+</html>

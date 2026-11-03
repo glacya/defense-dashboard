@@ -3,7 +3,7 @@
 추천 운동은 분석 단계(build_exercise_recommendations)가 저장한 표를 읽습니다.
 recommended_exercises에 유형(fitness_types)·운동 분류(exercise_classifications)·
 처방 이름(exercise_prescription_details)·사용 부위(exercise_body_parts)를 JOIN합니다.
-운동 지침·추천 근거 문장은 저장하지 않고 분석 단계와 같은 함수로 만듭니다.
+운동 지침·추천 근거 문장은 DB에 저장하지 않고 읽은 값과 fitness_standards.TARGET_DIFFICULTY로 만듭니다.
 """
 
 import pandas as pd
@@ -13,20 +13,21 @@ from dashboard.common.table_widgets import render_dataframe
 from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.db import DEFAULT_TTL, run_query
-from data.scripts.analysis.clustering.build_exercise_recommendations import (
-    FOCUSES, SOURCE_URL, recommendation_basis, relative_column, training_guidance)
-from data.scripts.utils import require_columns
+from fitness_standards import TARGET_DIFFICULTY
 
-KEYS = ['AVERAGE_PERCENTILE_GRADE', 'CLUSTER']
-COLUMNS = [*KEYS, 'RECOMMENDATION_RANK', 'TYPE_NAME', 'IMPROVEMENT_FOCUS', 'RECOMMENDED_EXERCISE', 'BODY_PARTS', 'RELATIVE_GAP']
-# 체력 요소에 맞는 유형의 상대 편차(fitness_types의 {종목}_relative). 요소 이름은 코드 상수라 SQL에 넣어도 안전하다.
-_GAP_CASES = ' '.join(f"WHEN '{focus}' THEN t.{relative_column(focus).lower()}" for focus in FOCUSES)
-RECOMMENDATION_SQL = f"""
+SOURCE_URL = "https://nfa.kspo.or.kr/"
+WEAK_SUFFIX = "약점형"  # 유형명 끝이 '○○ 약점형'이면 그 요소 운동만 추천한다(아니면 '○○ 강점형')
+RECOMMENDATION_SQL = """
 SELECT r.average_percentile_grade, r.cluster, r.recommendation_rank, t.type_name,
     c.improvement_focus, d.prescription AS recommended_exercise,
     (SELECT string_agg(b.body_part, ' | ' ORDER BY b.body_part)
      FROM exercise_body_parts b WHERE b.prescription_type_id = r.prescription_type_id) AS body_parts,
-    CASE c.improvement_focus {_GAP_CASES} END AS relative_gap
+    CASE c.improvement_focus
+        WHEN '근력' THEN t.strength_relative
+        WHEN '근지구력' THEN t.endurance_relative
+        WHEN '심폐지구력' THEN t.cardio_relative
+        WHEN '유연성' THEN t.flexibility_relative
+    END AS relative_gap
 FROM recommended_exercises r
 JOIN fitness_types t USING (average_percentile_grade, cluster)
 JOIN exercise_classifications c USING (prescription_type_id)
@@ -36,25 +37,33 @@ ORDER BY r.recommendation_rank
 """
 
 
+def training_guidance(grade: int) -> str:
+    """등급별 운동 지침 문장입니다."""
+    return (f"{grade}등급 기준 동작 난이도 {TARGET_DIFFICULTY[grade]}에 가까운 운동 우선. "
+            "개인별 수행 수준에 맞춰 강도와 반복량을 조절합니다.")
+
+
+def allocation_text(selected: pd.DataFrame) -> str:
+    """유형의 추천 운동이 체력 요소별로 몇 개씩인지 설명합니다(예: '4/2/2개 배분')."""
+    if selected.TYPE_NAME.iloc[0].endswith(WEAK_SUFFIX):
+        return f"유형에 명시된 약점 요소 운동 {len(selected)}개"
+    counts = selected.IMPROVEMENT_FOCUS.value_counts().sort_values(ascending=False)
+    return f"강점 요소 제외 후 상대 편차가 낮은 순 {'/'.join(map(str, counts))}개 배분"
+
+
 def load_recommendation(grade: int, cluster: int) -> pd.DataFrame:
     """등급과 군집의 조합에 해당하는 추천 운동(순위 순)과 운동 지침·추천 근거 문장을 돌려줍니다."""
-    selected = run_query(RECOMMENDATION_SQL, {'grade': int(grade), 'cluster': int(cluster)}, ttl=DEFAULT_TTL)[COLUMNS]
-    require_columns(selected, COLUMNS)
-    if selected.duplicated([*KEYS, 'IMPROVEMENT_FOCUS', 'RECOMMENDED_EXERCISE']).any():
-        raise ValueError('같은 등급·군집의 추천 운동이 중복되었습니다.')
+    selected = run_query(RECOMMENDATION_SQL, {'grade': int(grade), 'cluster': int(cluster)}, ttl=DEFAULT_TTL)
     if selected.empty:
         return selected
-    selected = selected.assign(
+    allocation = allocation_text(selected)
+    return selected.assign(
         TRAINING_GUIDANCE=selected.AVERAGE_PERCENTILE_GRADE.map(training_guidance),
-        RECOMMENDATION_BASIS=[recommendation_basis(row.AVERAGE_PERCENTILE_GRADE, row.CLUSTER, row.IMPROVEMENT_FOCUS,
-                                                   row.RELATIVE_GAP, row.TYPE_NAME) for row in selected.itertuples()],
+        RECOMMENDATION_BASIS=[f"{row.AVERAGE_PERCENTILE_GRADE}등급 군집 {row.CLUSTER}: {row.IMPROVEMENT_FOCUS} "
+                              f"상대 편차 {row.RELATIVE_GAP:+.2f}%p; {allocation}. 등급별 난이도는 수동 규칙입니다."
+                              for row in selected.itertuples()],
         SOURCE_URL=SOURCE_URL,
     )
-    if selected.isna().any().any() or selected.astype(str).apply(
-        lambda column: column.str.strip().eq('').any()
-    ).any():
-        raise ValueError('선택 유형의 운동 추천 정보가 누락되었습니다.')
-    return selected
 
 
 def split_by_injuries(recommendation: pd.DataFrame, injuries: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -73,7 +82,7 @@ def render_recommendation(grade: int, cluster: int, injuries: pd.DataFrame | Non
     st.markdown('### 체력유형별 운동 추천')
     try:
         recommendation = load_recommendation(grade, cluster)
-    except (OSError, ValueError, KeyError, pd.errors.EmptyDataError, SQLAlchemyError) as error:
+    except SQLAlchemyError as error:
         st.info(f'운동 추천 자료를 확인할 수 없습니다: {error}')
         return
     if recommendation.empty:

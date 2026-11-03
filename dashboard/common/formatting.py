@@ -7,7 +7,7 @@ import hashlib
 import numpy as np
 import pandas as pd
 
-from data.scripts.fitness_standards import GRADE_CUTS, RANGE_STANDARDS
+from fitness_standards import GRADE_CUTS, RANGE_STANDARDS
 
 NAV_STATE_KEY = "nav_links"
 BMI_CATEGORY_ORDER = ("저체중", "정상", "과체중", "비만")

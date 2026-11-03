@@ -43,7 +43,7 @@ def _toggle_condition(key: str, value: str) -> None:
 
 def render() -> None:
     """상단 회차 선택과 관리 사유 필터로 개인별 선정 근거를 표시합니다."""
-    st.caption('장병 체력관리 / 02')
+    # st.caption('장병 체력관리 / 02')
     st.title('체력 미달·악화 대상자 조회')
     st.write('BMI와 실제 미달, 복수 종목 미달, 악화, 지속 미달을 함께 확인합니다.')
     try:

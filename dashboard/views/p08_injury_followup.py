@@ -26,7 +26,7 @@ def _load_page_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
 def render() -> None:
     """부상 원본에 있는 장병과 부상 식별자 기준으로 후속 확인을 저장합니다."""
-    st.caption('장병 체력관리 / 08')
+    # st.caption('장병 체력관리 / 08')
     st.title('부상 후속조치 관리')
     st.write('부상 이력에 연결해 실제 확인한 회복 상태와 운동 제한을 기록합니다.')
     if notice:=st.session_state.pop('management_notice',None):

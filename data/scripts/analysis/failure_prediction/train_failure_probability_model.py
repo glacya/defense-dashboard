@@ -1,13 +1,16 @@
 """1·2차 측정 결과로 3차 체력검정 미달 확률을 예측하는 모델을 학습해 파일로 저장합니다.
 
-- 분석·검증(교차검증, 등급표, ROC, 보정 등)은 하지 않습니다. 모델만 학습해 OUTPUT_PATH에 저장합니다.
+- 분석·검증(교차검증, 등급표, ROC, 보정 등)은 하지 않습니다. 모델만 학습해 FAILURE_MODEL_PATH(paths.py)에 저장합니다.
 - 모델: 표준화 + L2 로지스틱 회귀(C=1), 2차 BMI 파생변수(정상범위 중앙 이탈 제곱) 사용.
 - 학습 데이터: 전체 장병(층화 분할 없음).
-- 저장한 모델은 predict_fail_probability.py에서 사용합니다(이 파일을 import하지 않습니다).
+- 저장한 모델은 predict_failure_probability.py에서 사용합니다(이 파일을 import하지 않습니다).
+- 모델은 Git에 넣어 두고 파이프라인은 그 모델을 그대로 씁니다(사용자 결정). 그래서 이 스크립트는 파이프라인에 넣지 않고,
+  모델을 다시 학습할 때만 직접 실행합니다.
 
-실행: python fail_probability_model.py
+실행: python -m data.scripts.analysis.failure_prediction.train_failure_probability_model
 """
 
+import logging
 from pathlib import Path
 
 import joblib
@@ -17,16 +20,15 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from data.scripts.fitness_standards import FITNESS_EXERCISES, RANGE_STANDARDS, grade_cut
-from data.scripts.paths import PROCESSED_FITNESS_PATH
+from data.scripts.logging_setup import caller_name, display_path, setup_logging
+from data.scripts.paths import FAILURE_MODEL_PATH, PROCESSED_FITNESS_PATH
 from data.scripts.utils import read_text_csv
+
+logger = logging.getLogger(__name__)
 
 # ===========================================================================
 # 설정 (입력·출력 경로, 입력 변수, 규칙)
 # ===========================================================================
-
-# --- 경로 ---
-INPUT_PATH = Path(PROCESSED_FITNESS_PATH)  # 입력 CSV
-OUTPUT_PATH = Path("data/scripts/analysis/data_model/final/models/fail_probability_model.joblib")  # TODO: paths.py 상수로 교체
 
 # --- 입력 CSV 컬럼 ---
 MEMBER_ID_COLUMN = "SOLDIER_ID"   # 장병 식별
@@ -132,7 +134,12 @@ def build_dataset(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
 # 모델 학습·저장
 # ===========================================================================
 
-def train_and_save(input_path: Path = INPUT_PATH, output_path: Path = OUTPUT_PATH) -> Path:
+def run(input_path: Path, output_path: Path) -> Path:
+    """측정 데이터로 모델을 학습해 output_path에 저장하고 그 경로를 반환합니다.
+
+    Raises:
+        ValueError: 3차 미달/통과 라벨이 한 종류뿐일 때
+    """
     df, excluded = apply_interval_rule(load_measures(input_path))
     x, y = build_dataset(df)
     if y.nunique() < 2:
@@ -155,12 +162,18 @@ def train_and_save(input_path: Path = INPUT_PATH, output_path: Path = OUTPUT_PAT
         },
         output_path,
     )
-    print(f"입력: {input_path}")
-    print(f"제외 장병(측정 간격 {MIN_INTERVAL_DAYS}일 미만): {excluded:,}명")
-    print(f"학습 장병: {len(x):,}명 / 3차 미달률: {y.mean() * 100:.2f}%")
-    print(f"모델 저장: {output_path}")
+    logger.info("입력: %s", display_path(input_path))
+    logger.info("제외 장병(측정 간격 %d일 미만): %s명", MIN_INTERVAL_DAYS, f"{excluded:,}")
+    logger.info("학습 장병: %s명 / 3차 미달률: %.2f%%", f"{len(x):,}", y.mean() * 100)
+    logger.info("모델 저장: %s", display_path(output_path))
     return output_path
 
 
+def main() -> None:
+    """data/scripts/paths.py의 기본 경로로 모델을 다시 학습합니다."""
+    setup_logging(caller_name(__file__))
+    run(PROCESSED_FITNESS_PATH, FAILURE_MODEL_PATH)
+
+
 if __name__ == "__main__":
-    train_and_save()
+    main()

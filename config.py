@@ -29,8 +29,8 @@ DASHBOARD_DIR = ROOT_DIR / "dashboard"
 DB_DIR = DATA_DIR / "database"
 DB_FINAL_DIR = DB_DIR / "db_final"
 BASE64_DIR = ROOT_DIR / "dashboard" / "img" / "base64.json"
-CSS_PATH = ROOT_DIR / "dashboard" / "style_sample.css"
-JS_PATH = ROOT_DIR / "dashboard" / "test.js"
+CSS_PATH = ROOT_DIR / "dashboard" / "style.css"
+JS_PATH = ROOT_DIR / "dashboard" / "scripts.js"
 DIR_DICT = {
     "ROOT_DIR": ROOT_DIR,
     "DB_DIR": DB_DIR,

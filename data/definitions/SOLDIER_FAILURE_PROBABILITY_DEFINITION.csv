@@ -1,0 +1,3 @@
+순서,영문속성명,컬럼한글명,데이터타입,길이,PK여부,FK참조,NOT NULL여부,데이터 상품명
+1,SOLDIER_ID,군번,VARCHAR,20,Y,SOLDIER_PERSONNEL.SOLDIER_ID,Y,장병 체력검정 미달 예측 데이터
+2,FAILURE_PROBABILITY,다음회차미달확률,DECIMAL,"5,4",N,,Y,장병 체력검정 미달 예측 데이터

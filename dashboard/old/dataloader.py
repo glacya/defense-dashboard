@@ -6,7 +6,7 @@
 ================== """
 from pathlib import Path
 import pandas as pd
-from dashboard.py.loader import _load_csv
+from dashboard.old.loader import _load_csv
 
 
 # ============================================================================

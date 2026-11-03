@@ -1,18 +1,43 @@
-"""부대 현황: 지역·부대별 BMI 구성, 계급별 평균 BMI, 체지방률을 비교합니다."""
+"""부대 현황: 지역·부대별 BMI 구성과 장병 분포를 확인합니다."""
+
+from types import SimpleNamespace
 
 import altair as alt
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
+from dashboard.common.filters import render_personnel_cards
 from dashboard.common.charts import (
     BMI_COLORS, LIGHT_TEXT, NAVY_BACKGROUND, NAVY_BORDER, NAVY_SURFACE, MUTED_TEXT,
-    RANK_BAR_COLOR, WARN_COLOR, apply_dark_layout, show_plotly, style_altair,
+    apply_dark_layout, show_plotly, style_altair,
 )
-from dashboard.common.filters import render_filters
-from dashboard.common.formatting import BMI_CATEGORY_ORDER, RANK_ORDER, filter_signature
+from dashboard.common.formatting import BMI_CATEGORY_ORDER, classify_bmi, filter_signature
 from dashboard.common.widgets import render_soldier_details
-from dashboard.main_data import load_main_data
+from dashboard.py import queries
+from dashboard.py.fitness_judgment import EVENTS
+
+
+def _load_population() -> pd.DataFrame:
+    """장병별 최신 측정(DB)을 화면이 쓰는 모양으로 바꿉니다(MESURE_ID 정수, 측정일 날짜, BMI 구간)."""
+    rows = queries.load_unit_latest()
+    rows = rows.assign(
+        SOLDIER_ID=rows["SOLDIER_ID"].astype(str),
+        MESURE_ID=pd.to_numeric(rows["MESURE_ID"]).astype("int64"),
+        MESURE_DE=pd.to_datetime(rows["MESURE_DE"], format="%Y%m%d"),
+    )
+    rows["BMI구간"] = classify_bmi(rows["BMI"])
+    return rows
+
+
+def _render_unit_filters(population: pd.DataFrame):
+    """도 단위 지역·지역별 부대 카드 필터를 표시합니다."""
+    st.caption("도 단위 지역 카드를 선택하면 해당 지역의 부대가 표시됩니다. 부대 선택이 없으면 선택 지역의 전체 부대를 포함합니다.")
+    selection = render_personnel_cards(population, "unit", show_ranks=False)
+    st.caption(f"조회 조건 · 장병별 최신 측정 · 현재 조회 {selection.scoped.SOLDIER_ID.nunique():,}명 / 전체 {population.SOLDIER_ID.nunique():,}명")
+    return SimpleNamespace(regions=selection.regions, units=selection.units, scoped=selection.scoped)
 
 
 def clear_bmi_chart_selection() -> None:
@@ -81,13 +106,64 @@ def show_bmi_soldiers_panel(group_name: str, category: str, soldiers: pd.DataFra
             rows = event.selection.rows
             if rows and 0 <= rows[0] < len(soldiers):
                 st.divider()
-                render_soldier_details(soldiers.iloc[rows[0]])
+                soldier = soldiers.iloc[rows[0]]
+                details_column, fitness_type_column = st.columns([1.15, 1], gap="medium")
+                with details_column:
+                    render_soldier_details(soldier)
+                with fitness_type_column:
+                    render_soldier_fitness_type(soldier)
         if st.button("닫기", width="stretch", type="primary"):
             st.session_state["bmi_chart_selected_category"] = None
             st.session_state["bmi_chart_dismissed_selection_key"] = st.session_state.get("bmi_chart_selection_key")
             st.rerun()
 
     _panel()
+
+
+def render_soldier_fitness_type(soldier: pd.Series) -> None:
+    """선택 장병의 체력유형과 개인 상세 화면과 같은 백분위 레이더를 표시합니다."""
+    st.subheader("체력유형")
+    classification = soldier  # 목록 행에 그 측정의 체력유형(등급·군집·유형명)이 들어 있다.
+    if pd.isna(classification.TYPE_NAME):
+        st.info("선택 측정의 체력유형 분류 정보가 없습니다.")
+        return
+
+    st.markdown(f"**{classification.TYPE_NAME}**")
+    st.caption(
+        f"평균 백분위 {int(classification.AVERAGE_PERCENTILE_GRADE)}등급 · "
+        f"군집 {int(classification.CLUSTER)} · 측정일 {soldier['MESURE_DE']:%Y-%m-%d} 기준"
+    )
+    try:
+        personal_profile, cluster_profile, member_count = queries.load_measurement_profile(soldier["MESURE_ID"])
+    except (ValueError, KeyError, SQLAlchemyError) as error:
+        st.info(f"체력유형 비교 차트를 표시할 수 없습니다: {error}")
+        return
+
+    axes = [EVENTS[event][0] for event in personal_profile.index]
+    radar = go.Figure()
+    for name, values, color in [
+        ("선택 장병", personal_profile, "#2563eb"),
+        ("같은 체력유형 평균", cluster_profile, "#ea580c"),
+    ]:
+        scores = [float(value) if pd.notna(value) else None for value in values]
+        radar.add_trace(go.Scatterpolar(
+            r=scores + scores[:1], theta=axes + axes[:1],
+            mode="lines+markers", name=name,
+            line={"color": color, "width": 3},
+            hovertemplate="%{theta}<br>백분위 %{r:.1f}<extra>%{fullData.name}</extra>",
+        ))
+    radar.update_layout(
+        polar={"radialaxis": {"visible": True, "range": [0, 100], "dtick": 20},
+               "angularaxis": {"direction": "clockwise"}, "gridshape": "linear"},
+        height=310, margin={"t": 20, "b": 35, "l": 35, "r": 35},
+        legend={"orientation": "h", "y": -0.08, "x": 0.5, "xanchor": "center", "font": {"size": 10}},
+    )
+    st.plotly_chart(radar, width="stretch", key=f"unit_soldier_fitness_type_{soldier['MESURE_ID']}",
+                    config={"displayModeBar": False})
+    st.caption(
+        f"바깥쪽일수록 종목 백분위가 높습니다. 같은 체력유형의 전체 회차 측정 "
+        f"{member_count:,}건 평균이며 선택 측정도 포함합니다. 백분위는 전체 측정 기준입니다."
+    )
 
 
 def _render_summary(scoped: pd.DataFrame) -> str:
@@ -112,16 +188,15 @@ def _render_summary(scoped: pd.DataFrame) -> str:
 
 
 def _render_analysis(scoped: pd.DataFrame, filters, summary_level: str) -> None:
-    analysis_level = st.segmented_control("차트 분석 단위", options=["지역별", "부대별"], default="지역별",
+    analysis_level = st.segmented_control("요약 기준", options=["지역별", "부대별"], default="지역별",
                                           key="unit_analysis_level", on_change=clear_bmi_chart_selection)
     group_column = "REGION_NAME" if analysis_level == "지역별" else "UNIT_NAME"
     label = "지역" if analysis_level == "지역별" else "부대"
     groups = sorted(scoped[group_column].dropna().unique().tolist())
     group_name = st.selectbox(f"상세 분석 {label}", options=groups, key="unit_selected_group")
     group = scoped.loc[scoped[group_column].eq(group_name)]
-    context = filter_signature(summary_level, analysis_level, group_name, tuple(filters.regions),
-                               tuple(filters.units), tuple(filters.ranks), filters.age_range,
-                               filters.date_start, filters.date_end)
+    context = filter_signature(summary_level, analysis_level, group_name,
+                               tuple(filters.regions), tuple(filters.units))
 
     chart_columns = st.columns([1.35, 1])
     with chart_columns[0]:
@@ -189,30 +264,6 @@ def _render_analysis(scoped: pd.DataFrame, filters, summary_level: str) -> None:
                     args=(group_name, category, context),
                 )
 
-    rank_average = group.groupby("RANK_NAME", as_index=False).agg(평균_BMI=("BMI", "mean"), 인원=("SOLDIER_ID", "nunique"))
-    rank_average["RANK_NAME"] = pd.Categorical(rank_average["RANK_NAME"], categories=RANK_ORDER, ordered=True)
-    rank_average = rank_average.sort_values("RANK_NAME")
-    st.markdown(f"**{group_name} · 계급별 평균 BMI**")
-    rank_figure = px.bar(rank_average, x="RANK_NAME", y="평균_BMI", text="평균_BMI",
-                         color_discrete_sequence=[RANK_BAR_COLOR], hover_data={"인원": True, "평균_BMI": ":.2f"},
-                         labels={"RANK_NAME": "계급", "평균_BMI": "평균 BMI", "인원": "장병 수"})
-    rank_figure.update_traces(texttemplate="%{y:.1f}", textposition="outside")
-    apply_dark_layout(rank_figure, 360, showlegend=False, xaxis_title=None, yaxis_title="평균 BMI", yaxis_rangemode="tozero")
-    show_plotly(rank_figure)
-
-    st.markdown(f"**현재 조건 · {label}별 평균 체지방률**")
-    body_fat = (scoped.groupby(group_column, as_index=False)
-                .agg(평균_체지방률=("BODY_FAT_PERCENTAGE", "mean"), 인원=("SOLDIER_ID", "nunique"))
-                .sort_values("평균_체지방률", ascending=True))
-    body_fat_figure = px.bar(body_fat, x="평균_체지방률", y=group_column, orientation="h", text="평균_체지방률",
-                             hover_data={"인원": True, "평균_체지방률": ":.1f"},
-                             labels={group_column: label, "평균_체지방률": "평균 체지방률(%)", "인원": "장병 수"},
-                             color_discrete_sequence=[WARN_COLOR])
-    body_fat_figure.update_traces(texttemplate="%{x:.1f}%", textposition="outside")
-    apply_dark_layout(body_fat_figure, max(300, min(620, 36 * len(body_fat) + 100)),
-                      margin=dict(l=8, r=40, t=8, b=8), xaxis_title="평균 체지방률(%)", yaxis_title=None)
-    show_plotly(body_fat_figure)
-
     selected_category = st.session_state.get("bmi_chart_selected_category")
     current_key = (group_name, selected_category, context)
     if (analysis_level == "부대별" and selected_category in BMI_CATEGORY_ORDER
@@ -222,20 +273,20 @@ def _render_analysis(scoped: pd.DataFrame, filters, summary_level: str) -> None:
 
 
 def render() -> None:
-    st.title("🪖 부대 현황")
-    st.caption("지역·부대별 BMI 구성과 체지방률을 비교하고, 구간별 장병 명단을 확인합니다.")
+    st.title("부대 현황")
+    st.caption("지역·부대별 BMI 구간과 구간별 장병 분포를 확인합니다.")
     try:
-        measurements, _ = load_main_data()
-    except (FileNotFoundError, ValueError, UnicodeDecodeError, pd.errors.ParserError) as error:
+        population = _load_population()
+    except (ValueError, SQLAlchemyError) as error:
         st.error(f"부대 현황 데이터를 불러오지 못했습니다: {error}")
         st.stop()
 
-    filters = render_filters(measurements, prefix="unit")
+    filters = _render_unit_filters(population)
     if filters.scoped.empty:
-        st.info("현재 필터 조건에 해당하는 장병이 없습니다.")
+        st.info("선택한 지역·부대 조건에 해당하는 장병이 없습니다.")
         st.stop()
 
-    summary_tab, analysis_tab = st.tabs(["지역·부대별 요약", "신체정보 분석"])
+    summary_tab, analysis_tab = st.tabs(["지역·부대별 인원 요약", "BMI 별 요약"])
     with summary_tab:
         summary_level = _render_summary(filters.scoped)
     with analysis_tab:

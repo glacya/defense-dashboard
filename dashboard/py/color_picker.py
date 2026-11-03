@@ -1,10 +1,11 @@
 """  ==========================================
 위 코드는 아래와 같습니다.
 1. app에서 사용할 css의 색깔을 변경할 수 있습니다.
+2. style.css :root의 값 뒤에 붙은 주석을 읽어 각 색상이 어디에 쓰이는지 함께 보여 줍니다.
 
-위 코드는 다음을 위해 작성되었습니다.  
-1. 정의된 css파일의 색상을 불러오고 app.py에서 사용할 색상들을 빠르게 변경할 수 있습니다..
-"""
+위 코드는 다음을 위해 작성되었습니다.
+1. 정의된 css파일의 색상과 설명을 불러오고 app.py에서 사용할 색상들을 빠르게 변경할 수 있습니다.
+========================================== """
 from pathlib import Path
 import re
 import math
@@ -16,27 +17,62 @@ from PIL import Image, ImageTk
 ROOT = Path(__file__).resolve().parent.parent
 TARGET_CSS = ROOT / "style.css"
 
+# :root 블록 안의 "--변수: 값;  /* 설명 */" 한 줄을 읽는 패턴
+VAR_LINE_PATTERN = re.compile(
+    r"^\s*(--[\w-]+)\s*:\s*([^;]+?)\s*;\s*(?:/\*\s*(.*?)\s*\*/)?\s*$"
+)
+# 섹션 제목 주석: /* ---------- 0-1. 앱 배경 ---------- */
+SECTION_PATTERN = re.compile(r"^\s*/\*\s*-+\s*(.+?)\s*-+\s*\*/\s*$")
+
+
+def read_root_block(css_path: Path) -> str:
+    """style.css에서 :root { ... } 블록의 본문만 꺼냅니다."""
+    if not css_path.exists():
+        return ""
+    content = css_path.read_text(encoding="utf-8")
+    match = re.search(r":root\s*\{(.*?)\n\}", content, re.DOTALL)
+    return match.group(1) if match else ""
+
+
+def load_css_entries(css_path: Path) -> list[dict]:
+    """
+    :root 안의 색상 변수를 읽습니다.
+    반환: [{"type": "section", "title": ...}, {"type": "var", "name": ..., "value": ..., "desc": ...}, ...]
+    """
+    entries = []
+    for raw in read_root_block(css_path).splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+
+        section = SECTION_PATTERN.match(line)
+        if section:
+            entries.append({"type": "section", "title": section.group(1)})
+            continue
+
+        var = VAR_LINE_PATTERN.match(line)
+        if var:
+            name, value, desc = var.groups()
+            entries.append({
+                "type": "var",
+                "name": name,
+                "value": value,
+                "desc": desc or "(설명 없음)",
+            })
+    return entries
+
 
 def load_css_colors(css_path: Path) -> dict[str, str]:
-    """style.css의 :root에 정의된 --color-* 변수들을 읽어옵니다."""
-    colors = {}
-    if not css_path.exists():
-        return colors
-
-    with open(css_path, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    pattern = r"(--color-[\w-]+):\s*([^;]+);"
-    matches = re.findall(pattern, content)
-
-    for key, val in matches:
-        colors[key] = parse_color_to_rgba(val.strip())
-
-    return colors
+    """변수 이름과 rgba 값만 필요할 때 쓰는 함수입니다."""
+    return {
+        entry["name"]: parse_color_to_rgba(entry["value"])
+        for entry in load_css_entries(css_path)
+        if entry["type"] == "var"
+    }
 
 
 def update_css_color(css_var_name: str, new_color: str):
-    """style.css 파일 내 특정 CSS 변수 값을 수정합니다."""
+    """style.css 파일 내 특정 CSS 변수 값만 바꿉니다. 뒤의 주석은 그대로 둡니다."""
     try:
         if not TARGET_CSS.exists():
             print(f"⚠️ {TARGET_CSS.name} 파일이 존재하지 않습니다.")
@@ -45,11 +81,12 @@ def update_css_color(css_var_name: str, new_color: str):
         with open(TARGET_CSS, "r", encoding="utf-8") as f:
             content = f.read()
 
+        # 값 부분([^;]+)만 교체하므로 뒤의 /* 주석 */은 유지됩니다.
         pattern = rf"({re.escape(css_var_name)}\s*:\s*)([^;]+)(\s*;)"
 
         if re.search(pattern, content):
             rgba_val = parse_color_to_rgba(new_color)
-            modified_content = re.sub(pattern, rf"\1{rgba_val}\3", content)
+            modified_content = re.sub(pattern, rf"\g<1>{rgba_val}\g<3>", content, count=1)
             with open(TARGET_CSS, "w", encoding="utf-8") as f:
                 f.write(modified_content)
             print(f"✅ {TARGET_CSS.name} 내 {css_var_name} 값을 {rgba_val}로 수정했습니다.")
@@ -63,27 +100,25 @@ def update_css_color(css_var_name: str, new_color: str):
 def is_valid_color(color_value: str) -> bool:
     """색상 값이 유효한 형식인지 확인"""
     color_value = color_value.strip()
-    
+
     if re.match(r'^#[0-9a-fA-F]{6}$', color_value):
         return True
-    
+
     rgba_match = re.match(r'^rgba\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$', color_value)
     if rgba_match:
         r, g, b, a = rgba_match.groups()
         return 0 <= int(r) <= 255 and 0 <= int(g) <= 255 and 0 <= int(b) <= 255 and 0 <= float(a) <= 1
-    
+
     rgb_match = re.match(r'^rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$', color_value)
     if rgb_match:
         r, g, b = rgb_match.groups()
         return 0 <= int(r) <= 255 and 0 <= int(g) <= 255 and 0 <= int(b) <= 255
-    
+
     return False
 
 
 def parse_color_to_rgba(color_value: str) -> str:
-    """
-    모든 형식의 색상 문자열(#HEX, rgb, rgba)을 파싱하여 rgba(r, g, b, a) 포맷 문자열로 반환합니다.
-    """
+    """모든 형식의 색상 문자열(#HEX, rgb, rgba)을 rgba(r, g, b, a) 문자열로 반환합니다."""
     color_value = color_value.strip()
 
     if color_value.startswith('#') and len(color_value) == 7:
@@ -142,7 +177,7 @@ class CircularColorPicker(tk.Toplevel):
 
         self.wheel_img = self._create_color_wheel(self.canvas_size)
         self.wheel_photo = ImageTk.PhotoImage(self.wheel_img)
-        self.canvas.create_image(self.canvas_size//2, self.canvas_size//2, image=self.wheel_photo)
+        self.canvas.create_image(self.canvas_size // 2, self.canvas_size // 2, image=self.wheel_photo)
 
         self.selector = self.canvas.create_oval(0, 0, 0, 0, outline="white", width=2)
         self._update_selector_pos()
@@ -151,14 +186,14 @@ class CircularColorPicker(tk.Toplevel):
         self.canvas.bind("<B1-Motion>", self._on_wheel_click)
 
         self.val_slider = tk.Scale(
-            self, from_=0, to=100, orient="horizontal", 
+            self, from_=0, to=100, orient="horizontal",
             label="밝기 (Value)", command=self._on_slider_move
         )
         self.val_slider.set(int(self.val * 100))
         self.val_slider.pack(fill="x", padx=20)
 
         self.alpha_slider = tk.Scale(
-            self, from_=0, to=100, orient="horizontal", 
+            self, from_=0, to=100, orient="horizontal",
             label="투명도 (Alpha)", command=self._on_alpha_slider_move
         )
         self.alpha_slider.set(int(alpha * 100))
@@ -178,19 +213,19 @@ class CircularColorPicker(tk.Toplevel):
     def get_rgba_result(self) -> str:
         """선택 완료된 결과값을 rgba 문자열로 반환"""
         hex_str = self.result_hex.lstrip('#')
-        r, g, b = tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
+        r, g, b = tuple(int(hex_str[i:i + 2], 16) for i in (0, 2, 4))
         return f"rgba({r}, {g}, {b}, {round(self.result_alpha, 2)})"
 
     def _hex_to_hsv(self, hex_color):
         hex_color = hex_color.lstrip('#')
         if len(hex_color) != 6:
             hex_color = 'ffffff'
-        r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-        self.hue, self.sat, self.val = colorsys.rgb_to_hsv(r/255.0, g/255.0, b/255.0)
+        r, g, b = tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+        self.hue, self.sat, self.val = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
 
     def _hsv_to_hex(self, h, s, v):
         r, g, b = colorsys.hsv_to_rgb(h, s, v)
-        return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+        return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
 
     def _create_color_wheel(self, size):
         img = Image.new("RGB", (size, size), (240, 240, 240))
@@ -205,7 +240,7 @@ class CircularColorPicker(tk.Toplevel):
                     h = (angle / (2 * math.pi)) % 1.0
                     s = dist / radius
                     r, g, b = colorsys.hsv_to_rgb(h, s, 1.0)
-                    pixels[x, y] = (int(r*255), int(g*255), int(b*255))
+                    pixels[x, y] = (int(r * 255), int(g * 255), int(b * 255))
         return img
 
     def _update_selector_pos(self):
@@ -215,7 +250,7 @@ class CircularColorPicker(tk.Toplevel):
         x = center + radius * math.cos(angle)
         y = center + radius * math.sin(angle)
         r = 5
-        self.canvas.coords(self.selector, x-r, y-r, x+r, y+r)
+        self.canvas.coords(self.selector, x - r, y - r, x + r, y + r)
 
     def _on_wheel_click(self, event):
         center = self.canvas_size / 2
@@ -266,33 +301,33 @@ def pick_color(css_var_name: str, button: tk.Button, entry: tk.Entry):
     if picker.confirmed:
         new_rgba = picker.get_rgba_result()
         hex_bg, _ = rgba_to_hex_and_alpha(new_rgba)
-        
+
         button.config(bg=hex_bg)
         entry.delete(0, tk.END)
         entry.insert(0, new_rgba)
-        
+
         update_css_color(css_var_name, new_rgba)
 
 
 def on_entry_change(css_var_name: str, entry: tk.Entry, button: tk.Button, event=None):
     """Entry 필드에서 색상 값 직접 입력 시 반응"""
     color_value = entry.get().strip()
-    
+
     if not color_value:
         return
-    
+
     if not is_valid_color(color_value):
         entry.config(bg="#ffcccc")
         return
-    
+
     entry.config(bg="white")
     rgba_str = parse_color_to_rgba(color_value)
     hex_bg, _ = rgba_to_hex_and_alpha(rgba_str)
-    
+
     button.config(bg=hex_bg)
     entry.delete(0, tk.END)
     entry.insert(0, rgba_str)
-    
+
     update_css_color(css_var_name, rgba_str)
 
 
@@ -302,8 +337,8 @@ def on_entry_change(css_var_name: str, entry: tk.Entry, button: tk.Button, event
 
 CONFIG = {
     "window": {
-        "width": 500,
-        "height": 600,
+        "width": 720,
+        "height": 700,
         "title": "🎨 CSS 실시간 테마 디버거",
         "always_on_top": True
     }
@@ -319,7 +354,8 @@ tk.Label(
 ).pack()
 tk.Label(
     root,
-    text="#RRGGBB 또는 rgba(r,g,b,a) 형식으로 입력하면 바로 변경됩니다.\n버튼 클릭이나 입력 필드에 색상을 입력해주세요.",
+    text="#RRGGBB 또는 rgba(r,g,b,a) 형식으로 입력하면 바로 변경됩니다.\n"
+         "버튼을 누르면 색 선택기가 열리고, 오른쪽 설명으로 어디에 쓰이는 색인지 확인할 수 있습니다.",
     fg="gray",
 ).pack(pady=5)
 
@@ -335,42 +371,67 @@ scrollable_frame.bind(
 canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
 canvas.configure(yscrollcommand=scrollbar.set)
 
+
 def _on_mousewheel(event):
-    canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+    canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
 
 canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
-current_theme = load_css_colors(TARGET_CSS)
+for entry_info in load_css_entries(TARGET_CSS):
 
-for css_var_name, color in current_theme.items():
-    frame = tk.Frame(scrollable_frame, bg="white", pady=4)
+    # 섹션 제목: 굵은 글씨로 구분
+    if entry_info["type"] == "section":
+        tk.Label(
+            scrollable_frame,
+            text=f"■ {entry_info['title']}",
+            font=("Helvetica", 10, "bold"),
+            fg="#1f4e79",
+            bg="white",
+            anchor="w",
+        ).pack(fill="x", padx=10, pady=(12, 2))
+        continue
+
+    css_var_name = entry_info["name"]
+    rgba_str = parse_color_to_rgba(entry_info["value"])
+    hex_bg, _ = rgba_to_hex_and_alpha(rgba_str)
+
+    frame = tk.Frame(scrollable_frame, bg="white", pady=3)
     frame.pack(fill="x", padx=15)
 
-    lbl = tk.Label(
+    # 변수 이름
+    tk.Label(
         frame,
         text=f"{css_var_name}:",
-        width=20,
+        width=24,
         anchor="w",
         font=("Helvetica", 9, "bold"),
-        bg="white"
-    )
-    lbl.pack(side="left")
+        bg="white",
+    ).pack(side="left")
 
-    rgba_str = parse_color_to_rgba(color)
-    hex_bg, _ = rgba_to_hex_and_alpha(rgba_str)
-    
-    btn = tk.Button(
-        frame, bg=hex_bg, width=8, relief="solid", bd=1, cursor="hand2"
-    )
+    # 색 미리보기 버튼 (클릭 시 색 선택기)
+    btn = tk.Button(frame, bg=hex_bg, width=6, relief="solid", bd=1, cursor="hand2")
     btn.pack(side="left", padx=5)
 
-    entry = tk.Entry(frame, width=35, font=("Courier", 9))
+    # 값 입력창
+    entry = tk.Entry(frame, width=30, font=("Courier", 9))
     entry.insert(0, rgba_str)
-    entry.pack(side="left", padx=5, fill="x", expand=True)
-    
+    entry.pack(side="left", padx=5)
+
+    # 설명: 이 색이 어디에 쓰이는지 (CSS 주석에서 읽어옴)
+    tk.Label(
+        frame,
+        text=entry_info["desc"],
+        anchor="w",
+        justify="left",
+        fg="#555555",
+        bg="white",
+        wraplength=260,
+        font=("Helvetica", 9),
+    ).pack(side="left", padx=5, fill="x", expand=True)
+
     entry.bind("<Return>", lambda e, k=css_var_name, en=entry, b=btn: on_entry_change(k, en, b, e))
     entry.bind("<FocusOut>", lambda e, k=css_var_name, en=entry, b=btn: on_entry_change(k, en, b, e))
-
     btn.config(command=lambda k=css_var_name, b=btn, e=entry: pick_color(k, b, e))
 
 canvas.pack(side="left", fill="both", expand=True)

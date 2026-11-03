@@ -27,8 +27,8 @@ NAV_ITEMS = (
 )
 
 
-def build_navigation():
-    """st.Page 객체를 만들고, 메인 페이지가 바로가기 링크로 쓸 수 있도록 세션에 보관합니다."""
+def build_pages():
+    """st.Page 객체를 만들고, 사이드바 메뉴를 직접 그릴 때 쓸 목록을 세션에 보관합니다."""
     pages = []
     links = []
     for index, (title, icon, func, path) in enumerate(NAV_ITEMS):
@@ -36,4 +36,9 @@ def build_navigation():
         pages.append(page)
         links.append((title, icon, page))
     st.session_state[NAV_STATE_KEY] = links
-    return st.navigation(pages)
+    return pages
+
+
+def build_navigation(pages):
+    """기본 메뉴는 숨기고 라우팅만 수행합니다. 메뉴는 app.py에서 직접 그립니다."""
+    return st.navigation(pages, position="hidden")

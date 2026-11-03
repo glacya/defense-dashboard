@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="장병 기본 프로필">
+  <circle cx="60" cy="60" r="60" fill="#e8edf4"/>
+  <path d="M19 116Q20 92 46 85L47 74H73L74 85Q100 92 101 116" fill="#243449"/>
+  <ellipse cx="60" cy="58" rx="23" ry="29" fill="#34465f"/>
+  <path d="M32 52Q34 17 60 17Q86 17 88 52L95 58H25Z" fill="#172438"/>
+  <path d="M35 57H85" stroke="#8494aa" stroke-width="2"/>
+  <path d="M45 87L60 100L75 87" fill="none" stroke="#52637b" stroke-width="3"/>
+</svg>

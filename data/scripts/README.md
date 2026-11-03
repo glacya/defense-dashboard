@@ -17,7 +17,7 @@
 | `synthesis/` | 가상 장병 명단 생성, 최근 측정 연계·기대 부상 건수 계산, 부상 기록 생성. 실행 순서는 `synthesis/pipeline.py` |
 | `logs/` | 실행 로그 (`*.log`는 Git 제외) |
 | `create_samples.py` | 최종 데이터에서 독자 참고용 샘플(`data/samples/`)을 만듭니다. 파이프라인과 따로 직접 실행합니다. |
-| `setup_database.py` | 컬럼 정의서로 PostgreSQL 테이블을 만듭니다. 올릴 데이터는 `paths.DB_SOURCES`, CSV 파일 이름과 테이블 이름의 짝은 `setup_database.py`의 `DB_TABLE_NAMES`. 접속 정보는 `data/.env`(형식은 `data/.env.example`). `--dry-run`은 접속하지 않고 SQL만 출력, `--reset`은 테이블을 지우고 다시 만듭니다. 직접 실행합니다. |
+| `setup_database.py` | 컬럼 정의서로 PostgreSQL 테이블을 만듭니다. 올릴 데이터는 `paths.DB_SOURCES`, CSV 파일 이름과 테이블 이름의 짝은 `setup_database.py`의 `DB_TABLE_NAMES`. 접속 정보는 `data/.env`(형식은 `data/.env.example`). 기본 실행은 테이블을 지우고(DROP ... CASCADE) 다시 만든 뒤 CSV를 COPY로 넣습니다(트랜잭션 하나, 헤더·행 수 검사). `--schema-only`는 테이블만, `--load`는 있는 테이블을 비우고 데이터만, `--dry-run`은 접속하지 않고 SQL만 출력합니다. 직접 실행합니다. |
 | `운동기록-이상치-제거.md` | 운동기록 이상치 처리와 셔틀런 잠재능력 지표에 대한 검토 메모 |
 
 ## 실행
@@ -45,7 +45,7 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/main.py analy
 | 3 | `remove_missings_and_outliers` | 결측값이 있는 행을 제거한 뒤, 이상치(횟수 종목인 교차윗몸일으키기의 소수 기록, 80 mL/kg/min을 넘는 심폐지구력)가 있는 행을 제거합니다. 운동 처방은 비어 있어도 제거하지 않습니다. | `intermediate/basic_refinement/` |
 | 4 | `filter_enlistment_candidates` | 키·체중·BMI·체지방률이 입대 후보 범위 안에 있는 행만 남깁니다. | `intermediate/enlistment_filter/` |
 | 5 | `select_three_measures` | 3회 이상 측정한 회원마다 측정 기록 3건을 고릅니다. 측정 간격이 모두 30일 이상(`MIN_INTERVAL_DAYS`)인 3건 조합 중 전체 기간이 가장 길고 두 간격이 가장 고른 조합을 고르고, 고른 3건의 첫·마지막 측정이 3년(`MAX_SPAN_DAYS`)을 넘는 회원은 제외합니다. 같은 날 중복 입력된 기록은 간격이 0일이라 함께 뽑히지 않습니다. 고른 3건에서 측정일이 지났는데 만나이가 줄었거나, 같은 날인데 나이가 다르거나, 흐른 연도에 비해 나이가 너무 많이(연도 차이 + 1살 초과) 또는 너무 적게(연도 차이 - 1살 미만) 늘어난 회원은 3건 모두 제외하고 `intermediate/KS_NFA_THREE_MEASURES_REMOVED_INCONSISTENT.csv`에 `제거 사유`와 함께 저장합니다(이전 `filter_age_time_inconsistencies` 모듈을 합침, 2026-10-26 기준 해당 회원 0명). | `intermediate/KS_NFA_THREE_MEASURES.csv`, `intermediate/KS_NFA_THREE_MEASURES_REMOVED_INCONSISTENT.csv` |
-| 6 | `apply_final_definition` | 측정일 → 회원식별번호 → 측정일련번호 순으로 정렬해 `MESURE_ID`를 붙이고, 측정 컬럼을 체력 요소 이름(근력·근지구력·심폐지구력·유연성)으로 바꿔 측정 데이터(REFINED 정의서)와 운동 처방 데이터(처방 1개당 1행, PRESCRIPTION 정의서)로 나눠 저장합니다. 운동 처방에는 처방 이름 대신 2단계 상세 테이블의 처방유형번호를 넣습니다(상세 테이블에 없는 이름이 있으면 오류). 같은 측정 안의 중복 처방은 제거합니다. | `intermediate/KS_NFA_REFINED.csv`, `processed/KS_NFA_PRESCRIPTION.csv` |
+| 6 | `apply_refined_definition` | 측정일 → 회원식별번호 → 측정일련번호 순으로 정렬해 `MESURE_ID`를 붙이고, 측정 컬럼을 체력 요소 이름(근력·근지구력·심폐지구력·유연성)으로 바꿔 측정 데이터(REFINED 정의서)와 운동 처방 데이터(처방 1개당 1행, PRESCRIPTION 정의서)로 나눠 저장합니다. 운동 처방에는 처방 이름 대신 2단계 상세 테이블의 처방유형번호를 넣습니다(상세 테이블에 없는 이름이 있으면 오류). 같은 측정 안의 중복 처방은 제거합니다. | `intermediate/KS_NFA_REFINED.csv`, `processed/KS_NFA_PRESCRIPTION.csv` |
 
 `remove_3sigma_outliers`(3σ 이상치 제거)는 현재 파이프라인에서 쓰지 않습니다. 필요하면 단독으로 실행할 수 있습니다.
 
@@ -65,7 +65,19 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/preprocessing
 
 ## 분석 스크립트 (`analysis/`)
 
-데이터를 전처리하지 않고 통계·탐색 결과만 내는 스크립트입니다. 각 모듈은 `paths.py`의 기본 경로로 단독 실행합니다. `analysis/pipeline.py`의 실행 목록은 지금 비어 있어 `main.py analysis`는 아무것도 실행하지 않습니다.
+데이터를 전처리하지 않고 통계·탐색·모델 결과를 내는 스크립트입니다. 각 모듈은 `paths.py`의 기본 경로로 단독 실행할 수 있습니다.
+
+`main.py analysis`(`analysis/pipeline.py`)는 다음 순서로 실행합니다. 대시보드용 결과를 미리 만들던 `analysis2/`는 대시보드 쪽 SQL 조회로 옮길 예정이라 파이프라인에서 뺐습니다. 학습된 모델은 Git에 넣어 두고 그대로 쓰며(매번 학습하지 않음), 다시 학습할 때만 `train_*.py`를 직접 실행합니다.
+
+| 순서 | 모듈 | 결과 |
+|---|---|---|
+| 1 | `clustering/classify_measurements_by_percentile` | 최종 측정을 4종목 평균 백분위(전체 측정 기준)로 1~4등급(70/50/30 이상)으로 나눈 `intermediate/clustering/grade_1~4.csv` |
+| 2 | `clustering/assign_grade_and_cluster` | 등급별 K-means 모델(`data_model/cluster_models/`)로 측정마다 군집을 정해 `processed/MEASUREMENT_CLASSIFICATION.csv`(`MESURE_ID`, `AVERAGE_PERCENTILE_GRADE`, `CLUSTER`)와 등급·군집별 유형명 `processed/FITNESS_TYPE.csv` 저장 |
+| 3 | `failure_prediction/predict_failure_probability` | 미달 예측 모델(`data_model/final/models/`)로 장병별 다음(4회차) 미달 확률 `processed/SOLDIER_FAILURE_PROBABILITY.csv`(`SOLDIER_ID`, `FAILURE_PROBABILITY`) 저장 |
+
+모델 학습: `clustering/train_cluster_model`(등급별 K-means k=4, 시드 42), `failure_prediction/train_failure_probability_model`(1·2차로 3차 미달을 예측하는 로지스틱 회귀). 군집 단계가 함께 쓰는 설정과 특성 계산은 `clustering/cluster_features.py`에 있습니다.
+
+파이프라인에 넣지 않은 스크립트:
 
 | 모듈 | 하는 일 | 출력 |
 |---|---|---|

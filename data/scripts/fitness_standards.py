@@ -61,6 +61,20 @@ def grade_cut(exercise: str, grade: int) -> float:
     return value
 
 
+def fitness_grade(values: pd.Series, exercise: str) -> pd.Series:
+    """측정값을 체력 종목 등급으로 바꿉니다. 등급 하한 이상이면 그 등급(1이 가장 높음), 3등급 하한 미만이면 0(미달).
+
+    Raises:
+        ValueError: 빈 값이 있을 때(빈 값을 미달로 잘못 판정하지 않도록)
+    """
+    if values.isna().any():
+        raise ValueError(f"{exercise} 값에 빈 값이 있어 등급을 정할 수 없습니다.")
+    grades = pd.Series(0, index=values.index, dtype="int64")
+    for grade in (3, 2, 1):
+        grades[values.ge(grade_cut(exercise, grade))] = grade
+    return grades
+
+
 def grade_cut_table(grades: tuple[int, ...] = (3, 2), exercises: tuple[str, ...] = FITNESS_EXERCISES) -> pd.DataFrame:
     """종목별 등급 하한 표를 반환합니다. 컬럼은 영문속성명과 '{등급}등급컷'입니다.
 

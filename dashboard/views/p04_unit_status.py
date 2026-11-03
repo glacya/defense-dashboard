@@ -1,4 +1,4 @@
-"""부대 현황: 지역·부대별 BMI 구성과 장병 분포를 확인합니다."""
+"""부대 현황: 지역·부대별 인원, 미달 확률, BMI 분포를 확인합니다."""
 
 from types import SimpleNamespace
 
@@ -19,6 +19,21 @@ from dashboard.common.widgets import render_soldier_details
 from dashboard.db import DEFAULT_TTL
 from dashboard.py import queries
 from dashboard.py.fitness_judgment import EVENTS
+from dashboard.py.followup_probability import RISK_LEVELS, RISK_RANGES, classify_probabilities
+
+RISK_COLORS = {
+    "안전": "#2F9E59",
+    "경계1등급": "#EACB22",
+    "경계2등급": "#E88932",
+    "경계3등급": "#C92836",
+}
+RISK_BAND_FILLS = {
+    "안전": "rgba(47, 158, 89, 0.08)",
+    "경계1등급": "rgba(234, 203, 34, 0.10)",
+    "경계2등급": "rgba(232, 137, 50, 0.09)",
+    "경계3등급": "rgba(201, 40, 54, 0.08)",
+}
+RISK_DISTRIBUTION_HEIGHT = 540
 
 
 @st.cache_data(ttl=DEFAULT_TTL, show_spinner=False)
@@ -31,6 +46,10 @@ def _load_population() -> pd.DataFrame:
         MESURE_DE=pd.to_datetime(rows["MESURE_DE"], format="%Y%m%d"),
     )
     rows["BMI구간"] = classify_bmi(rows["BMI"])
+    rows["RISK_LEVEL"] = pd.NA
+    probability_rows = rows.loc[rows["FAILURE_PROBABILITY"].notna(), ["SOLDIER_ID", "FAILURE_PROBABILITY"]]
+    classified = classify_probabilities(probability_rows)
+    rows.loc[classified.index, "RISK_LEVEL"] = classified["RISK_LEVEL"]
     return rows
 
 
@@ -157,6 +176,280 @@ def _bmi_distribution_figure(distribution: pd.DataFrame, total: int) -> go.Figur
         height=340,
         show_percent=True,
     ).build_figure()
+
+
+def _risk_counts(scoped: pd.DataFrame) -> pd.Series:
+    """현재 지역·부대 필터 안에서 확률 등급별 장병 수를 계산합니다."""
+    people_with_probability = scoped.loc[scoped["RISK_LEVEL"].isin(RISK_LEVELS)]
+    return (
+        people_with_probability.groupby("RISK_LEVEL")["SOLDIER_ID"]
+        .nunique()
+        .reindex(RISK_LEVELS, fill_value=0)
+    )
+
+
+def _risk_distribution_figure(scoped: pd.DataFrame) -> go.Figure:
+    """BMI와 미달 확률의 실제 값을 축으로 사용하는 위험 등급 산점도를 만듭니다."""
+    figure = go.Figure()
+    shapes = []
+    probability_bands = [
+        (0.0, 0.3, "안전"),
+        (0.3, 0.5, "경계1등급"),
+        (0.5, 0.7, "경계2등급"),
+        (0.7, 1.0, "경계3등급"),
+    ]
+    for lower, upper, level in probability_bands:
+        shapes.append({
+            "type": "rect",
+            "xref": "paper",
+            "yref": "y",
+            "x0": 0,
+            "x1": 1,
+            "y0": lower,
+            "y1": upper,
+            "line": {"width": 0},
+            "fillcolor": RISK_BAND_FILLS[level],
+            "layer": "below",
+        })
+    for threshold in (0.3, 0.5, 0.7):
+        shapes.append({
+            "type": "line",
+            "xref": "paper",
+            "yref": "y",
+            "x0": 0,
+            "x1": 1,
+            "y0": threshold,
+            "y1": threshold,
+            "line": {"color": NAVY_BORDER, "width": 1, "dash": "dash"},
+            "layer": "above",
+        })
+
+    chart_population = scoped.loc[
+        scoped["RISK_LEVEL"].isin(RISK_LEVELS)
+        & scoped["BMI"].notna()
+        & scoped["FAILURE_PROBABILITY"].notna()
+    ]
+    for level in RISK_LEVELS:
+        soldiers = chart_population.loc[chart_population["RISK_LEVEL"].eq(level)].sort_values(
+            "SOLDIER_ID",
+            kind="stable",
+        )
+        if soldiers.empty:
+            continue
+        figure.add_trace(go.Scatter(
+            x=soldiers["BMI"],
+            y=soldiers["FAILURE_PROBABILITY"],
+            mode="markers",
+            name=level,
+            marker={
+                "color": RISK_COLORS[level],
+                "size": 8,
+                "opacity": 0.82,
+                "line": {"color": "#FFFFFF", "width": 1},
+            },
+            customdata=soldiers[["SOLDIER_NAME", "UNIT_NAME"]].to_numpy(),
+            hovertemplate=(
+                f"{level}<br>%{{customdata[0]}} · %{{customdata[1]}}"
+                "<br>BMI %{x:.1f}<br>미달 확률 %{y:.1%}<extra></extra>"
+            ),
+        ))
+
+    figure.update_layout(
+        height=RISK_DISTRIBUTION_HEIGHT,
+        margin={"t": 12, "b": 42, "l": 58, "r": 12},
+        showlegend=True,
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
+            "font": {"size": 10},
+        },
+        template="plotly_white",
+        plot_bgcolor=NAVY_SURFACE,
+        paper_bgcolor="rgba(0,0,0,0)",
+        font={"color": LIGHT_TEXT},
+        shapes=shapes,
+        xaxis={
+            "title": {"text": "BMI", "standoff": 8},
+            "showgrid": True,
+            "gridcolor": NAVY_BORDER,
+            "zeroline": False,
+            "fixedrange": True,
+        },
+        yaxis={
+            "title": {"text": "다음 측정 미달 확률", "standoff": 8},
+            "tickmode": "array",
+            "tickvals": [0, 0.3, 0.5, 0.7, 1],
+            "ticktext": ["0%", "30%", "50%", "70%", "100%"],
+            "range": [0, 1],
+            "showgrid": False,
+            "fixedrange": True,
+        },
+    )
+    return figure
+
+
+def _risk_soldier_table(soldiers: pd.DataFrame) -> pd.DataFrame:
+    """확률 등급별 장병 명단과 CSV 내보내기 표를 만듭니다."""
+    columns = [
+        "SOLDIER_ID", "SOLDIER_NAME", "REGION_NAME", "UNIT_NAME", "RANK_NAME",
+        "MESURE_DE", "BMI", "BODY_FAT_PERCENTAGE", "FAILURE_PROBABILITY", "RISK_LEVEL",
+    ]
+    table = soldiers[columns].rename(columns={
+        "SOLDIER_ID": "군번",
+        "SOLDIER_NAME": "이름",
+        "REGION_NAME": "지역",
+        "UNIT_NAME": "부대",
+        "RANK_NAME": "계급",
+        "MESURE_DE": "측정일",
+        "BMI": "BMI",
+        "BODY_FAT_PERCENTAGE": "체지방률(%)",
+        "FAILURE_PROBABILITY": "미달 확률(%)",
+        "RISK_LEVEL": "확률 등급",
+    })
+    table["측정일"] = pd.to_datetime(table["측정일"], errors="coerce").dt.strftime("%Y-%m-%d")
+    table["미달 확률(%)"] = (pd.to_numeric(table["미달 확률(%)"]) * 100).round(1)
+    return table
+
+
+def _select_risk_level(level: str, context: str) -> None:
+    """선택한 확률 등급을 토글해 명단 표시를 갱신합니다."""
+    selected = st.session_state.get("unit_risk_level_selection")
+    current = (level, context)
+    st.session_state["unit_risk_level_selection"] = None if selected == current else current
+
+
+def _render_risk_probability_panel(scoped: pd.DataFrame, filters) -> None:
+    """현재 선택된 장병의 미달 확률 분포, 등급별 선택 카드와 CSV 명단을 표시합니다."""
+    st.divider()
+    st.subheader("미달 확률별 장병 현황")
+    st.caption(
+        "현재 지역·부대 선택을 적용합니다. 안전은 30% 미만이며, 30%·50%·70%부터 각각 경계1·2·3등급입니다. "
+        "분포를 확인한 뒤 가운데 등급을 선택하면 해당 장병 명단이 표시됩니다."
+    )
+
+    counts = _risk_counts(scoped)
+    predicted_count = int(counts.sum())
+    missing_count = int(scoped.loc[scoped["RISK_LEVEL"].isna(), "SOLDIER_ID"].nunique())
+    context = filter_signature(
+        tuple(filters.regions),
+        tuple(filters.units),
+        tuple(scoped["SOLDIER_ID"].astype(str)),
+    )
+
+    selection = st.session_state.get("unit_risk_level_selection")
+    if not (isinstance(selection, tuple) and len(selection) == 2 and selection[1] == context):
+        selection = None
+        st.session_state["unit_risk_level_selection"] = None
+
+    distribution_column, grade_column, roster_column = st.columns(
+        [1.2, 0.3, 1.45],
+        gap="small",
+        vertical_alignment="top",
+        wrap=False,
+    )
+    with distribution_column:
+        with st.container(border=True):
+            st.markdown("**1. 확률별 분포**")
+            st.plotly_chart(
+                _risk_distribution_figure(scoped),
+                width="stretch",
+                key=f"unit_risk_distribution_{context}",
+                config={"displayModeBar": False},
+            )
+            st.caption(
+                "점 하나는 장병 한 명입니다. 가로축은 최신 측정 BMI, 세로축은 다음 측정 미달 확률입니다. "
+                "배경 구간은 30%·50%·70% 기준으로 나뉘며, 점에 마우스를 올리면 상세값을 확인할 수 있습니다."
+            )
+
+    with grade_column:
+        st.markdown(
+            """
+            <style>
+                div[class*="st-key-unit-risk-grade-"] button {
+                    aspect-ratio: 1 / 1;
+                    height: auto;
+                    min-height: 0;
+                    width: 100%;
+                    padding: 0.4rem;
+                    border-radius: 12px;
+                }
+                div[class*="st-key-unit-risk-grade-"] button * {
+                    color: inherit !important;
+                }
+                div[class*="st-key-unit-risk-grade-"] button:hover {
+                    filter: brightness(.97);
+                }
+                div[class*="st-key-unit-risk-grade-"][class*="-selected-"] button {
+                    border-width: 3px;
+                    box-shadow: 0 0 0 2px currentColor;
+                }
+                div[class*="st-key-unit-risk-grade-0-"] button {
+                    background: #edf8f0; border-color: #2f9e59; color: #176638;
+                }
+                div[class*="st-key-unit-risk-grade-1-"] button {
+                    background: #fffbea; border-color: #eacb22; color: #76640b;
+                }
+                div[class*="st-key-unit-risk-grade-2-"] button {
+                    background: #fff5eb; border-color: #e88932; color: #914d13;
+                }
+                div[class*="st-key-unit-risk-grade-3-"] button {
+                    background: #fff0f1; border-color: #c92836; color: #8d1d27;
+                }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        for level, interval in reversed(list(zip(RISK_LEVELS, RISK_RANGES))):
+            index = RISK_LEVELS.index(level)
+            is_selected = selection == (level, context)
+            st.button(
+                f'{"✓ " if is_selected else ""}**{level} · {int(counts[level]):,}명**  \n{interval}',
+                key=f"unit-risk-grade-{index}-{'selected' if is_selected else 'idle'}-{context}",
+                width="stretch",
+                disabled=counts[level] == 0,
+                on_click=_select_risk_level,
+                args=(level, context),
+            )
+
+    with roster_column:
+        if selection is None:
+            st.markdown("**3. 선택 등급 장병 명단**")
+            st.caption("가운데 등급 카드를 선택하면 명단과 CSV 다운로드가 표시됩니다.")
+        else:
+            level = selection[0]
+            soldiers = scoped.loc[scoped["RISK_LEVEL"].eq(level)].sort_values(
+                ["FAILURE_PROBABILITY", "UNIT_NAME", "RANK_NAME", "SOLDIER_NAME"],
+                ascending=[False, True, True, True],
+                kind="stable",
+            )
+            table = _risk_soldier_table(soldiers)
+            st.markdown(f"**3. {level} 명단 · {len(table):,}명**")
+            st.dataframe(
+                table,
+                hide_index=True,
+                height=RISK_DISTRIBUTION_HEIGHT,
+                width="stretch",
+                column_config={
+                    "BMI": st.column_config.NumberColumn(format="%.1f"),
+                    "체지방률(%)": st.column_config.NumberColumn(format="%.1f"),
+                    "미달 확률(%)": st.column_config.NumberColumn(format="%.1f"),
+                },
+            )
+            st.download_button(
+                "CSV 다운로드",
+                data=table.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"미달확률_{level}_장병명단.csv",
+                mime="text/csv",
+                key=f"unit_risk_csv_{context}_{level}",
+            )
+
+    if missing_count:
+        st.caption(f"미달 확률 자료가 없는 장병 {missing_count:,}명은 등급 집계에서 제외했습니다.")
+    if predicted_count == 0:
+        st.info("현재 선택 범위에 미달 확률 자료가 있는 장병이 없습니다.")
 
 
 def show_bmi_soldiers_panel(group_name: str, category: str, soldiers: pd.DataFrame) -> None:
@@ -325,7 +618,7 @@ def _render_analysis(scoped: pd.DataFrame, filters, summary_level: str) -> None:
 
 def render() -> None:
     st.title("부대 현황")
-    st.caption("지역·부대별 BMI 구간과 구간별 장병 분포를 확인합니다.")
+    st.caption("지역·부대별 인원 현황, 미달 확률 등급 및 BMI 구간별 장병 분포를 확인합니다.")
     try:
         population = _load_population()
     except (ValueError, SQLAlchemyError) as error:
@@ -340,5 +633,6 @@ def render() -> None:
     summary_tab, analysis_tab = st.tabs(["지역·부대별 인원 요약", "BMI 별 요약"])
     with summary_tab:
         summary_level = _render_summary(filters.scoped)
+        _render_risk_probability_panel(filters.scoped, filters)
     with analysis_tab:
         _render_analysis(filters.scoped, filters, summary_level)

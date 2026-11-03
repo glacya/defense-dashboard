@@ -1,5 +1,7 @@
 """3번 화면: 개인 장병의 기본·신체·체력 변화 및 부상 이력입니다."""
 
+from concurrent.futures import ThreadPoolExecutor
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -42,6 +44,36 @@ def formatted(value, digits=2) -> str:
 def grade_label(value) -> str:
     """종목 등급 0과 판정 불가를 구분해 표시합니다."""
     return '판정 불가' if pd.isna(value) else '3등급 미만' if value==0 else f'{int(value)}등급'
+
+
+def _load_soldier_data(
+    soldier_id: str,
+) -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame | OSError | ValueError | KeyError | pd.errors.EmptyDataError | SQLAlchemyError,
+    pd.DataFrame,
+]:
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="personal-detail-data") as executor:
+        history_future = executor.submit(load_soldier_history, soldier_id)
+        injuries_future = executor.submit(queries.load_soldier_injuries, soldier_id)
+        probability_future = executor.submit(_load_soldier_probability, soldier_id)
+        round_means_future = executor.submit(queries.load_round_means)
+        return (
+            history_future.result(),
+            injuries_future.result(),
+            probability_future.result(),
+            round_means_future.result(),
+        )
+
+
+def _load_soldier_probability(
+    soldier_id: str,
+) -> pd.DataFrame | OSError | ValueError | KeyError | pd.errors.EmptyDataError | SQLAlchemyError:
+    try:
+        return queries.load_soldier_probability(soldier_id)
+    except (OSError,ValueError,KeyError,pd.errors.EmptyDataError,SQLAlchemyError) as error:
+        return error
 
 
 def render() -> None:
@@ -91,11 +123,10 @@ def render() -> None:
             key='personal_soldier',
             format_func=lambda value:f'{labels.loc[value,"SOLDIER_NAME"]} · {labels.loc[value,"RANK_NAME"]} · {labels.loc[value,"UNIT_NAME"]} · {value}')
     # 선택한 장병 한 명의 판정·변화·부상만 따로 조회한다.
-    history=load_soldier_history(soldier)
+    history,person_injuries,probability_result,round_means=_load_soldier_data(soldier)
     rounds=history.ROUND.astype(int).tolist()
     number=st.radio('상세 측정 회차',rounds,index=len(rounds)-1,horizontal=True,format_func=lambda value:f'{value}차')
     row=history.loc[history.ROUND.eq(number)].iloc[0]
-    person_injuries=queries.load_soldier_injuries(soldier)
     date=pd.to_datetime(str(row.MESURE_DE).removesuffix('.0'),format='%Y%m%d',errors='coerce')
     date_label=date.strftime('%Y-%m-%d') if pd.notna(date) else '날짜 확인 필요'
     identity,body_summary=st.columns([1,3],vertical_alignment='center')
@@ -119,20 +150,26 @@ def render() -> None:
     st.caption('부상 기록은 전체 보유 이력입니다. 발생일이 없어 선택 측정 회차의 부상으로 해석하지 않습니다.')
     with st.container(border=True):
         st.markdown('**다음 측정 미달 예측**')
-        try:
-            prediction=classify_probabilities(queries.load_soldier_probability(soldier))
-        except (OSError,ValueError,KeyError,pd.errors.EmptyDataError,SQLAlchemyError) as error:
-            st.info(f'미달 확률 자료를 확인할 수 없습니다: {error}')
+        if isinstance(
+            probability_result,
+            (OSError,ValueError,KeyError,pd.errors.EmptyDataError,SQLAlchemyError),
+        ):
+            st.info(f'미달 확률 자료를 확인할 수 없습니다: {probability_result}')
         else:
-            if prediction.empty:
-                st.info('이 장병의 다음 측정 미달 확률 자료가 없습니다.')
+            try:
+                prediction=classify_probabilities(probability_result)
+            except (OSError,ValueError,KeyError,pd.errors.EmptyDataError,SQLAlchemyError) as error:
+                st.info(f'미달 확률 자료를 확인할 수 없습니다: {error}')
             else:
-                predicted=prediction.iloc[0]
-                probability_panel,risk_panel=st.columns(2)
-                probability_panel.metric('다음 측정 미달 확률',f'{predicted.FAILURE_PROBABILITY:.2%}')
-                risk_panel.metric('위험 등급',predicted.RISK_LEVEL)
-                st.progress(float(predicted.FAILURE_PROBABILITY))
-                st.caption('2·3차 측정 자료로 예측한 다음 측정의 미달 확률입니다. 선택 회차를 바꿔도 예측값은 동일합니다.')
+                if prediction.empty:
+                    st.info('이 장병의 다음 측정 미달 확률 자료가 없습니다.')
+                else:
+                    predicted=prediction.iloc[0]
+                    probability_panel,risk_panel=st.columns(2)
+                    probability_panel.metric('다음 측정 미달 확률',f'{predicted.FAILURE_PROBABILITY:.2%}')
+                    risk_panel.metric('위험 등급',predicted.RISK_LEVEL)
+                    st.progress(float(predicted.FAILURE_PROBABILITY))
+                    st.caption('2·3차 측정 자료로 예측한 다음 측정의 미달 확률입니다. 선택 회차를 바꿔도 예측값은 동일합니다.')
     st.subheader('회차별 신체 변화')
     body_dates=pd.to_datetime(history.MESURE_DE.astype(str).str.removesuffix('.0'),
                               format='%Y%m%d',errors='coerce').dt.strftime('%Y-%m-%d').fillna('날짜 정보 없음')
@@ -287,7 +324,7 @@ def render() -> None:
         st.caption('미측정·연령 범위 밖은 판정 불가입니다. 개선·신규 미달은 두 시점 모두 판정 가능한 종목에서만 확인합니다.')
         st.subheader('종목별 개인 변화와 전체 평균')
         st.caption('파랑: 개인 측정값 · 회색: 같은 회차 전체 평균 · 주황 점선: 3등급 하한. 평균에는 선택 장병도 포함합니다.')
-        round_means=queries.load_round_means().set_index('ROUND')
+        round_means=round_means.set_index('ROUND')
         for offset in (0,2):
             for container,(event,(label,unit)) in zip(st.columns(2),list(EVENTS.items())[offset:offset+2]):
                 with container,st.container(border=True):

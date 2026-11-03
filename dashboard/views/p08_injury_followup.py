@@ -1,5 +1,8 @@
 """8번 화면: 부상 이력 기반으로 회복 상태와 운동 제한을 기록합니다."""
 
+from concurrent.futures import ThreadPoolExecutor
+
+import pandas as pd
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -8,6 +11,18 @@ from dashboard.py.management_store import load_records
 from dashboard.py.management_forms import display_records, editor
 from dashboard.py import queries
 from dashboard.common.table_widgets import render_dataframe
+
+
+def _load_page_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="injury-followup-data") as executor:
+        people_future = executor.submit(queries.load_roster)
+        injuries_future = executor.submit(queries.load_injuries)
+        records_future = executor.submit(load_records, 'injury_followup')
+        people = people_future.result()
+        injuries = injuries_future.result()
+        records = records_future.result()
+    return people, injuries, records
+
 
 def render() -> None:
     """부상 원본에 있는 장병과 부상 식별자 기준으로 후속 확인을 저장합니다."""
@@ -18,10 +33,10 @@ def render() -> None:
         st.success(notice)
     try:
         # 장병 명단은 다른 화면과 함께 쓰는 캐시. 군번 고유·부상-장병 연결은 DB의 PK·FK가 보장한다.
-        people=queries.load_roster().astype({'SOLDIER_ID':str})
+        people, injuries, records = _load_page_data()
+        people=people.astype({'SOLDIER_ID':str})
         # 후속조치 기록은 문자열 ID이므로 조인 키만 맞춘다.
-        injuries=queries.load_injuries().astype({'INJURY_ID':str,'SOLDIER_ID':str})
-        records=load_records('injury_followup')
+        injuries=injuries.astype({'INJURY_ID':str,'SOLDIER_ID':str})
     except (OSError,ValueError,SQLAlchemyError) as error:
         st.error(f'부상 관리 자료를 읽을 수 없습니다: {error}');st.stop()
     st.caption('부상 이력이 있는 장병을 조회하며, 후속조치 기록은 부상 번호로 연결합니다. 신상·부상 원본은 합성 자료입니다.')

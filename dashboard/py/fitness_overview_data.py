@@ -4,6 +4,7 @@
 """
 
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -103,11 +104,8 @@ def load_overview(
     soldier_ids: tuple[str, ...] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """선택 장병의 회차별·종목별 집계와 기준 설명을 돌려줍니다."""
-    rounds, events = summary_tables(
-        queries.load_overview_rounds(soldier_ids=soldier_ids),
-        queries.load_overview_events(soldier_ids=soldier_ids),
-    )
-    period = queries.load_measure_period()
+    rounds_data, events_data, period = _load_overview_sources(soldier_ids)
+    rounds, events = summary_tables(rounds_data, events_data)
     metadata = {
         '생성일시': datetime.now(ZoneInfo('Asia/Seoul')).isoformat(),  # 조회 시각
         '측정시작': pd.to_datetime(period.FIRST_DATE, format='%Y%m%d').strftime('%Y-%m-%d'),
@@ -116,6 +114,19 @@ def load_overview(
         '등급기준': grade_standards(),
     }
     return rounds, events, metadata
+
+
+def _load_overview_sources(
+    soldier_ids: tuple[str, ...] | None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="fitness-overview-data") as executor:
+        rounds_future = executor.submit(queries.load_overview_rounds, soldier_ids=soldier_ids)
+        events_future = executor.submit(queries.load_overview_events, soldier_ids=soldier_ids)
+        period_future = executor.submit(queries.load_measure_period)
+        rounds_data = rounds_future.result()
+        events_data = events_future.result()
+        period = period_future.result()
+    return rounds_data, events_data, period
 
 
 def load_group_summary(
@@ -133,8 +144,13 @@ def _load_group_summary(
     group_column: str,
     soldier_ids: tuple[str, ...] | None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="fitness-group-data") as executor:
+        rounds_future = executor.submit(queries.load_overview_rounds, group_column, soldier_ids)
+        events_future = executor.submit(queries.load_overview_events, group_column, soldier_ids)
+        rounds_data = rounds_future.result()
+        events_data = events_future.result()
     return summary_tables(
-        queries.load_overview_rounds(group_column, soldier_ids),
-        queries.load_overview_events(group_column, soldier_ids),
+        rounds_data,
+        events_data,
         grouped=True,
     )

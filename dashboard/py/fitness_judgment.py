@@ -6,7 +6,7 @@
 
 import pandas as pd
 
-from data.scripts.fitness_standards import grade_cut
+from fitness_standards import grade_cut
 
 EVENTS = {'STRENGTH': ('근력', '%'), 'ENDURANCE': ('근지구력', '회'),
           'CARDIO': ('심폐지구력', 'mL/kg/min'), 'FLEXIBILITY': ('유연성', 'cm')}

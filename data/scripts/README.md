@@ -11,7 +11,6 @@
 | `paths.py` | 입출력 경로 상수. 파이프라인과 각 모듈의 단독 실행이 같은 경로를 씁니다. |
 | `logging_setup.py` | data 영역 전용 로그 설정. dashboard 쪽 로그와 섞이지 않습니다. |
 | `utils.py` | 여러 모듈이 함께 쓰는 CSV 읽기·쓰기, 정의서 컬럼 고르기, 명령줄 인자 타입 |
-| `fitness_standards.py` | 19~24세 남성 체력 등급 기준(국민체력100). 종목별 등급 하한 `GRADE_CUTS`, 체격 정상 범위 `RANGE_STANDARDS`, 3등급 기준표 `grade3_standards()`, 등급 하한 표 `grade_cut_table()`. 실험 스크립트와 `analysis/`가 같은 기준을 씁니다. 비어 있는 등급 하한(None)은 값을 알게 되면 채웁니다. |
 | `preprocessing/` | 전처리 단계 모듈. 실행 순서는 `preprocessing/pipeline.py` |
 | `analysis/` | 데이터를 바꾸지 않고 통계·탐색 결과만 내는 분석 스크립트. 실행 목록은 `analysis/pipeline.py` |
 | `synthesis/` | 가상 장병 명단 생성, 최근 측정 연계·기대 부상 건수 계산, 부상 기록 생성. 실행 순서는 `synthesis/pipeline.py` |
@@ -72,11 +71,15 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/preprocessing
 | 순서 | 모듈 | 결과 |
 |---|---|---|
 | 1 | `clustering/classify_measurements_by_percentile` | 최종 측정을 4종목 평균 백분위(전체 측정 기준)로 1~4등급(70/50/30 이상)으로 나눈 `intermediate/clustering/grade_1~4.csv` |
-| 2 | `clustering/assign_grade_and_cluster` | 등급별 K-means 모델(`data_model/cluster_models/`)로 측정마다 군집을 정해 `processed/MEASUREMENT_CLASSIFICATION.csv`(`MESURE_ID`, `AVERAGE_PERCENTILE_GRADE`, `CLUSTER`)와 등급·군집별 유형명 `processed/FITNESS_TYPE.csv` 저장 |
+| 2 | `clustering/assign_grade_and_cluster` | 등급별 K-means 모델(`clustering/models/`)로 측정마다 군집을 정해 `processed/MEASUREMENT_CLASSIFICATION.csv`(`MESURE_ID`, `AVERAGE_PERCENTILE_GRADE`, `CLUSTER`)와 등급·군집별 유형명 `processed/FITNESS_TYPE.csv` 저장 |
 | 3 | `clustering/build_exercise_recommendations` | 체력 유형(등급·군집)마다 보완할 체력 요소와 등급별 난이도에 맞는 추천 운동을 골라 `processed/EXERCISE_CLASSIFICATION.csv`(운동 분류), `processed/EXERCISE_BODY_PART.csv`(운동별 사용 부위), `processed/RECOMMENDED_EXERCISE.csv`(유형별 추천 순위) 저장 |
-| 4 | `failure_prediction/predict_failure_probability` | 미달 예측 모델(`data_model/final/models/`)로 장병별 다음(4회차) 미달 확률 `processed/SOLDIER_FAILURE_PROBABILITY.csv`(`SOLDIER_ID`, `FAILURE_PROBABILITY`) 저장 |
+| 4 | `failure_prediction/predict_failure_probability` | 미달 예측 모델(`failure_prediction/models/`)로 장병별 다음(4회차) 미달 확률 `processed/SOLDIER_FAILURE_PROBABILITY.csv`(`SOLDIER_ID`, `FAILURE_PROBABILITY`) 저장 |
 
 모델 학습: `clustering/train_cluster_model`(등급별 K-means k=4, 시드 42), `failure_prediction/train_failure_probability_model`(1·2차로 3차 미달을 예측하는 로지스틱 회귀). 군집 단계가 함께 쓰는 설정과 특성 계산은 `clustering/cluster_features.py`에 있습니다.
+
+모델을 고를 때 해 본 실험은 `clustering/experiments/`(등급 나누기·군집·운동처방 추천 모델)와 `failure_prediction/experiments/`(미달 예측 모델 검증, 사람과 모델 비교 실험)에 있습니다. 파이프라인에는 들어 있지 않습니다. 각 폴더의 README를 참고하세요.
+
+사람과 판정 알고리즘·대시보드 입력을 비교하는 실험 페이지(취약 체력 요소 판별, 후속조치 입력 시간)는 `human_experiments/`에 있습니다. 만든 페이지는 Git에서 제외되는 `data/intermediate/human_experiments/`에 저장됩니다.
 
 파이프라인에 넣지 않은 스크립트:
 
@@ -84,6 +87,7 @@ conda run --no-capture-output -n kdt-project-1 python data/scripts/preprocessing
 |---|---|---|
 | `summarize_official_cut_ratios` | 심폐지구력(`CARDIO`, VO₂max)에 공식 등급 컷(42.0/44.8/47.6)을 적용해 등급별 비율과 컷 미만 비율을 설계(30/50/70%)와 함께 정리합니다. | `intermediate/official_cut_ratios/` |
 | `view_fitness_statistics` | 최종 측정 데이터(`processed/KS_NFA_PROCESSED.csv`)의 프로파일링 보고서를 만들고 한국어로 바꿉니다. 30분 넘게 걸립니다. | `intermediate/fitness_profile/` |
+| `statistics/e*.py` | 연령·BMI 집단별 기술통계와 검정(분산분석·카이제곱·t검정), 회차별 미달 변화, 3차 통과확률, 운동 처방 관련성 등 분석 18개. 대부분 Streamlit 화면이며 하나씩 직접 실행합니다. 파일별 내용은 [analysis/statistics/README.md](analysis/statistics/README.md) 참고 | `analysis/statistics/results/` |
 
 ```powershell
 python data/scripts/analysis/summarize_official_cut_ratios.py

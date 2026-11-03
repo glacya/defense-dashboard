@@ -57,4 +57,4 @@
 
 ## 체력 등급 기준
 
-19~24세 남성 체력 등급 기준(종목별 1~3등급 하한, BMI·체지방률 범위)은 정의서 폴더가 아니라 `data/scripts/fitness_standards.py`에 코드로 둡니다. 3등급 기준표(성별·나이 범위·종목·기준값 표)가 필요하면 `fitness_standards.grade3_standards()`, 등급별 하한은 `grade_cut()`·`grade_cut_table()`을 씁니다.
+19~24세 남성 체력 등급 기준(종목별 1~3등급 하한, BMI·체지방률 범위)은 정의서 폴더가 아니라 루트 `fitness_standards.py`에 코드로 둡니다. 3등급 기준표(성별·나이 범위·종목·기준값 표)가 필요하면 `fitness_standards.grade3_standards()`, 등급별 하한은 `grade_cut()`·`grade_cut_table()`을 씁니다.

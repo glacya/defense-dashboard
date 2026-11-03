@@ -35,7 +35,7 @@ from data.scripts.analysis.clustering.cluster_features import (
     percentile_column,
 )
 from data.scripts.analysis.clustering.train_cluster_model import EXERCISE_LABELS, relative_profile
-from data.scripts.fitness_standards import fitness_grade
+from fitness_standards import fitness_grade
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import (
     CLUSTER_MODEL_DIR,

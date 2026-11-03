@@ -13,7 +13,7 @@
   processed/EXERCISE_CLASSIFICATION.csv : 분류한 운동마다 체력 요소·난이도·장비
   processed/EXERCISE_BODY_PART.csv      : 운동별 사용 부위(부상 부위와 같은 이름)
   processed/RECOMMENDED_EXERCISE.csv    : 유형별 추천 순위 1~8의 처방번호
-화면 문장(운동 지침·추천 근거)은 저장하지 않고 training_guidance()·recommendation_basis()로 만듭니다(대시보드가 사용).
+화면 문장(운동 지침·추천 근거)은 저장하지 않습니다. 대시보드가 저장된 표와 fitness_standards.TARGET_DIFFICULTY로 만듭니다.
 
 실행: python -m data.scripts.analysis.clustering.build_exercise_recommendations
 """
@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from fitness_standards import TARGET_DIFFICULTY
 from data.scripts.analysis.clustering.cluster_features import CLUSTER_COLUMN, GRADE_COLUMN, GRADES
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import (
@@ -54,8 +55,6 @@ FOCUSES = {"근력": "STRENGTH", "근지구력": "ENDURANCE", "심폐지구력":
 WEAK_SUFFIX, STRONG_SUFFIX = "약점형", "강점형"
 RECOMMENDATION_COUNT = 8
 STRONG_QUOTAS = (4, 2, 2)  # 강점형: 강점 요소를 뺀 세 요소에 상대 편차가 낮은 순으로 배분
-TARGET_DIFFICULTY = {1: 3, 2: 2, 3: 1, 4: 1}  # 등급별 목표 동작 난이도(1=기초, 2=일반, 3=도전)
-SOURCE_URL = "https://nfa.kspo.or.kr/"
 
 # 처방번호, 체력 요소, 동작 난이도, 장비, 사용 부위(부상 부위 코드, LOCATION_NAMES의 키).
 # 분류가 확정된 후보만 추천합니다.
@@ -119,20 +118,6 @@ def type_focus(type_name: str) -> tuple[str, bool]:
     if len(matches) != 1:
         raise ValueError(f"해석할 수 없는 체력 유형: {type_name}")
     return matches[0]
-
-
-def training_guidance(grade: int) -> str:
-    """등급별 운동 지침 문장입니다."""
-    return (f"{grade}등급 기준 동작 난이도 {TARGET_DIFFICULTY[grade]}에 가까운 운동 우선. "
-            "개인별 수행 수준에 맞춰 강도와 반복량을 조절합니다.")
-
-
-def recommendation_basis(grade: int, cluster: int, focus: str, gap: float, type_name: str) -> str:
-    """추천 근거 문장입니다(체력 요소의 상대 편차와 배분 규칙)."""
-    _, weak = type_focus(type_name)
-    allocation = ("유형에 명시된 약점 요소 운동 8개" if weak
-                  else "강점 요소 제외 후 상대 편차가 낮은 순 4/2/2개 배분")
-    return f"{grade}등급 군집 {cluster}: {focus} 상대 편차 {gap:+.2f}%p; {allocation}. 등급별 난이도는 수동 규칙입니다."
 
 
 def build_exercise_classifications(details: pd.DataFrame) -> pd.DataFrame:

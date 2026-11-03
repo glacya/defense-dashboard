@@ -17,13 +17,13 @@
 | 파일 | 주요 함수 | 내용 |
 |---|---|---|
 | `queries.py` | `load_*()`, `judged_cte()`, `distribution_counts()` | 화면별 SQL. 아래 "queries.py 구성" 참고 |
-| `fitness_judgment.py` | `EVENTS`, `REASONS`, `GRADE_LABELS`, `join_labels()`, `event_labels()`, `grade_standards()` | 판정 화면들이 함께 쓰는 종목·집중관리 사유·등급 이름과 표시 도우미. 등급 하한은 `data/scripts/fitness_standards.py`에서 가져옵니다. |
+| `fitness_judgment.py` | `EVENTS`, `REASONS`, `GRADE_LABELS`, `join_labels()`, `event_labels()`, `grade_standards()` | 판정 화면들이 함께 쓰는 종목·집중관리 사유·등급 이름과 표시 도우미. 등급 하한은 루트 `fitness_standards.py`에서 가져옵니다. |
 | `fitness_overview_data.py` | `load_overview()`, `load_group_summary(group_column)`, `summary_tables()` | p01. 회차·종목(·지역·부대)별 SQL 집계를 한글 컬럼과 미달률이 붙은 화면 표로 바꿉니다. |
 | `management_targets_data.py` | `load_round_targets(n)`, `build_targets()`, `prepare_judgments()`, `targets_metadata()` | p02. 선택 회차의 집중관리 대상자에 BMI 구간, 미달·신규 미달·지속 미달 종목 이름, 선정 사유를 붙입니다. |
 | `personal_detail_data.py` | `load_soldier_history(soldier_id)`, `build_changes()`, `personal_metadata()` | p02·p03. 한 장병의 회차별 판정에 1차 대비 측정값·등급 변화를 붙입니다. |
 | `injury_overview_data.py` | `injury_grade_table()`, `injury_people()`, `injury_metadata()` | p06. 종목×등급 부상 집계(빈 조합은 0명으로 채움), 명단 + 장병별 부상 건수. |
 | `followup_probability.py` | `load_followup_population()`, `classify_probabilities()`, `RISK_LEVELS`, `FOLLOWUP_THRESHOLD` | p07·메인. 장병별 다음 회차 미달 확률을 안전·경계1~3등급으로 나눕니다(30·50·70%). |
-| `personal_exercise_recommendations.py` | `load_recommendation(grade, cluster)`, `split_by_injuries()`, `render_recommendation()` | 메인·p03. 체력유형(등급·군집)의 추천 운동. 부상 부위와 사용 부위가 겹치는 운동은 따로 분리합니다. 지침·근거 문장은 `build_exercise_recommendations`의 함수로 만듭니다. |
+| `personal_exercise_recommendations.py` | `load_recommendation(grade, cluster)`, `training_guidance()`, `split_by_injuries()`, `render_recommendation()` | 메인·p03. 체력유형(등급·군집)의 추천 운동. 부상 부위와 사용 부위가 겹치는 운동은 따로 분리합니다. 지침 문장은 루트 `fitness_standards.TARGET_DIFFICULTY`(등급별 목표 난이도)로, 근거 문장은 읽은 상대 편차와 유형의 체력 요소별 추천 운동 수로 만듭니다. |
 | `management_store.py` | `load_records(kind)`, `save_record()`, `save_followups_batch()`, `validate()`, `load_completion_counts()` | p07·p08·메인. 후속조치 기록(아래 "후속조치 기록") |
 | `management_forms.py` | `editor(kind, soldier, all_records, injuries)`, `LABELS` | p07·p08의 기록 입력·수정 폼 |
 | `group_followup.py` | `render_group_followup(people)` | p07. 선택한 등급·유형 그룹 전체에 같은 후속조치를 한 번에 등록 |

@@ -13,7 +13,7 @@ from dashboard.py.management_forms import display_records, editor, LABELS
 from dashboard.py.followup_probability import RISK_LEVELS, RISK_RANGES, load_followup_population
 from dashboard.py.group_followup import render_group_followup
 from dashboard.py.fitness_judgment import EVENTS
-from data.scripts.fitness_standards import grade_cut
+from fitness_standards import grade_cut
 from dashboard.common.overview_widgets import render_metric_cards
 from dashboard.common.charts import make_bar
 from dashboard.common.table_widgets import render_dataframe

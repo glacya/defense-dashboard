@@ -8,8 +8,6 @@ from data.scripts.analysis.clustering.build_exercise_recommendations import (
     build_body_parts,
     build_exercise_classifications,
     build_recommendations,
-    recommendation_basis,
-    training_guidance,
     type_focus,
 )
 from data.scripts.paths import (
@@ -84,13 +82,6 @@ def test_body_parts_use_injury_location_names(small_rules):
 
     assert parts.loc[parts.PRESCRIPTION_TYPE_ID.eq(4), 'BODY_PART'].tolist() == ['고관절']
     assert set(parts.BODY_PART) == {'무릎', '고관절'}
-
-
-def test_texts_for_dashboard():
-    assert training_guidance(2).startswith('2등급 기준 동작 난이도 2')
-    assert recommendation_basis(1, 0, '근력', -28.28, '유형1: 근력 약점형') == (
-        '1등급 군집 0: 근력 상대 편차 -28.28%p; 유형에 명시된 약점 요소 운동 8개. 등급별 난이도는 수동 규칙입니다.')
-    assert '4/2/2개 배분' in recommendation_basis(3, 1, '유연성', 1.5, '유형2: 근력 강점형')
 
 
 def test_project_rules_match_definitions():

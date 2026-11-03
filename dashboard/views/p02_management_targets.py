@@ -20,7 +20,7 @@ from dashboard.common.formatting import format_timestamp
 from dashboard.py.management_targets_data import prepare_round_targets, targets_metadata
 from dashboard.py.personal_detail_data import load_soldier_history
 from dashboard.py.fitness_judgment import EVENTS, REASONS
-from data.scripts.fitness_standards import grade_cut
+from fitness_standards import grade_cut
 
 LABELS={'SOLDIER_ID':'군번','SOLDIER_NAME':'이름','RANK_NAME':'계급','UNIT_NAME':'소속',
         'ROUND':'회차','BMI':'BMI','BMI_GROUP':'BMI 구간','FAIL_COUNT':'미달 개수',

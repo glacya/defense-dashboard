@@ -1,0 +1,339 @@
+<title>후속조치 입력 시간 측정</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* 레이아웃: 업무 화면. 왼쪽에 대상 장병 25명 명단(고정), 오른쪽에 선택 장병 정보 + 대시보드와 같은 입력 폼 */
+:root {
+  --paper: #f3f4f1;      /* 업무 화면 바탕(옅은 카키 회색) */
+  --sheet: #ffffff;
+  --ink: #1f241f;
+  --muted: #5f675e;
+  --rule: #d6dbd3;
+  --accent: #3d5a3a;     /* 주요 버튼·선택 장병(짙은 국방 녹색) */
+  --accent-ink: #ffffff;
+  --accent-soft: #e5ece2;
+  --done: #2c6a54;
+  --error: #b2432f;
+  --error-soft: #f7e5e1;
+  --font-body: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+  --top: env(safe-area-inset-top, 0px);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #161915; --sheet: #1e221d; --ink: #e5e9e3; --muted: #9ba597; --rule: #353c33;
+  --accent: #9cc496; --accent-ink: #142012; --accent-soft: #263224; --done: #85c9ac; --error: #eb917e; --error-soft: #3a2420; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: #161915; --sheet: #1e221d; --ink: #e5e9e3; --muted: #9ba597; --rule: #353c33;
+  --accent: #9cc496; --accent-ink: #142012; --accent-soft: #263224; --done: #85c9ac; --error: #eb917e; --error-soft: #3a2420; color-scheme: dark }
+
+body { background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.6; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--top); z-index: 10; background: var(--paper); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 64px; display: grid; gap: 22px; }
+h1 { font-size: 1.75rem; line-height: 1.25; margin: 0; text-wrap: balance; }
+h2 { font-size: 1.05rem; margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-size: .78rem; letter-spacing: .08em; color: var(--muted); }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.sheet { background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
+ul.rules { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font-size: .8rem; font-weight: 500; color: var(--muted); }
+th:first-child, td:first-child { text-align: left; }
+button { font: inherit; cursor: pointer; border-radius: 4px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.primary { background: var(--accent); color: var(--accent-ink); border: 0; padding: 10px 18px; font-weight: 700; }
+.primary:disabled { opacity: .6; cursor: default; }
+.secondary { background: transparent; color: var(--ink); border: 1px solid var(--rule); padding: 8px 14px; }
+.note { font-size: .85rem; color: var(--muted); }
+.warn { color: var(--error); font-weight: 500; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+.layout { display: grid; grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); gap: 22px; align-items: start; }
+.side { position: sticky; top: calc(var(--top) + 12px); max-height: calc(100vh - var(--top) - 24px); overflow-y: auto; padding: 10px; gap: 4px; }
+.main { display: grid; gap: 18px; min-width: 0; }
+.roster { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.roster button { width: 100%; display: grid; grid-template-columns: 1.4em minmax(0, 1fr) auto; gap: 6px; align-items: center; text-align: left; background: transparent; border: 1px solid transparent; padding: 6px 8px; color: var(--ink); }
+.roster button:hover { background: var(--accent-soft); }
+.roster button[aria-current="true"] { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+.roster .tick { color: var(--done); font-weight: 700; }
+.roster .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roster .p { font-family: var(--font-num); font-size: .8rem; color: var(--muted); }
+
+.bar { position: sticky; top: calc(var(--top) + 12px); z-index: 5; background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.bar .grow { flex: 1 1 160px; min-width: 0; display: grid; gap: 4px; }
+.meter { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.meter > i { display: block; height: 100%; width: 0; background: var(--accent); }
+
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.facts > div { border: 1px solid var(--rule); border-radius: 6px; padding: 8px 12px; display: grid; }
+.facts .k { font-size: .78rem; color: var(--muted); }
+.facts .v { font-size: 1.15rem; font-weight: 600; }
+.measures td.low { color: var(--error); font-weight: 600; }
+
+form { display: grid; gap: 12px; }
+.field { display: grid; gap: 4px; }
+.field label { font-size: .88rem; font-weight: 500; }
+.field input, .field select, .field textarea { font: inherit; color: var(--ink); background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; padding: 7px 10px; width: 100%; box-sizing: border-box; }
+.field textarea { min-height: 4.6em; resize: vertical; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.msg { padding: 8px 12px; border-radius: 4px; font-size: .9rem; }
+.msg.error { background: var(--error-soft); color: var(--error); }
+.msg.ok { background: var(--accent-soft); color: var(--done); }
+
+.score { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.score > div { border: 1px solid var(--rule); border-radius: 6px; padding: 14px; display: grid; gap: 4px; align-content: start; }
+.score .who { font-size: .8rem; color: var(--muted); }
+.score .big { font-family: var(--font-num); font-size: 1.9rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.score .sub { font-size: .85rem; color: var(--muted); }
+.score .first { border-color: var(--accent); }
+.records td { white-space: normal; text-align: left; vertical-align: top; }
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .side { position: static; max-height: 15.5em; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; top: auto; border-radius: 0; border-width: 1px 0 0;
+    padding: 10px max(16px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  .main { padding-bottom: 72px; }
+}
+@media (prefers-reduced-motion: no-preference) { .meter > i { transition: width .2s ease; } }
+</style>
+
+<div class="wrap">
+  <header style="display:grid;gap:8px">
+    <span class="eyebrow">대시보드 사용 실험 · 체력 후속조치 <span class="num" id="countText">25</span>건</span>
+    <h1>후속조치 입력 시간 측정</h1>
+    <p>대시보드 7번 화면의 상담·후속조치 폼과 같은 항목으로, 후속조치 대상 장병 <span class="num" id="countText2">25</span>명의 기록을 하나씩 작성해 주세요. 시작부터 최종 제출까지 걸린 시간을 잽니다. 입력한 내용은 이 페이지 안에만 있고 DB에 저장되지 않습니다.</p>
+  </header>
+
+  <section class="sheet" id="startBox">
+    <h2>시작하기</h2>
+    <ul class="rules">
+      <li>왼쪽 명단에서 장병을 고르고, 장병 정보를 보고 기록을 작성한 뒤 <strong>새 기록 저장</strong>을 누르세요. 대시보드와 같은 규칙으로 검사하며, 맞지 않으면 저장되지 않습니다.</li>
+      <li>저장한 장병은 명단에 ✓로 표시됩니다. 다시 골라 고칠 수 있습니다.</li>
+      <li>25명을 모두 저장하면 <strong>최종 제출</strong>을 누르세요. 걸린 시간은 제출한 뒤에 보여 드립니다.</li>
+    </ul>
+    <div class="row"><button class="primary" id="startBtn" type="button">시작</button></div>
+  </section>
+
+  <div class="layout" id="work" hidden>
+    <aside class="sheet side" aria-label="대상 장병 명단">
+      <h2 style="padding:4px 8px">대상 장병</h2>
+      <ul class="roster" id="roster"></ul>
+    </aside>
+
+    <main class="main">
+      <div class="bar" id="bar">
+        <div class="grow">
+          <span class="note"><span class="num" id="saved">0</span> / <span class="num" id="total">25</span>명 저장함</span>
+          <div class="meter"><i id="meter"></i></div>
+        </div>
+        <span class="note warn" id="confirmMsg" hidden></span>
+        <button class="primary" id="submitBtn" type="button">최종 제출</button>
+      </div>
+
+      <section class="sheet" id="result" hidden aria-live="polite">
+        <h2>결과</h2>
+        <div class="score" id="scoreBoxes"></div>
+        <p class="note" id="resultNote"></p>
+        <div class="scroll"><table class="records" id="recordTable"></table></div>
+        <div class="row"><button class="secondary" id="retryBtn" type="button">처음부터 다시</button></div>
+      </section>
+
+      <section class="sheet" id="person"></section>
+
+      <section class="sheet" id="formBox">
+        <h2>상담·후속조치</h2>
+        <form id="form" novalidate>
+          <div class="grid2">
+            <div class="field"><label for="f_ASSIGNEE">담당자</label><input id="f_ASSIGNEE" type="text" maxlength="30" autocomplete="off"></div>
+            <div class="field"><label for="f_COUNSELING_DATE">상담일</label><input id="f_COUNSELING_DATE" type="date"></div>
+          </div>
+          <div class="field"><label for="f_COUNSELING_CONTENT">상담 내용</label><textarea id="f_COUNSELING_CONTENT" maxlength="1000"></textarea></div>
+          <div class="field"><label for="f_ACTION_CONTENT">후속조치 내용</label><textarea id="f_ACTION_CONTENT" maxlength="1000"></textarea></div>
+          <div class="grid2">
+            <div class="field"><label for="f_NEXT_CHECK_DATE">다음 점검일</label><input id="f_NEXT_CHECK_DATE" type="date"></div>
+            <div class="field"><label for="f_STATUS">진행 상태</label><select id="f_STATUS"></select></div>
+            <div class="field"><label for="f_COMPLETED_DATE">완료일 (선택)</label><input id="f_COMPLETED_DATE" type="date"></div>
+          </div>
+          <p class="note">완료 상태이면 완료일을 입력하세요. 진행 중·대기·취소이면 완료일을 비워 두세요. 다음 점검일은 상담일 이후로 지정합니다.</p>
+          <div class="msg" id="formMsg" hidden></div>
+          <div class="row">
+            <button class="primary" id="saveBtn" type="submit">새 기록 저장</button>
+            <button class="secondary" id="nextBtn" type="button">다음 미저장 장병</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <details class="sheet">
+    <summary>실험 방법</summary>
+    <ul class="rules">
+      <li>대상: 다음 체력검정 미달 확률이 30% 이상인 후속조치 대상 장병 <span class="num" id="nPopulation"></span>명에서 시드 <span class="num" id="seedText"></span>로 <span class="num" id="countText3">25</span>명을 무작위로 골랐습니다. 명단은 대시보드처럼 미달 확률이 높은 순서입니다. 신상은 합성 자료입니다.</li>
+      <li>입력 항목과 검사 규칙: 대시보드의 체력 후속조치 기록과 같습니다. 담당자·상담일·후속조치 내용·다음 점검일이 필수이고, 다음 점검일과 완료일은 상담일보다 빠를 수 없으며, 완료일은 진행 상태가 완료일 때만 입력합니다.</li>
+      <li>시간: 시작부터 최종 제출까지입니다. 장병별 시간은 바로 앞 저장(첫 장병은 시작)부터 그 장병의 첫 저장까지입니다. 푸는 동안에는 보여 주지 않습니다.</li>
+      <li>대시보드에는 여러 장병에게 같은 기록을 한 번에 등록하는 그룹별 등록도 있지만, 이 실험은 장병별 등록만 잽니다.</li>
+    </ul>
+  </details>
+</div>
+
+<script id="task-data" type="application/json">/*__TASK_DATA__*/</script>
+<script>
+(() => {
+  const DATA = JSON.parse(document.getElementById('task-data').textContent);
+  const SOLDIERS = DATA.soldiers, N = SOLDIERS.length;
+  const STATUSES = ['점검 대기', '진행 중', '완료', '취소'];
+  const FIELDS = ['ASSIGNEE', 'COUNSELING_DATE', 'COUNSELING_CONTENT', 'ACTION_CONTENT', 'NEXT_CHECK_DATE', 'STATUS', 'COMPLETED_DATE'];
+  const LABELS = { ASSIGNEE: '담당자', COUNSELING_DATE: '상담일', COUNSELING_CONTENT: '상담 내용', ACTION_CONTENT: '후속조치 내용',
+                   NEXT_CHECK_DATE: '다음 점검일', STATUS: '진행 상태', COMPLETED_DATE: '완료일' };
+  const $ = (id) => document.getElementById(id);
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });   // YYYY-MM-DD
+
+  ['countText', 'countText2', 'countText3', 'total'].forEach((id) => { $(id).textContent = N; });
+  $('nPopulation').textContent = DATA.nPopulation.toLocaleString(); $('seedText').textContent = DATA.seed;
+  STATUSES.forEach((s) => $('f_STATUS').add(new Option(s, s)));
+
+  const records = new Array(N).fill(null);     // 저장한 기록
+  const firstSavedAt = new Array(N).fill(null); // 장병별 첫 저장 시각
+  let current = 0, startAt = 0, submitted = false, confirming = false;
+
+  // ----- 명단 -----
+  const roster = $('roster');
+  SOLDIERS.forEach((s, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<button type="button" id="r${i}"><span class="tick" aria-hidden="true"></span><span class="who"></span><span class="p">${(s.probability * 100).toFixed(1)}%</span></button>`;
+    li.querySelector('.who').textContent = `${s.name} · ${s.rank}`;
+    li.querySelector('button').addEventListener('click', () => select(i));
+    roster.appendChild(li);
+  });
+  function refreshRoster() {
+    SOLDIERS.forEach((_, i) => {
+      const b = $(`r${i}`);
+      b.setAttribute('aria-current', i === current ? 'true' : 'false');
+      b.querySelector('.tick').textContent = records[i] ? '✓' : '';
+      b.setAttribute('aria-label', `${SOLDIERS[i].name}${records[i] ? ' 저장함' : ''}`);
+    });
+    const n = records.filter(Boolean).length;
+    $('saved').textContent = n; $('meter').style.width = (n / N * 100) + '%';
+  }
+
+  // ----- 장병 정보(대시보드 '선택 장병 정보'와 같은 항목) -----
+  function renderPerson(s) {
+    const el = $('person');
+    el.innerHTML = `<h2></h2><p class="note"></p><div class="facts"></div><p class="note"></p>
+      <div class="scroll"><table class="measures"><thead><tr><th>종목</th><th>측정값</th><th>단위</th><th>3등급 하한</th></tr></thead><tbody></tbody></table></div>`;
+    el.querySelector('h2').textContent = `${s.name} · ${s.rank} · ${s.unit}`;
+    el.querySelectorAll('p.note')[0].textContent = `장병번호: ${s.id} · 신상은 합성 자료입니다.`;
+    const facts = [['다음 체력검정 미달 확률', (s.probability * 100).toFixed(2) + '%'], ['대상자 등급', s.risk],
+                   ['측정 당시 나이', s.age + '세'], ['BMI', Number(s.bmi).toFixed(2)]];
+    el.querySelector('.facts').innerHTML = facts.map(() => '<div><span class="k"></span><span class="v"></span></div>').join('');
+    el.querySelectorAll('.facts > div').forEach((d, k) => { d.querySelector('.k').textContent = facts[k][0]; d.querySelector('.v').textContent = facts[k][1]; });
+    el.querySelectorAll('p.note')[1].textContent = `운동유형: ${s.type ? `백분위 ${s.grade}등급 · ${s.type}` : '최신 측정 분류 없음'} · 참고용 최신 측정 · 측정일 ${s.date}`;
+    const tbody = el.querySelector('tbody');
+    DATA.events.forEach((ev, k) => {
+      const tr = tbody.insertRow(); const v = Number(s.values[k]);
+      [ev.label, s.values[k], ev.unit, ev.cut.toFixed(1)].forEach((text, c) => { const td = tr.insertCell(); td.textContent = text; if (c === 1 && v < ev.cut) td.className = 'low'; });
+    });
+  }
+
+  // ----- 폼 -----
+  function fillForm(record) {
+    const defaults = { ASSIGNEE: '', COUNSELING_DATE: today, COUNSELING_CONTENT: '', ACTION_CONTENT: '', NEXT_CHECK_DATE: today, STATUS: STATUSES[0], COMPLETED_DATE: '' };
+    FIELDS.forEach((f) => { $(`f_${f}`).value = record ? record[f] : defaults[f]; });
+    $('saveBtn').textContent = record ? '수정 저장' : '새 기록 저장';
+  }
+  function select(i) {
+    current = i; renderPerson(SOLDIERS[i]); fillForm(records[i]);
+    $('formMsg').hidden = true; refreshRoster();
+  }
+  function readForm() {
+    const r = {};
+    FIELDS.forEach((f) => { r[f] = $(`f_${f}`).value.trim(); });
+    return r;
+  }
+  // dashboard/py/management_store.py의 validate와 같은 규칙
+  function validate(r) {
+    for (const f of ['ASSIGNEE', 'COUNSELING_DATE', 'ACTION_CONTENT', 'NEXT_CHECK_DATE']) if (!r[f]) return `필수 항목을 입력하세요: ${LABELS[f]}`;
+    if (!STATUSES.includes(r.STATUS)) return '잘못된 진행 상태입니다.';
+    if (r.NEXT_CHECK_DATE < r.COUNSELING_DATE) return '다음 점검일이 상담일보다 빠릅니다.';
+    if (r.STATUS === '완료') {
+      if (!r.COMPLETED_DATE) return '완료일을 입력하세요.';
+      if (r.COMPLETED_DATE < r.COUNSELING_DATE) return '완료일이 상담일보다 빠릅니다.';
+    } else if (r.COMPLETED_DATE) return '완료 상태에서만 완료일을 입력하세요.';
+    return '';
+  }
+  function showMsg(kind, text) { const m = $('formMsg'); m.className = 'msg ' + kind; m.textContent = text; m.hidden = false; }
+
+  $('form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (submitted) return;
+    const r = readForm(); const error = validate(r);
+    if (error) { showMsg('error', '저장하지 못했습니다: ' + error); return; }
+    const isNew = !records[current];
+    records[current] = r;
+    if (firstSavedAt[current] === null) firstSavedAt[current] = performance.now();
+    showMsg('ok', isNew ? `저장했습니다. ${SOLDIERS[current].name}` : `수정했습니다. ${SOLDIERS[current].name}`);
+    $('saveBtn').textContent = '수정 저장';
+    refreshRoster();
+    if (confirming) { confirming = false; $('confirmMsg').hidden = true; $('submitBtn').textContent = '최종 제출'; }
+  });
+  $('nextBtn').addEventListener('click', () => {
+    for (let step = 1; step <= N; step++) { const i = (current + step) % N; if (!records[i]) { select(i); $('f_ASSIGNEE').focus(); return; } }
+    showMsg('ok', '모든 장병의 기록을 저장했습니다. 최종 제출을 누르세요.');
+  });
+
+  $('startBtn').addEventListener('click', () => {
+    $('startBox').hidden = true; $('work').hidden = false;
+    startAt = performance.now(); select(0); $('f_ASSIGNEE').focus({ preventScroll: true });
+  });
+
+  $('submitBtn').addEventListener('click', () => {
+    if (submitted) return;
+    const missing = N - records.filter(Boolean).length;
+    if (missing > 0 && !confirming) {
+      confirming = true;
+      $('confirmMsg').textContent = `${missing}명의 기록을 저장하지 않았습니다.`;
+      $('confirmMsg').hidden = false; $('submitBtn').textContent = '그래도 제출';
+      return;
+    }
+    finish();
+  });
+
+  const clock = (ms) => { const s = ms / 1000; const m = Math.floor(s / 60); return String(m).padStart(2, '0') + ':' + (s - m * 60).toFixed(1).padStart(4, '0'); };
+  function finish() {
+    const totalMs = performance.now() - startAt;
+    submitted = true;
+    $('confirmMsg').hidden = true; $('submitBtn').disabled = true; $('submitBtn').textContent = '제출함';
+    $('formBox').hidden = true; $('person').hidden = true;
+    // 장병별 시간: 첫 저장 순서로 늘어놓고 바로 앞 저장(첫 장병은 시작)부터 잰다
+    const order = firstSavedAt.map((t, i) => [t, i]).filter(([t]) => t !== null).sort((a, b) => a[0] - b[0]);
+    const per = order.map(([t, i], k) => ({ i, ms: t - (k ? order[k - 1][0] : startAt) }));
+    const saved = per.length;
+    const sorted = per.map((p) => p.ms).sort((a, b) => a - b);
+    const median = saved ? (saved % 2 ? sorted[(saved - 1) / 2] : (sorted[saved / 2 - 1] + sorted[saved / 2]) / 2) : null;
+    const slowest = per.reduce((a, b) => (!a || b.ms > a.ms ? b : a), null);
+    $('scoreBoxes').innerHTML = `
+      <div class="first"><span class="who">전체 걸린 시간</span><span class="big">${clock(totalMs)}</span><span class="sub">저장한 기록 <span class="num">${saved}</span> / <span class="num">${N}</span>명</span></div>
+      <div><span class="who">기록 1건당 평균</span><span class="big">${saved ? clock(totalMs / saved) : '—'}</span><span class="sub">전체 시간 ÷ 저장한 기록 수</span></div>
+      <div><span class="who">장병별 시간 중앙값</span><span class="big">${median === null ? '—' : clock(median)}</span>
+        <span class="sub">가장 오래 걸린 장병 ${slowest ? `${SOLDIERS[slowest.i].name} <span class="num">${clock(slowest.ms)}</span>` : '—'}</span></div>`;
+    $('resultNote').textContent = '장병별 시간은 바로 앞 저장(첫 장병은 시작)부터 그 장병의 첫 저장까지입니다. 아래 표는 입력한 기록이며 어디에도 저장되지 않습니다.';
+    const timeOf = new Map(per.map((p) => [p.i, p.ms]));
+    const head = `<thead><tr><th>장병</th><th>시간</th>${FIELDS.map((f) => `<th>${LABELS[f]}</th>`).join('')}</tr></thead>`;
+    $('recordTable').innerHTML = head + '<tbody></tbody>';
+    const tbody = $('recordTable').tBodies[0];
+    SOLDIERS.forEach((s, i) => {
+      const tr = tbody.insertRow();
+      [s.name, timeOf.has(i) ? clock(timeOf.get(i)) : '저장 안 함', ...FIELDS.map((f) => (records[i] ? records[i][f] : ''))]
+        .forEach((text) => { tr.insertCell().textContent = text; });
+    });
+    $('result').hidden = false;
+    $('result').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  }
+  $('retryBtn').addEventListener('click', () => location.reload());
+})();
+</script>

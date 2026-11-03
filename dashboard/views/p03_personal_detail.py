@@ -15,7 +15,7 @@ from dashboard.py.followup_probability import classify_probabilities
 from dashboard.py.personal_detail_data import load_soldier_history, personal_metadata
 from dashboard.py.personal_exercise_recommendations import render_recommendation
 from dashboard.py.fitness_judgment import EVENTS
-from data.scripts.fitness_standards import grade_cut
+from fitness_standards import grade_cut
 from dashboard.common.chart_widgets import RadarChartWidget
 
 

@@ -1,9 +1,9 @@
-"""체력 등급 기준 모듈(data/scripts/fitness_standards.py)을 테스트합니다."""
+"""체력 등급 기준 모듈(fitness_standards.py)을 테스트합니다."""
 
 import pandas as pd
 import pytest
 
-from data.scripts.fitness_standards import fitness_grade, grade3_standards, grade_cut
+from fitness_standards import fitness_grade, grade3_standards, grade_cut
 
 
 def test_grade3_standards_keep_previous_csv_layout():

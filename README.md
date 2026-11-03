@@ -11,15 +11,17 @@
 |---|---|
 | `dashboard/` | Streamlit 대시보드 앱과 화면 구성 코드. 자세한 내용은 [dashboard/README.md](dashboard/README.md) |
 | `data/` | 데이터 파일과 데이터 파이프라인(전처리 -> 가상 데이터 합성 -> 분석). 자세한 내용은 [data/README.md](data/README.md) |
-| `docs/` | 팀 작업 규칙. 코드를 쓰기 전에 읽어 주세요. [모듈 작성 요령](docs/모듈-작성-요령.md), [테스트 작성법](docs/테스트-작성법.md), [데이터 관리 요령](docs/데이터-관리-요령.md) |
+| `docs/` | 팀 작업 규칙과 참고 문서. 코드를 쓰기 전에 읽어 주세요. [모듈 작성 요령](docs/모듈-작성-요령.md), [테스트 작성법](docs/테스트-작성법.md), [데이터 관리 요령](docs/데이터-관리-요령.md), [DB 구성도](docs/DB-구성도.html)(브라우저로 열기) |
 | `tests/` | pytest 테스트. 대상 코드 위치에 맞춰 `dashboard/`, `data/`, `utils/`로 나눕니다. |
 | `.github/` | GitHub Actions 설정. push와 `main` 대상 PR마다 Ubuntu·Windows에서 Python 3.10으로 테스트를 실행합니다. |
+| `.streamlit/` | Streamlit 대시보드 설정. 대시보드 설정 파일인 `config.toml`이 들어있습니다.
 
 ## 최상위 파일
 
 | 파일 | 내용 |
 |---|---|
 | `config.py` | 프로젝트 전역 경로 상수. `dashboard`와 `data` 모두 경로는 여기서 import합니다. |
+| `fitness_standards.py` | 19~24세 남성 체력 등급 기준(국민체력100). 종목별 등급 하한 `GRADE_CUTS`, 체격 정상 범위 `RANGE_STANDARDS`, 3등급 기준표 `grade3_standards()`, 등급 하한 `grade_cut()`·`grade_cut_table()`. `dashboard`와 `data`가 같은 기준을 쓰도록 여기서 import합니다. |
 | `requirements.txt` | 의존성 목록(버전 고정). 로컬·CI·배포 모두 이 파일을 기준으로 설치합니다. 패키지를 추가하면 여기에 `==` 버전으로 적습니다. |
 | `environment.yml` | conda 환경 `kdt-project-1` 정의(Python 3.10). 패키지 목록은 `requirements.txt`를 참조하고, 프로젝트도 editable(`-e .`)로 설치합니다. 로컬 개발과 Streamlit Community Cloud(저장소 루트의 이 파일을 의존성 파일로 씀)가 함께 씁니다. |
 | `pyproject.toml` | 프로젝트 설치 설정(`pip install -e .`)과 pytest 설정 |

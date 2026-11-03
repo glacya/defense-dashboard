@@ -1,0 +1,362 @@
+<title>3차 미달 예측 대결</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* 레이아웃: 시험지. 왼쪽에 등급컷·규칙을 고정(휴대폰 폭에서는 등급컷만 위에 고정), 오른쪽에 답안표(문항당 1·2차 두 줄 + 판정 칸) */
+:root {
+  --paper: #f3f5f2;      /* 시험지 바탕(살짝 녹색 기운) */
+  --sheet: #ffffff;
+  --ink: #1d2621;
+  --muted: #5d6b63;
+  --rule: #d5ddd7;
+  --accent: #2f5d50;     /* 판정 칸·주요 버튼(국방 올리브를 눌러 쓴 짙은 녹청) */
+  --accent-ink: #ffffff;
+  --pass: #2d6a9f;
+  --fail: #b5432f;
+  --pass-soft: #e3eef7;
+  --fail-soft: #f7e6e2;
+  --font-body: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+  --top: env(safe-area-inset-top, 0px);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #151a17; --sheet: #1d2420; --ink: #e4ebe6; --muted: #9aa8a0; --rule: #34403a;
+  --accent: #7fb8a6; --accent-ink: #10201a; --pass: #7fb2e0; --fail: #e98d79;
+  --pass-soft: #1f2e3b; --fail-soft: #3a2420; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: #151a17; --sheet: #1d2420; --ink: #e4ebe6; --muted: #9aa8a0; --rule: #34403a;
+  --accent: #7fb8a6; --accent-ink: #10201a; --pass: #7fb2e0; --fail: #e98d79;
+  --pass-soft: #1f2e3b; --fail-soft: #3a2420; color-scheme: dark }
+
+body { background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.6; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--top); z-index: 10; background: var(--paper); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 64px; display: grid; gap: 22px; }
+h1 { font-size: 1.75rem; line-height: 1.25; margin: 0; text-wrap: balance; }
+h2 { font-size: 1.05rem; margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-size: .78rem; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.sheet { background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
+ul.rules { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font-size: .8rem; font-weight: 500; color: var(--muted); }
+th:first-child, td:first-child { text-align: left; }
+button { font: inherit; cursor: pointer; border-radius: 4px; }
+button:focus-visible, .pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.primary { background: var(--accent); color: var(--accent-ink); border: 0; padding: 10px 18px; font-weight: 700; }
+.primary:disabled { opacity: .6; cursor: default; }
+.secondary { background: transparent; color: var(--ink); border: 1px solid var(--rule); padding: 8px 14px; }
+.note { font-size: .85rem; color: var(--muted); }
+.warn { color: var(--fail); font-weight: 500; }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .78rem; font-weight: 600; }
+.tag.p { background: var(--pass-soft); color: var(--pass); } .tag.f { background: var(--fail-soft); color: var(--fail); }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+/* 두 단: 왼쪽 참고 칸은 스크롤해도 따라온다 */
+.layout { display: grid; grid-template-columns: minmax(260px, 300px) minmax(0, 1fr); gap: 22px; align-items: start; }
+.side { position: sticky; top: calc(var(--top) + 12px); display: grid; gap: 14px; max-height: calc(100vh - var(--top) - 24px); overflow-y: auto; }
+.main { display: grid; gap: 18px; min-width: 0; }
+.cuts th, .cuts td { padding: 5px 6px; }
+.cuts td { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.cuts td.ev { font-family: var(--font-body); }
+.cuts td.g3 { font-weight: 600; color: var(--fail); }
+
+.bar { position: sticky; top: calc(var(--top) + 12px); z-index: 5; background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.bar .grow { flex: 1 1 160px; min-width: 0; display: grid; gap: 4px; }
+.meter { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.meter > i { display: block; height: 100%; width: 0; background: var(--accent); }
+
+/* 답안표: 문항마다 1차·2차 두 줄, 판정 칸은 두 줄을 합친다 */
+.answers td.q { font-family: var(--font-num); font-weight: 600; vertical-align: middle; }
+.answers td.round { color: var(--muted); font-size: .8rem; text-align: left; }
+.answers td.val { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.answers tr.first td { border-bottom: 0; padding-bottom: 2px; }
+.answers tr.second td { padding-top: 2px; }
+.answers td.pickcell { vertical-align: middle; text-align: center; }
+.answers tbody:nth-child(even) { background: color-mix(in srgb, var(--paper) 55%, var(--sheet)); }
+.pick { display: inline-flex; gap: 6px; }
+.pick label { position: relative; }
+.pick input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.pick span { display: inline-block; min-width: 3.4em; padding: 4px 8px; border: 1px solid var(--rule); border-radius: 999px; font-size: .85rem; text-align: center; }
+.pick input:checked + span.p { background: var(--pass); border-color: var(--pass); color: var(--sheet); font-weight: 700; }
+.pick input:checked + span.f { background: var(--fail); border-color: var(--fail); color: var(--sheet); font-weight: 700; }
+.pick input:disabled { cursor: default; }
+.mark { font-size: .8rem; display: block; margin-top: 4px; }
+.mark.ok { color: var(--pass); } .mark.ng { color: var(--fail); }
+
+/* 결과 */
+.score { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+.score > div { border: 1px solid var(--rule); border-radius: 6px; padding: 14px; display: grid; gap: 4px; align-content: start; }
+.score .who { font-size: .8rem; color: var(--muted); }
+.score .big { font-family: var(--font-num); font-size: 1.9rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.score .sub { font-size: .85rem; color: var(--muted); }
+.score .human { border-color: var(--accent); }
+
+/* 휴대폰 폭: 한 단. 등급컷은 위에 고정, 진행 막대는 아래에 고정 */
+@media (max-width: 860px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .side { display: contents; }
+  .cutcard { position: sticky; top: var(--top); z-index: 6; padding: 10px 12px; gap: 6px; box-shadow: 0 4px 10px -8px var(--ink); }
+  .cutcard h2 { font-size: .9rem; } .cutcard .note { display: none; }
+  .cuts th, .cuts td { padding: 2px 5px; font-size: .78rem; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; top: auto; border-radius: 0; border-width: 1px 0 0;
+    padding: 10px max(16px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  .main { padding-bottom: 72px; }
+}
+@media (prefers-reduced-motion: no-preference) { .meter > i { transition: width .2s ease; } }
+</style>
+
+<div class="wrap">
+  <header style="display:grid;gap:8px">
+    <span class="eyebrow">미달 예측 모델 실험 · 문항 <span class="num" id="itemCount">100</span>개</span>
+    <h1>3차 미달 예측 대결</h1>
+    <p>장병의 1·2차 체력 측정값만 보고, 같은 장병의 <strong>3차 측정이 합격인지 미달인지</strong> 판정해 주세요. 미달 예측 모델도 같은 값으로 같은 문제를 풉니다. 결과는 제출한 뒤에 모델 결과와 함께 보여 드립니다.</p>
+  </header>
+
+  <div class="layout">
+    <aside class="side" aria-label="참고 자료">
+      <section class="sheet cutcard">
+        <h2>종목별 등급컷</h2>
+        <div class="scroll">
+          <table class="cuts" id="cutTable">
+            <thead><tr><th>종목</th><th>1등급</th><th>2등급</th><th>3등급</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="note">19~24세 남성 기준, 이 값 이상이면 그 등급입니다. 3등급 값보다 낮으면 그 종목은 미달입니다. 근력은 상대악력(%), 근지구력은 회, 심폐는 VO₂max(mL/kg/min), 유연성은 cm입니다.</p>
+      </section>
+      <section class="sheet">
+        <h2>판정 규칙</h2>
+        <ul class="rules">
+          <li>3차 측정에서 <strong>2개 종목 이상</strong>이 3등급 하한보다 낮으면 <span class="tag f">미달</span>, 아니면 <span class="tag p">합격</span>입니다.</li>
+          <li>문항마다 1차·2차 측정값만 주어집니다. 3차 측정값은 보이지 않습니다.</li>
+          <li>BMI는 참고값이며 등급 판정에는 쓰지 않습니다.</li>
+          <li>결과는 <strong>Precision</strong>으로 비교합니다. 미달이라고 답한 문항 중 실제로 미달인 비율입니다.</li>
+        </ul>
+      </section>
+    </aside>
+
+    <main class="main">
+      <section class="sheet" id="startBox">
+        <h2>시작하기</h2>
+        <p>문항은 <span class="num" id="itemCount2">100</span>개이고, 한 번 제출하면 답을 바꿀 수 없습니다. 푸는 데 걸린 시간도 기록하지만 푸는 동안에는 보여 주지 않으니 서두르지 않아도 됩니다.</p>
+        <div class="row"><button class="primary" id="startBtn" type="button">시작</button></div>
+      </section>
+
+      <div class="bar" id="bar" hidden>
+        <div class="grow">
+          <span class="note"><span class="num" id="answered">0</span> / <span class="num" id="total">100</span>문항 답함</span>
+          <div class="meter"><i id="meter"></i></div>
+        </div>
+        <span class="note warn" id="confirmMsg" hidden></span>
+        <button class="primary" id="submitBtn" type="button">최종 제출</button>
+      </div>
+
+      <section class="sheet" id="result" hidden aria-live="polite">
+        <h2>결과</h2>
+        <div class="score" id="scoreBoxes"></div>
+        <div class="scroll"><table id="breakdown"></table></div>
+        <p class="note" id="resultNote"></p>
+        <div class="row">
+          <label class="note"><input type="checkbox" id="wrongOnly"> 내가 틀린 문항만 보기</label>
+          <button class="secondary" id="retryBtn" type="button">처음부터 다시</button>
+        </div>
+      </section>
+
+      <section class="sheet" id="sheet" hidden>
+        <div class="scroll">
+          <table class="answers" id="answers">
+            <thead><tr><th>문항</th><th>측정</th><th>근력</th><th>근지구력</th><th>심폐</th><th>유연성</th><th>BMI</th><th style="text-align:center">3차 판정</th></tr></thead>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <details class="sheet">
+    <summary>실험 방법</summary>
+    <ul class="rules">
+      <li>문항: 최종 측정 데이터 10,746건을 시드 <span class="num" id="seedText"></span>로 무작위로 섞은 순서대로 그 측정의 장병을 골랐습니다(같은 장병은 한 번만). 장병마다 측정이 정확히 3회입니다.</li>
+      <li>정답: 같은 장병의 3차 측정에서 3등급 하한 미만 종목이 2개 이상이면 미달입니다.</li>
+      <li>모델: 대시보드가 쓰는 미달 예측 모델(표준화 + 로지스틱 회귀)입니다. 입력은 2차 측정값 4개, 1→2차 변화량 4개, 2차 BMI가 정상범위 중앙(<span class="num" id="bmiCenter"></span>)에서 벗어난 정도의 제곱입니다. 미달 확률이 0.5 이상이면 미달로 판정합니다(모델 검증 때 정밀도를 계산한 기준과 같음).</li>
+      <li>기준 지표: Precision = 미달이라 답한 문항 중 실제 미달 문항 수 ÷ 미달이라 답한 문항 수. 재현율(실제 미달 중 미달이라 답한 비율)과 전체 정답률은 참고로 함께 보여 줍니다.</li>
+      <li>시간: 사람은 시작부터 제출까지, 모델은 제출하는 순간 이 브라우저에서 같은 값으로 100문항을 여러 번 반복 계산한 1회 평균입니다.</li>
+      <li>주의: 모델은 이 문항의 장병을 포함한 전체 장병(<span class="num" id="nTrain"></span>명)으로 학습했습니다. 그래서 모델 결과는 처음 보는 데이터에서보다 조금 좋게 나올 수 있습니다.</li>
+    </ul>
+  </details>
+</div>
+
+<script id="quiz-data" type="application/json">/*__QUIZ_DATA__*/</script>
+<script>
+(() => {
+  const DATA = JSON.parse(document.getElementById('quiz-data').textContent);
+  const EVENTS = DATA.events;           // [{key, label, unit, cuts:[1등급, 2등급, 3등급]}]
+  const ITEMS = DATA.items;             // [{r1:[4종목..., BMI], r2:[...]}]
+  const N = ITEMS.length;
+  const $ = (id) => document.getElementById(id);
+
+  // 정답은 보기 어렵게 바꿔 실었다(페이지 소스를 열면 풀 수는 있다).
+  const ANSWERS = (() => {
+    const bytes = atob(DATA.key);
+    return Array.from({ length: N }, (_, i) => (bytes.charCodeAt(i) ^ ((i * 37 + 11) & 255)) & 1);
+  })();
+
+  // ----- 모델: 화면과 같은 1·2차 값으로 계산 -----
+  const M = DATA.model;
+  function modelProbability(item) {
+    const x = [];
+    for (let e = 0; e < 4; e++) x.push(item.r2[e]);
+    for (let e = 0; e < 4; e++) x.push(item.r2[e] - item.r1[e]);
+    const dev = item.r2[4] - M.bmiCenter;
+    x.push(dev * dev);
+    let z = M.intercept;
+    for (let k = 0; k < x.length; k++) z += M.coef[k] * (x[k] - M.mean[k]) / M.scale[k];
+    return 1 / (1 + Math.exp(-z));
+  }
+  function runModel() { return ITEMS.map((it) => (modelProbability(it) >= M.threshold ? 1 : 0)); }
+  function timeModel() {
+    runModel();                                   // 첫 실행(JIT 준비)은 재지 않는다
+    let reps = 0; const start = performance.now(); let now = start;
+    while (now - start < 200 || reps < 50) { runModel(); reps++; now = performance.now(); }
+    return { msPerRun: (now - start) / reps, reps };
+  }
+
+  // ----- 화면 그리기 -----
+  $('itemCount').textContent = N; $('itemCount2').textContent = N; $('total').textContent = N;
+  $('seedText').textContent = DATA.seed; $('bmiCenter').textContent = M.bmiCenter; $('nTrain').textContent = DATA.nTrain.toLocaleString();
+  const cutBody = $('cutTable').tBodies[0];
+  EVENTS.forEach((ev) => {
+    const tr = cutBody.insertRow();
+    const name = tr.insertCell(); name.className = 'ev'; name.textContent = ev.label;
+    ev.cuts.forEach((v, g) => { const td = tr.insertCell(); td.textContent = v.toFixed(1); if (g === 2) td.className = 'g3'; });
+  });
+
+  const fmt = (v, e) => (e === 1 ? String(Math.round(v)) : v.toFixed(1));
+  const table = $('answers');
+  ITEMS.forEach((item, i) => {
+    const tb = document.createElement('tbody'); tb.dataset.index = i;
+    ['r1', 'r2'].forEach((r, ri) => {
+      const tr = tb.insertRow(); tr.className = ri ? 'second' : 'first';
+      if (!ri) { const q = tr.insertCell(); q.className = 'q'; q.rowSpan = 2; q.textContent = i + 1; }
+      const rd = tr.insertCell(); rd.className = 'round'; rd.textContent = (ri + 1) + '차';
+      item[r].forEach((v, e) => { const td = tr.insertCell(); td.className = 'val'; td.textContent = fmt(v, e); });
+      if (!ri) {
+        const pc = tr.insertCell(); pc.className = 'pickcell'; pc.rowSpan = 2;
+        pc.innerHTML = `<span class="pick" role="radiogroup" aria-label="${i + 1}번 3차 판정">
+          <label><input type="radio" id="q${i}p" name="q${i}" value="0"><span class="p">합격</span></label>
+          <label><input type="radio" id="q${i}f" name="q${i}" value="1"><span class="f">미달</span></label></span>`;
+      }
+    });
+    table.appendChild(tb);
+  });
+
+  // ----- 진행: 시간은 재지만 제출 전에는 보여 주지 않는다 -----
+  let startAt = 0, submitted = false, confirming = false;
+  const answerOf = (i) => { const c = document.querySelector(`input[name="q${i}"]:checked`); return c ? Number(c.value) : null; };
+  const answeredCount = () => ITEMS.reduce((n, _, i) => n + (answerOf(i) === null ? 0 : 1), 0);
+  const clock = (ms) => { const s = ms / 1000; const m = Math.floor(s / 60); return String(m).padStart(2, '0') + ':' + (s - m * 60).toFixed(1).padStart(4, '0'); };
+  function refreshProgress() {
+    const n = answeredCount();
+    $('answered').textContent = n; $('meter').style.width = (n / N * 100) + '%';
+    if (confirming) { confirming = false; $('confirmMsg').hidden = true; $('submitBtn').textContent = '최종 제출'; }
+  }
+  table.addEventListener('change', refreshProgress);
+
+  $('startBtn').addEventListener('click', () => {
+    $('startBox').hidden = true; $('bar').hidden = false; $('sheet').hidden = false;
+    startAt = performance.now();
+    document.getElementById('q0p').focus({ preventScroll: true });
+  });
+
+  $('submitBtn').addEventListener('click', () => {
+    if (submitted) return;
+    const missing = N - answeredCount();
+    if (missing > 0 && !confirming) {
+      confirming = true;
+      $('confirmMsg').textContent = `${missing}문항에 답하지 않았습니다. 답하지 않은 문항은 합격으로도 미달로도 세지 않습니다.`;
+      $('confirmMsg').hidden = false; $('submitBtn').textContent = '그래도 제출';
+      return;
+    }
+    finish();
+  });
+
+  function finish() {
+    const humanMs = performance.now() - startAt;
+    submitted = true;
+    $('confirmMsg').hidden = true; $('submitBtn').disabled = true; $('submitBtn').textContent = '제출함';
+    document.querySelectorAll('.pick input').forEach((el) => { el.disabled = true; });
+    const human = ITEMS.map((_, i) => answerOf(i));
+    const timing = timeModel();
+    const model = runModel();
+    showResult(human, model, humanMs, timing);
+  }
+
+  // 미달(1)을 양성으로 본 지표
+  function metrics(pred) {
+    let tp = 0, fp = 0, correct = 0, answered = 0;
+    pred.forEach((p, i) => {
+      if (p === null) return;
+      answered++;
+      if (p === ANSWERS[i]) correct++;
+      if (p === 1) { if (ANSWERS[i] === 1) tp++; else fp++; }
+    });
+    const fails = ANSWERS.reduce((a, b) => a + b, 0);
+    return { tp, fp, predictedFail: tp + fp, precision: tp + fp ? tp / (tp + fp) : null,
+             recall: fails ? tp / fails : null, correct, answered };
+  }
+  const pct = (v) => (v === null ? '—' : (v * 100).toFixed(1) + '%');
+  const msText = (ms) => (ms < 1 ? (ms * 1000).toFixed(1) + ' µs' : ms.toFixed(2) + ' ms');
+
+  function showResult(human, model, humanMs, timing) {
+    const fails = ANSWERS.reduce((a, b) => a + b, 0);
+    const h = metrics(human), m = metrics(model);
+    const prevalence = fails / N;   // 모두 미달로 답했을 때의 Precision
+    const diff = h.precision === null || m.precision === null ? null : (m.precision - h.precision) * 100;
+    const box = (cls, who, r, time) => `
+      <div class="${cls}"><span class="who">${who} · Precision</span><span class="big">${pct(r.precision)}</span>
+        <span class="sub">미달이라 답한 <span class="num">${r.predictedFail}</span>문항 중 <span class="num">${r.tp}</span>문항이 실제 미달</span>
+        <span class="sub">재현율 ${pct(r.recall)} · 정답률 ${pct(r.correct / N)} · 걸린 시간 <span class="num">${time}</span></span>
+        ${r.precision === null ? '<span class="sub warn">미달이라 답한 문항이 없어 Precision을 계산할 수 없습니다.</span>' : ''}</div>`;
+    $('scoreBoxes').innerHTML =
+      box('human', '나', h, clock(humanMs)) +
+      box('', '미달 예측 모델', m, msText(timing.msPerRun)) + `
+      <div><span class="who">비교</span><span class="big">${diff === null ? '—' : (diff >= 0 ? '+' : '') + diff.toFixed(1) + '%p'}</span>
+        <span class="sub">모델 Precision − 내 Precision</span>
+        <span class="sub">모델이 약 <span class="num">${Math.round(humanMs / timing.msPerRun).toLocaleString()}</span>배 빠름</span>
+        <span class="sub">모든 문항을 미달로 답하면 Precision ${pct(prevalence)}</span></div>`;
+    $('breakdown').innerHTML = `
+      <thead><tr><th>구분</th><th>나</th><th>모델</th></tr></thead>
+      <tbody>
+        <tr><td>미달이라 답함</td><td class="num">${h.predictedFail}</td><td class="num">${m.predictedFail}</td></tr>
+        <tr><td>└ 실제 <span class="tag f">미달</span> (맞음)</td><td class="num">${h.tp}</td><td class="num">${m.tp}</td></tr>
+        <tr><td>└ 실제 <span class="tag p">합격</span> (잘못 미달이라 함)</td><td class="num">${h.fp}</td><td class="num">${m.fp}</td></tr>
+        <tr><td>실제 미달 문항 중 미달이라 답함 (재현율)</td><td class="num">${h.tp} / ${fails}</td><td class="num">${m.tp} / ${fails}</td></tr>
+        <tr><td>전체 정답</td><td class="num">${h.correct} / ${N}</td><td class="num">${m.correct} / ${N}</td></tr>
+        <tr><td>답하지 않음</td><td class="num">${N - h.answered}</td><td class="num">0</td></tr>
+      </tbody>`;
+    $('resultNote').textContent = `모델 시간은 이 브라우저에서 100문항 계산을 ${timing.reps.toLocaleString()}번 반복한 1회 평균입니다. 아래 표의 판정 칸에 실제 정답과 모델의 답을 표시했습니다.`;
+
+    const label = (v) => (v === 1 ? '미달' : v === 0 ? '합격' : '미응답');
+    ITEMS.forEach((_, i) => {
+      const cell = table.tBodies[i].querySelector('.pickcell');
+      const ok = human[i] === ANSWERS[i];
+      const mark = document.createElement('span');
+      mark.className = 'mark ' + (ok ? 'ok' : 'ng');
+      mark.textContent = `${ok ? '정답' : '오답'} · 실제 ${label(ANSWERS[i])} · 모델 ${label(model[i])}`;
+      cell.appendChild(mark);
+      table.tBodies[i].dataset.wrong = ok ? '0' : '1';
+    });
+    $('result').hidden = false;
+    $('result').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  }
+
+  $('wrongOnly').addEventListener('change', (e) => {
+    Array.from(table.tBodies).forEach((tb) => { tb.hidden = e.target.checked && tb.dataset.wrong !== '1'; });
+  });
+  $('retryBtn').addEventListener('click', () => location.reload());
+})();
+</script>

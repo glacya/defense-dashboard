@@ -19,7 +19,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from data.scripts.fitness_standards import FITNESS_EXERCISES, RANGE_STANDARDS, grade_cut
+from fitness_standards import FITNESS_EXERCISES, RANGE_STANDARDS, grade_cut
 from data.scripts.logging_setup import caller_name, display_path, setup_logging
 from data.scripts.paths import FAILURE_MODEL_PATH, PROCESSED_FITNESS_PATH
 from data.scripts.utils import read_text_csv

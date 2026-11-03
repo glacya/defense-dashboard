@@ -1,69 +1,54 @@
+"""전체 체력 현황의 SQL 집계 가공(summary_tables)과 조직별 합산을 검증합니다. 실제 DB에는 접속하지 않습니다."""
+
 import pandas as pd
 import plotly.express as px
 import pytest
 
-from dashboard.py.fitness_overview_data import summarize_by_group
-from data.scripts.fitness_standards import FITNESS_EXERCISES, grade_cut
-from dashboard.views.p01_fitness_overview import _combine_events, _combine_rounds
+from dashboard.py import fitness_overview_data
+from dashboard.py.fitness_overview_data import summary_tables
+from dashboard.views.p01_fitness_overview import (
+    _combine_events,
+    _combine_rounds,
+    _round_change_chart,
+)
 
 
-def _measurements() -> pd.DataFrame:
-    rows = []
-    for soldier_id, region, unit, strength in [
-        ("001", "서울", "1부대", 0),
-        ("002", "서울", "2부대", grade_cut("STRENGTH", 3)),
-        ("003", "부산", "3부대", grade_cut("STRENGTH", 3)),
-    ]:
-        rows.append({
-            "SOLDIER_ID": soldier_id,
-            "MESURE_ID": int(soldier_id),
-            "MESURE_DE": pd.Timestamp("2026-01-01"),
-            "AGE": 20,
-            "REGION_NAME": region,
-            "UNIT_NAME": unit,
-            **{
-                event: strength if event == "STRENGTH" else grade_cut(event, 3)
-                for event in FITNESS_EXERCISES
-            },
-        })
-    return pd.DataFrame(rows)
+def _sql_results() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """queries.load_overview_rounds/events가 돌려주는 모양(대문자 컬럼, 종목 코드)의 지역별 결과."""
+    rounds = pd.DataFrame({
+        "GRP": ["부산", "서울"], "ROUND": [1, 1], "TOTAL_SOLDIERS": [1, 2],
+        "MEASURED": [1, 2], "FAILED": [0, 1], "MANAGED": [0, 1],
+    })
+    events = pd.DataFrame({
+        "GRP": ["서울", "서울", "부산"], "ROUND": [1, 1, 1], "EVENT": ["CARDIO", "STRENGTH", "STRENGTH"],
+        "MEASURED": [2, 2, 1], "MEAN": [40.0, 50.0, 60.0], "STD": [1.0, 2.0, None], "FAILED": [0, 1, 0],
+        "GRADE_1": [0, 0, 1], "GRADE_2": [1, 0, 0], "GRADE_3": [1, 1, 0],
+    })
+    return rounds, events
 
 
-def test_summarize_by_region_and_unit_preserves_rounds_and_counts():
-    measurements = _measurements()
+def test_summary_tables_build_korean_tables_with_rates_and_event_order():
+    """한글 컬럼·미달률(측정 인원 분모)·종목 이름과 단위를 붙이고, 그룹·회차·종목 순서로 정렬하는지 확인합니다."""
+    rounds, events = summary_tables(*_sql_results(), grouped=True)
 
-    region_rounds, region_events = summarize_by_group(measurements, "REGION_NAME")
-    seoul = region_rounds.loc[region_rounds["그룹"].eq("서울")].iloc[0]
-    seoul_strength = region_events.loc[
-        region_events["그룹"].eq("서울") & region_events["종목"].eq("근력")
-    ].iloc[0]
-
-    assert seoul["회차"] == 1
-    assert seoul["전체장병수"] == 2
-    assert seoul_strength["미달인원"] == 1
-    assert seoul_strength["미달률"] == 50
-
-    unit_rounds, _ = summarize_by_group(measurements, "UNIT_NAME")
-    assert set(unit_rounds["그룹"]) == {"1부대", "2부대", "3부대"}
-    assert unit_rounds["전체장병수"].eq(1).all()
+    seoul = rounds.loc[rounds["그룹"].eq("서울")].iloc[0]
+    assert (seoul["전체장병수"], seoul["미달인원"], seoul["미달률"]) == (2, 1, 50)
+    assert events["그룹"].tolist() == ["부산", "서울", "서울"]
+    assert events.loc[events["그룹"].eq("서울"), "종목"].tolist() == ["근력", "심폐지구력"]
+    strength = events.iloc[1]
+    assert (strength["단위"], strength["미달률"]) == ("%", 50)
+    assert list(events.columns[:3]) == ["그룹", "회차", "종목"]
 
 
-def test_summarize_by_group_rejects_unsupported_column():
+def test_group_summary_rejects_unsupported_column():
     with pytest.raises(ValueError, match="지원하지 않는 조직 구분"):
-        summarize_by_group(_measurements(), "RANK_NAME")
+        fitness_overview_data.load_group_summary("RANK_NAME")
 
 
 def test_group_comparison_trend_keeps_group_column_for_plotly():
-    _, events = summarize_by_group(_measurements(), "REGION_NAME")
+    _, events = summary_tables(*_sql_results(), grouped=True)
 
-    chart = px.line(
-        events,
-        x="회차",
-        y="미달률",
-        color="그룹",
-        facet_col="종목",
-        markers=True,
-    )
+    chart = px.line(events, x="회차", y="미달률", color="그룹", facet_col="종목", markers=True)
 
     assert chart.data
 
@@ -97,3 +82,18 @@ def test_combined_group_summaries_use_weighted_rates_and_means():
     assert combined_events["미달률"] == pytest.approx(100 / 3)
     assert combined_events["평균"] == 12.0
     assert combined_events["표준편차"] == pytest.approx(14**0.5, rel=1e-6)
+
+
+def test_round_change_chart_uses_categorical_rounds_and_shared_3d_bars():
+    chart = _round_change_chart(pd.DataFrame({
+        "회차": [1, 2],
+        "측정인원": [100, 90],
+        "미달인원": [20, 18],
+        "관리대상인원": [15, 14],
+    }))
+
+    front_faces = [trace for trace in chart.data if trace.fillgradient.colorscale]
+    assert len(front_faces) == 6
+    assert all(trace.type == "scatter" for trace in chart.data)
+    assert chart.layout.xaxis.ticktext == ("1차", "2차")
+    assert chart.layout.xaxis.title.text == "측정 회차"

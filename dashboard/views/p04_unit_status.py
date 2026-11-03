@@ -2,24 +2,26 @@
 
 from types import SimpleNamespace
 
-import altair as alt
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from pandas.io.formats.style import Styler
 from sqlalchemy.exc import SQLAlchemyError
 
 from dashboard.common.filters import render_personnel_cards
 from dashboard.common.charts import (
-    BMI_COLORS, LIGHT_TEXT, NAVY_BACKGROUND, NAVY_BORDER, NAVY_SURFACE, MUTED_TEXT,
-    apply_dark_layout, show_plotly, style_altair,
+    BMI_COLORS, LIGHT_TEXT, NAVY_BORDER, NAVY_SURFACE, MUTED_TEXT,
 )
 from dashboard.common.formatting import BMI_CATEGORY_ORDER, classify_bmi, filter_signature
+from dashboard.common.table_widgets import render_dataframe
+from dashboard.common.chart_widgets import PieChartWidget, RadarChartWidget
 from dashboard.common.widgets import render_soldier_details
+from dashboard.db import DEFAULT_TTL
 from dashboard.py import queries
 from dashboard.py.fitness_judgment import EVENTS
 
 
+@st.cache_data(ttl=DEFAULT_TTL, show_spinner=False)
 def _load_population() -> pd.DataFrame:
     """장병별 최신 측정(DB)을 화면이 쓰는 모양으로 바꿉니다(MESURE_ID 정수, 측정일 날짜, BMI 구간)."""
     rows = queries.load_unit_latest()
@@ -50,7 +52,6 @@ def select_bmi_category(group_name: str, category: str, context: str) -> None:
     st.session_state["bmi_chart_selection_key"] = (group_name, category, context)
     st.session_state["bmi_chart_dismissed_selection_key"] = None
     st.session_state["bmi_chart_selected_category"] = category
-    st.session_state["bmi_count_button_clicked"] = True
 
 
 def summarize_groups(data: pd.DataFrame, group_column: str) -> pd.DataFrame:
@@ -79,6 +80,85 @@ def summarize_groups(data: pd.DataFrame, group_column: str) -> pd.DataFrame:
     return summary.sort_values(["전체 장병 수", group_column], ascending=[False, True], kind="stable").reset_index(drop=True)
 
 
+def _style_summary_table(summary: pd.DataFrame, group_label: str) -> Styler:
+    """요약 표를 대시보드 차트 팔레트와 의미별 색상으로 강조합니다."""
+    return (
+        summary.style
+        .set_table_styles([
+            {
+                "selector": "th",
+                "props": [
+                    ("background-color", "#193B60"),
+                    ("color", "#FFFFFF"),
+                    ("font-weight", "700"),
+                    ("border-bottom", "3px solid #2C65B7"),
+                    ("padding", "0.65rem 0.75rem"),
+                    ("text-align", "center"),
+                ],
+            },
+            {
+                "selector": "td",
+                "props": [
+                    ("border-bottom", "1px solid #DFE6ED"),
+                    ("padding", "0.55rem 0.75rem"),
+                    ("color", "#182B40"),
+                    ("text-align", "left"),
+                    ("vertical-align", "middle"),
+                ],
+            },
+            {
+                "selector": "tbody tr:nth-child(even) td",
+                "props": [("background-color", "#F8FAFC")],
+            },
+        ])
+        .set_properties(
+            subset=[group_label],
+            **{
+                "background-color": "#ECF3FC",
+                "color": "#193B60",
+                "font-weight": "700",
+                "border-left": "3px solid #2C65B7",
+            },
+        )
+        .set_properties(
+            subset=["전체 장병 수"],
+            **{"background-color": "#EFF6FF", "color": "#2563EB", "font-weight": "700"},
+        )
+        .set_properties(
+            subset=["정상 BMI 인원"],
+            **{"background-color": "#EAF6F4", "color": "#0F766E", "font-weight": "700"},
+        )
+        .bar(
+            subset=["정상 BMI 비율(%)"],
+            color="rgba(20, 184, 166, 0.28)",
+            vmin=0,
+            vmax=100,
+            props="color: #0F766E; font-weight: 700;",
+        )
+        .set_properties(
+            subset=["과체중·비만 인원"],
+            **{"background-color": "#FAF4E9", "color": "#D97706", "font-weight": "700"},
+        )
+        .set_properties(
+            subset=["저체중 인원"],
+            **{"background-color": "#FDECEF", "color": "#DC5C6A", "font-weight": "700"},
+        )
+    )
+
+
+def _bmi_distribution_figure(distribution: pd.DataFrame, total: int) -> go.Figure:
+    """BMI 구간 분포를 공통 입체 도넛 차트로 만듭니다."""
+    return PieChartWidget(
+        data=distribution,
+        names="BMI 구간",
+        values="인원",
+        colors=[BMI_COLORS[category] for category in distribution["BMI 구간"]],
+        center_text=f"{total:,}<br>명",
+        height=340,
+        show_percent=True,
+    ).build_figure()
+
+
 def show_bmi_soldiers_panel(group_name: str, category: str, soldiers: pd.DataFrame) -> None:
     """선택한 부대와 BMI 구간의 장병 목록을 모달로 표시합니다."""
 
@@ -93,7 +173,7 @@ def show_bmi_soldiers_panel(group_name: str, category: str, soldiers: pd.DataFra
                 "RANK_NAME": "계급", "AGE": "나이", "MESURE_DE": "측정일", "BODY_FAT_PERCENTAGE": "체지방률(%)",
             })
             st.caption("목록 왼쪽 선택 칸을 누르면 상세 신체정보가 아래에 표시됩니다.")
-            event = st.dataframe(
+            event = render_dataframe(
                 table, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row",
                 key=f"unit_bmi_table_{filter_signature(category, tuple(soldiers['SOLDIER_ID']))}",
                 column_config={
@@ -140,25 +220,18 @@ def render_soldier_fitness_type(soldier: pd.Series) -> None:
         return
 
     axes = [EVENTS[event][0] for event in personal_profile.index]
-    radar = go.Figure()
-    for name, values, color in [
-        ("선택 장병", personal_profile, "#2563eb"),
-        ("같은 체력유형 평균", cluster_profile, "#ea580c"),
-    ]:
-        scores = [float(value) if pd.notna(value) else None for value in values]
-        radar.add_trace(go.Scatterpolar(
-            r=scores + scores[:1], theta=axes + axes[:1],
-            mode="lines+markers", name=name,
-            line={"color": color, "width": 3},
-            hovertemplate="%{theta}<br>백분위 %{r:.1f}<extra>%{fullData.name}</extra>",
-        ))
-    radar.update_layout(
-        polar={"radialaxis": {"visible": True, "range": [0, 100], "dtick": 20},
-               "angularaxis": {"direction": "clockwise"}, "gridshape": "linear"},
-        height=310, margin={"t": 20, "b": 35, "l": 35, "r": 35},
-        legend={"orientation": "h", "y": -0.08, "x": 0.5, "xanchor": "center", "font": {"size": 10}},
+    radar = RadarChartWidget(
+        labels=axes,
+        values=[
+            [float(value) if pd.notna(value) else None for value in personal_profile],
+            [float(value) if pd.notna(value) else None for value in cluster_profile],
+        ],
+        name=["선택 장병", "같은 체력유형 평균"],
+        line_color=["#2563eb", "#ea580c"],
+        fill_color=["rgba(37, 99, 235, 0.18)", "rgba(234, 88, 12, 0.18)"],
+        height=310,
     )
-    st.plotly_chart(radar, width="stretch", key=f"unit_soldier_fitness_type_{soldier['MESURE_ID']}",
+    st.plotly_chart(radar.build_figure(), width="stretch", key=f"unit_soldier_fitness_type_{soldier['MESURE_ID']}",
                     config={"displayModeBar": False})
     st.caption(
         f"바깥쪽일수록 종목 백분위가 높습니다. 같은 체력유형의 전체 회차 측정 "
@@ -170,9 +243,10 @@ def _render_summary(scoped: pd.DataFrame) -> str:
     level = st.segmented_control("요약 기준", options=["지역별", "부대별"], default="지역별",
                                  key="unit_summary_level", on_change=clear_bmi_chart_selection)
     group_column = "REGION_NAME" if level == "지역별" else "UNIT_NAME"
-    summary = summarize_groups(scoped, group_column)
-    st.dataframe(
-        summary.rename(columns={group_column: "지역" if level == "지역별" else "부대"}),
+    group_label = "지역" if level == "지역별" else "부대"
+    summary = summarize_groups(scoped, group_column).rename(columns={group_column: group_label})
+    render_dataframe(
+        _style_summary_table(summary, group_label),
         hide_index=True,
         width="stretch",
         column_config={
@@ -204,35 +278,12 @@ def _render_analysis(scoped: pd.DataFrame, filters, summary_level: str) -> None:
         distribution = (group["BMI구간"].value_counts().reindex(BMI_CATEGORY_ORDER, fill_value=0)
                         .rename_axis("BMI 구간").reset_index(name="인원"))
         distribution["비율(%)"] = distribution["인원"] / max(len(group), 1) * 100
-        selection = alt.selection_point(name="bmi_slice", fields=["BMI 구간"], on="click", toggle=False, clear="dblclick")
-        donut = (
-            alt.Chart(distribution)
-            .mark_arc(innerRadius=78, outerRadius=125, stroke=NAVY_BACKGROUND, strokeWidth=3, cursor="pointer")
-            .encode(
-                theta=alt.Theta("인원:Q"),
-                color=alt.Color("BMI 구간:N", scale=alt.Scale(domain=list(BMI_CATEGORY_ORDER),
-                                range=[BMI_COLORS[c] for c in BMI_CATEGORY_ORDER]), legend=None),
-                opacity=alt.condition(selection, alt.value(1), alt.value(0.85)),
-                tooltip=[alt.Tooltip("BMI 구간:N"), alt.Tooltip("인원:Q", format=",d"), alt.Tooltip("비율(%):Q", format=".1f")],
-            )
-            .add_params(selection)
-        )
-        total = alt.Chart(pd.DataFrame({"label": [f"{len(group):,}명"]})).mark_text(
-            color=LIGHT_TEXT, fontSize=22, fontWeight="bold").encode(text="label:N")
-        event = st.altair_chart(
-            style_altair(alt.layer(donut, total), 340), width="stretch",
+        st.plotly_chart(
+            _bmi_distribution_figure(distribution, len(group)),
+            width="stretch",
             key=f"unit_donut_{filter_signature(analysis_level, group_name, context)}",
-            on_select="rerun", selection_mode="bmi_slice",
+            config={"displayModeBar": False},
         )
-        points = event.selection.get("bmi_slice", [])
-        clicked_button = st.session_state.pop("bmi_count_button_clicked", False)
-        if analysis_level == "부대별" and points and not clicked_button:
-            category = points[-1].get("BMI 구간")
-            if category in BMI_CATEGORY_ORDER:
-                key = (group_name, category, context)
-                st.session_state["bmi_chart_selection_key"] = key
-                if st.session_state.get("bmi_chart_dismissed_selection_key") != key:
-                    st.session_state["bmi_chart_selected_category"] = category
 
     with chart_columns[1]:
         st.markdown("**구간별 인원**")

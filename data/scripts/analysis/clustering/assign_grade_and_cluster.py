@@ -141,7 +141,7 @@ def build_fitness_types(bundles: dict[int, dict]) -> pd.DataFrame:
             rows.append({
                 GRADE_COLUMN: grade,
                 CLUSTER_COLUMN: int(cluster),
-                TYPE_NAME_COLUMN: f'유형{cluster}: {EXERCISE_LABELS[exercise]} {label}',
+                TYPE_NAME_COLUMN: f'유형{cluster + 1}: {EXERCISE_LABELS[exercise]} {label}',
                 **{f'{name}_RELATIVE': float(rounded.loc[cluster, f'{name}_RELATIVE']) for name in MEASURE_NAMES},
             })
     return pd.DataFrame(rows)

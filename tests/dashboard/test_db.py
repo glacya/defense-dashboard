@@ -122,15 +122,19 @@ def test_tidy_matches_previous_csv_shape():
     assert pd.api.types.is_integer_dtype(tidy["AGE"])
 
 
-def test_run_query_closes_connection_and_caches(fake_connection):
+def test_run_query_closes_connection_and_caches(fake_connection, monkeypatch):
     """값은 params로 넘기고, 연결은 with로 열고 닫으며(열린 트랜잭션을 남기지 않음), 같은 조회는 캐시를 쓰는지 확인합니다."""
     sql = "SELECT * FROM soldiers WHERE soldier_id = :soldier_id -- test_run_query_closes_connection_and_caches"
+    tidy_calls = []
+    original_tidy = db.tidy
+    monkeypatch.setattr(db, "tidy", lambda frame: tidy_calls.append(frame) or original_tidy(frame))
 
     result = db.run_query(sql, {"soldier_id": "22-1"}, ttl=30)
     db.run_query(sql, {"soldier_id": "22-1"}, ttl=30)
 
     assert fake_connection.reads == [(sql, {"soldier_id": "22-1"})]  # 두 번째는 캐시
     assert len(fake_connection.opened) == 1 and not fake_connection.opened[0].open
+    assert len(tidy_calls) == 1
     assert result.columns.tolist() == ["SOLDIER_ID", "BMI"] and result.BMI.dtype == float
 
 

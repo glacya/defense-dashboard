@@ -386,6 +386,16 @@ body {
     color: #718196;
     font-size: 0.7rem;
 }
+@media (max-width: 1500px) {
+    .st-key-home-overview-layout [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(3)) {
+        flex-direction: column !important;
+    }
+    .st-key-home-overview-layout [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(3)) > [data-testid="stColumn"] {
+        flex: 1 1 100% !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+}
 @media (max-width: 900px) {
     .home-readiness-banner {
         flex-direction: column;

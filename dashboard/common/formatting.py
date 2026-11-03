@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -27,27 +26,17 @@ def filter_signature(*values: object) -> str:
     return hashlib.sha256(repr(values).encode("utf-8")).hexdigest()[:12]
 
 
+def format_timestamp(value: object) -> str:
+    """날짜·시간을 화면 표시용 YYYY-MM-DD HH:MM:SS 형식으로 바꿉니다."""
+    timestamp = pd.to_datetime(value, errors="coerce")
+    return "" if pd.isna(timestamp) else timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def classify_bmi(values: pd.Series) -> pd.Series:
     return pd.Series(
         np.select([values < 18.5, values < 25, values < 30], ["저체중", "정상", "과체중"], default="비만"),
         index=values.index,
         dtype="string",
-    )
-
-
-def period_mask(dates: pd.Series, start: date, end: date) -> pd.Series:
-    """시작일 00:00부터 종료일 23:59:59.999까지 포함하는 마스크입니다."""
-    end_of_day = pd.Timestamp(end) + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
-    return dates.between(pd.Timestamp(start), end_of_day)
-
-
-def latest_measurements(measurements: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
-    """기간 안에서 장병별 가장 최근 측정 한 건을 반환합니다."""
-    in_range = measurements.loc[period_mask(measurements["MESURE_DE"], start, end)]
-    return (
-        in_range.sort_values(["MESURE_DE", "MESURE_ID"], kind="stable")
-        .drop_duplicates("SOLDIER_ID", keep="last")
-        .reset_index(drop=True)
     )
 
 
@@ -71,11 +60,4 @@ def add_deficiency_flags(data: pd.DataFrame) -> pd.DataFrame:
     management_flags = fitness_flags + ["미달_BMI", "미달_BODY_FAT_PERCENTAGE"]
     result["체력미달"] = result[fitness_flags].any(axis=1)
     result["관리대상"] = result[management_flags].any(axis=1)
-    return result
-
-
-def add_measurement_rounds(data: pd.DataFrame) -> pd.DataFrame:
-    """장병별 측정일 순서로 개인 측정회차를 부여합니다."""
-    result = data.sort_values(["SOLDIER_ID", "MESURE_DE", "MESURE_ID"], kind="stable").copy()
-    result["측정회차"] = result.groupby("SOLDIER_ID", sort=False).cumcount() + 1
     return result

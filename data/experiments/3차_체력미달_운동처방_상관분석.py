@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from data.scripts.fitness_standards import grade3_standards
 from 분석_연령별 import analyze_age
 from 운동_처방현황분석 import load_catalog
 
@@ -79,7 +80,7 @@ def calculate():
     people = third.loc[third.MESURE_ID.isin(linked.MESURE_ID)].copy()
     if people.empty:
         raise ValueError('3차 측정에 연결되는 운동처방이 없습니다.')
-    standards = pd.read_csv(ROOT / 'data/definitions/grade3_male_19_24.csv')
+    standards = grade3_standards()
     standards = standards.loc[standards.sex.eq('M') & standards.age_min.eq(19) & standards.age_max.eq(24)]
     if standards.exercise.duplicated().any():
         raise ValueError('기준표에 종목이 중복되어 있습니다.')

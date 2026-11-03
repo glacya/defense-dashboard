@@ -5,19 +5,30 @@ import plotly.graph_objects as go
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
+from dashboard.common.charts import (
+    ALERT_COLOR,
+    LIGHT_TEXT,
+    NAVY_BACKGROUND,
+    OK_COLOR,
+    WARN_COLOR,
+    apply_chart_layout,
+    style_bar_chart,
+)
+from dashboard.common.table_widgets import render_dataframe
 from dashboard.py import queries
-from dashboard.py.management_targets_data import load_round_targets, targets_metadata
+from dashboard.common.formatting import format_timestamp
+from dashboard.py.management_targets_data import prepare_round_targets, targets_metadata
 from dashboard.py.personal_detail_data import load_soldier_history
 from dashboard.py.fitness_judgment import EVENTS, REASONS
 from data.scripts.fitness_standards import grade_cut
 
-LABELS={'SOLDIER_ID':'장병 식별자','SOLDIER_NAME':'이름','RANK_NAME':'계급','UNIT_NAME':'소속',
+LABELS={'SOLDIER_ID':'군번','SOLDIER_NAME':'이름','RANK_NAME':'계급','UNIT_NAME':'소속',
         'ROUND':'회차','BMI':'BMI','BMI_GROUP':'BMI 구간','FAIL_COUNT':'미달 개수',
         'FAILED_EVENTS':'미달 종목',
-        'FAIL_COUNT_CHANGE':'1차 대비 미달 수 변화','NEW_FAILED_EVENTS':'1차 대비 신규 미달 종목',
+        'FAIL_COUNT_CHANGE':'1차 대비 미달 종목 수 변화','NEW_FAILED_EVENTS':'1차 대비 신규 미달 종목',
         'PERSISTENT_EVENTS':'지속 미달 종목','SELECTION_REASONS':'선정 사유'}
 
-REASON_LABELS={**REASONS,'MULTIPLE_FAIL':'복수 종목 미달',
+REASON_LABELS={**REASONS,'HIGH_BMI_FAIL':'BMI가 25 이상이면서, 근력 또는 심폐지구력 미달','MULTIPLE_FAIL':'복수 종목 미달',
                'PERSISTENT_FAIL':'동일 종목 지속 미달 (최근 3회)'}
 
 
@@ -51,9 +62,9 @@ def render() -> None:
     else:
         st.caption(f'{number}차 기준 · 악화는 1차와 비교하고, 지속 미달은 최근 세 회차를 확인합니다.')
     st.subheader('조회 조건')
-    # 선택 회차의 요약(측정 인원·사유별 인원)과 집중관리 대상자만 DB에서 받는다.
-    summary=queries.load_round_summary(number)
-    targets=load_round_targets(number)
+    # 선택 회차 요약과 대상 명단을 판정 CTE 한 번으로 가져온다.
+    summary,raw_targets=queries.load_round_details(number)
+    targets=prepare_round_targets(raw_targets)
     measured=int(summary.MEASURED)
     reason_filter,event_filter=st.columns(2,gap='medium')
     if 'management_reasons' in st.session_state:
@@ -86,7 +97,7 @@ def render() -> None:
                 type='primary' if selected else 'secondary',
                 on_click=_toggle_condition,args=('management_events',label))
     st.caption('여러 항목을 선택할 수 있으며, 다시 누르면 해제합니다. 미선택 시 전체 조회합니다. 인원은 선택 회차의 전체 관리 대상 기준입니다.')
-    search=st.text_input('이름·장병번호 검색')
+    search=st.text_input('이름 또는 군번으로 검색')
     shown=targets.copy()
     if chosen:
         flags=[key for key,value in available.items() if value in chosen]
@@ -113,7 +124,7 @@ def render() -> None:
     st.info(' · '.join(conditions))
     display=shown[list(LABELS)].rename(columns=LABELS)
     display=display.rename(columns={'미달 개수':f'{number}차 미달 종목 수'})
-    st.dataframe(display,hide_index=True,width='stretch')
+    render_dataframe(display, hide_index=True, width='stretch')
     st.download_button('조회 명단 CSV 다운로드',display.to_csv(index=False).encode('utf-8-sig'),f'집중관리대상_{number}차.csv','text/csv')
     if shown.empty:
         st.info('조회 조건에 해당하는 관리 대상자가 없습니다.')
@@ -133,7 +144,7 @@ def render() -> None:
                 grade=row[f'{event}_GRADE']
                 grade_text='판정 불가' if pd.isna(grade) else '3등급 미만' if grade==0 else f'{int(grade)}등급'
                 judgment='판정 불가' if pd.isna(grade) else '미달' if grade==0 else '충족'
-                color='#64748b' if pd.isna(grade) else '#dc2626' if grade==0 else '#0f766e'
+                color='#64748b' if pd.isna(grade) else ALERT_COLOR if grade==0 else OK_COLOR
                 st.markdown(f'**{label} ({unit})**')
                 st.caption(f'{grade_text} · {judgment}')
                 values=pd.to_numeric(pd.Series([first[event],row[event]]),errors='coerce').replace(
@@ -146,13 +157,13 @@ def render() -> None:
                         textposition='outside',cliponaxis=False,
                         hovertemplate=f'%{{x}}<br>%{{y:.2f}} {unit}<extra></extra>',
                     ))
+                    comparison=style_bar_chart(comparison)
                     cut=grade_cut(event,3)
-                    comparison.add_hline(y=cut,line_color='#ea580c',line_dash='dash')
-                    comparison.update_layout(height=240,showlegend=False,
+                    comparison.add_hline(y=cut,line_color=WARN_COLOR,line_dash='dash')
+                    apply_chart_layout(comparison,height=240,showlegend=False,
                         margin={'t':25,'b':25,'l':35,'r':10},
                         yaxis={'range':[min(0,float(values.min())*1.2),max(cut,float(values.max()))*1.2],
-                               'zeroline':False},xaxis={'showgrid':False},
-                        paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)')
+                               'zeroline':False},xaxis={'showgrid':False})
                     st.plotly_chart(comparison,width='stretch',key=f'management_comparison_{event}',
                                     config={'displayModeBar':False})
                 else:
@@ -188,17 +199,22 @@ def render() -> None:
                 showscale=False,xgap=6,ygap=6,
                 hovertemplate='%{x}<br>%{y}: %{text}<extra></extra>',
             ))
-            heatmap.update_layout(height=300,margin={'t':55,'b':15,'l':85,'r':15},
+            apply_chart_layout(heatmap,height=300,margin={'t':55,'b':15,'l':85,'r':15},
                 xaxis={'side':'top','type':'category','fixedrange':True},
                 yaxis={'autorange':'reversed','fixedrange':True},
-                paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',
-                font={'color':'#182b40'})
+                font={'color':LIGHT_TEXT},paper_bgcolor=NAVY_BACKGROUND,plot_bgcolor=NAVY_BACKGROUND)
             st.plotly_chart(heatmap,width='stretch',key='management_history_heatmap',
                             config={'displayModeBar':False})
             st.caption('연한 초록: 충족 · 주황: 미달 · 빨강: 같은 종목 최근 3회 지속 미달 · 회색: 판정 불가')
             st.info(f'{number}차 선정 사유: '+(row.SELECTION_REASONS or '해당 없음'))
     with st.expander('선정 기준·자료 안내'):
         metadata=targets_metadata()
-        for key in ['기준','대상','시간','누락','BMI','상세']:
-            st.write(metadata[key])
-        st.caption('신상은 합성 자료이며 실제 부상 위험 판정이 아닙니다. 생성일: '+metadata['생성일시'])
+        st.write('국민체력100의 19 ~ 24세 남성 등급 기준표를 바탕으로 판정합니다.')
+        st.write('각 회차별로 각 장병은 한 번만 집계되며, 집계되는 장병은 관리 사유 4가지 중 하나라도 만족하는 장병들입니다.')
+        st.write("'악화'는 1회차 측정 대비 선택한 회차(2, 3)의 측정이 더 나빠졌음을 의미합니다.")
+        st.write("'지속 미달'은 최근 3개 회차의 측정이 계속해서 미달(3등급 미만)임을 의미합니다.")
+        st.write('''BMI 그룹은 다음 세 가지로 나눕니다.
+- 낮음: BMI가 18.5 미만
+- 보통: BMI가 18.5 이상 25 미만
+- 높음: BMI가 25 이상''')
+        st.caption('생성일: '+format_timestamp(metadata['생성일시']))

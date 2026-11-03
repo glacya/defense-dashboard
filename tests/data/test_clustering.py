@@ -106,12 +106,12 @@ def test_relative_profile_outputs_match_pairwise_differences(tmp_path):
     })
     bundle = {
         'kmeans': SimpleNamespace(cluster_centers_=build_gap_features(measurements).to_numpy()),
-        'feature_columns': gap_feature_columns(), 'type_names': {0: '유형0'},
+        'feature_columns': gap_feature_columns(), 'type_names': {0: '유형1'},
     }
     names = build_fitness_types({grade: bundle for grade in (1, 2, 3, 4)})
     assert names.TYPE_NAME.tolist() == [
-        '유형0: 유연성 약점형', '유형0: 유연성 약점형',
-        '유형0: 근력 강점형', '유형0: 근력 강점형',
+        '유형1: 유연성 약점형', '유형1: 유연성 약점형',
+        '유형1: 근력 강점형', '유형1: 근력 강점형',
     ]
     save_relative_profiles({grade: bundle for grade in (1, 2, 3, 4)}, tmp_path)
     for grade in (1, 2, 3, 4):

@@ -1,4 +1,4 @@
-"""관리 기록의 DB 모드(INSERT/UPDATE, 읽기 캐시)를 검증합니다. 실제 DB에는 접속하지 않습니다."""
+"""관리 기록의 DB 저장(INSERT/UPDATE, 입력 검사, 읽기 캐시)을 검증합니다. 실제 DB에는 접속하지 않습니다."""
 
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
@@ -40,8 +40,7 @@ class FakeSession:
 
 @pytest.fixture
 def session(monkeypatch):
-    """DB 모드로 두고 transaction()이 가짜 세션을 쓰게 합니다. 읽기 캐시도 비웁니다."""
-    monkeypatch.setenv('DASHBOARD_DATA_SOURCE', 'db')
+    """transaction()이 가짜 세션을 쓰게 합니다. 읽기 캐시도 비웁니다."""
     fake = FakeSession()
 
     @contextmanager
@@ -61,7 +60,7 @@ def _followup(**changes):
 
 
 def test_db_records_are_read_as_csv_like_text(session, monkeypatch):
-    """DB 값(정수 번호, 날짜, UTC 시각, NULL)을 CSV 때와 같은 문자열로 바꾸고, 저장하면 캐시를 비우는지 확인합니다."""
+    """DB 값(정수 번호, 날짜, UTC 시각, NULL)을 화면용 문자열로 바꾸고, 저장하면 캐시를 비우는지 확인합니다."""
     reads = []
     row = {'RECORD_ID': pd.Series(['7'], dtype='string'), 'SOLDIER_ID': pd.Series(['s1'], dtype='string'),
            'CREATED_AT': [datetime(2026, 10, 30, 1, 2, 3, 4, tzinfo=timezone.utc)],
@@ -137,11 +136,17 @@ def test_group_followups_are_inserted_in_one_statement(session):
     assert [row['soldier_id'] for row in rows] == ['a', 'b']
 
 
-def test_csv_mode_does_not_touch_db(session, tmp_path, monkeypatch):
-    """CSV 모드면 DB를 읽지 않고 MANAGEMENT_DIR의 CSV를 쓰는지 확인합니다."""
-    monkeypatch.setenv('DASHBOARD_DATA_SOURCE', 'csv')
-    monkeypatch.setattr(store, 'read_uncached', lambda sql: pytest.fail('DB를 읽으면 안 됩니다.'))
+def test_invalid_dates_and_completion_are_rejected_before_db(session):
+    """완료일 누락·점검일 역전처럼 잘못된 입력은 DB에 보내기 전에 거르는지 확인합니다."""
+    with pytest.raises(ValueError, match='완료일'):
+        store.save_record('followup_records', _followup(STATUS='완료'))
+    with pytest.raises(ValueError, match='점검일'):
+        store.save_record('followup_records', _followup(NEXT_CHECK_DATE='2026-10-01'))
+    assert not session.calls
 
-    assert store.load_records('followup_records', tmp_path).empty
-    assert store.save_record('followup_records', _followup(), tmp_path)
-    assert not session.calls and len(store.load_records('followup_records', tmp_path)) == 1
+
+def test_group_validation_prevents_partial_save(session):
+    """그룹 중 장병번호가 빈 사람이 있으면 아무 기록도 저장하지 않는지 확인합니다."""
+    with pytest.raises(ValueError):
+        store.save_followups_batch(['a', ''], _followup())
+    assert not session.calls

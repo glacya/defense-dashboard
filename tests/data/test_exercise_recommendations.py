@@ -44,8 +44,8 @@ def _types(rows):
 
 
 def test_type_focus_reads_weak_and_strong_types():
-    assert type_focus('유형0: 근력 약점형') == ('근력', True)
-    assert type_focus('유형3: 심폐지구력 강점형') == ('심폐지구력', False)
+    assert type_focus('유형1: 근력 약점형') == ('근력', True)
+    assert type_focus('유형4: 심폐지구력 강점형') == ('심폐지구력', False)
     with pytest.raises(ValueError, match='해석할 수 없는'):
         type_focus('균형형')
 
@@ -53,7 +53,7 @@ def test_type_focus_reads_weak_and_strong_types():
 def test_weak_type_gets_exercises_of_its_focus_near_target_difficulty(small_rules):
     """약점형은 그 요소 운동만, 목표 난이도(1등급 3)에 가까운 순으로, 같은 이름 운동은 한 번만 고르는지 확인합니다."""
     classifications = build_exercise_classifications(small_rules)
-    types = _types([(1, 0, '유형0: 근력 약점형', (-20, 5, 5, 10))])
+    types = _types([(1, 0, '유형1: 근력 약점형', (-20, 5, 5, 10))])
 
     result = build_recommendations(types, classifications, small_rules)
 
@@ -65,7 +65,7 @@ def test_strong_type_spreads_over_other_focuses_by_lowest_gap(small_rules):
     """강점형은 강점 요소를 빼고 상대 편차가 낮은 요소부터 배분하고, 같은 이름 운동은 건너뛰는지 확인합니다."""
     classifications = build_exercise_classifications(small_rules)
     # 강점: 근지구력. 나머지 편차 낮은 순: 유연성(-9) > 근력(-5) > 심폐지구력(0). 4등급 목표 난이도 1.
-    types = _types([(4, 2, '유형2: 근지구력 강점형', (-5, 20, 0, -9))])
+    types = _types([(4, 2, '유형3: 근지구력 강점형', (-5, 20, 0, -9))])
 
     result = build_recommendations(types, classifications, small_rules)
 
@@ -88,9 +88,9 @@ def test_body_parts_use_injury_location_names(small_rules):
 
 def test_texts_for_dashboard():
     assert training_guidance(2).startswith('2등급 기준 동작 난이도 2')
-    assert recommendation_basis(1, 0, '근력', -28.28, '유형0: 근력 약점형') == (
+    assert recommendation_basis(1, 0, '근력', -28.28, '유형1: 근력 약점형') == (
         '1등급 군집 0: 근력 상대 편차 -28.28%p; 유형에 명시된 약점 요소 운동 8개. 등급별 난이도는 수동 규칙입니다.')
-    assert '4/2/2개 배분' in recommendation_basis(3, 1, '유연성', 1.5, '유형1: 근력 강점형')
+    assert '4/2/2개 배분' in recommendation_basis(3, 1, '유연성', 1.5, '유형2: 근력 강점형')
 
 
 def test_project_rules_match_definitions():

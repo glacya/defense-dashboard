@@ -3,13 +3,11 @@
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
-from config import MANAGEMENT_DIR
 from dashboard.common.filters import render_personnel_cards
-from dashboard.py.management_store import DB_TABLES, load_records, uses_db
-from dashboard.py.management_forms import editor, LABELS
+from dashboard.py.management_store import load_records
+from dashboard.py.management_forms import display_records, editor
 from dashboard.py import queries
-from dashboard.py.roster_data import load_injuries_text
-
+from dashboard.common.table_widgets import render_dataframe
 
 def render() -> None:
     """부상 원본에 있는 장병과 부상 식별자 기준으로 후속 확인을 저장합니다."""
@@ -21,15 +19,17 @@ def render() -> None:
     try:
         # 장병 명단은 다른 화면과 함께 쓰는 캐시. 군번 고유·부상-장병 연결은 DB의 PK·FK가 보장한다.
         people=queries.load_roster().astype({'SOLDIER_ID':str})
-        injuries=load_injuries_text()
+        # 후속조치 기록은 문자열 ID이므로 조인 키만 맞춘다.
+        injuries=queries.load_injuries().astype({'INJURY_ID':str,'SOLDIER_ID':str})
         records=load_records('injury_followup')
     except (OSError,ValueError,SQLAlchemyError) as error:
         st.error(f'부상 관리 자료를 읽을 수 없습니다: {error}');st.stop()
-    st.caption('대상 자료: DB 부상 기록(injuries). 부상 이력이 있는 장병을 조회하며, 후속조치 기록은 부상 번호로 연결합니다. 신상·부상 원본은 합성 자료입니다.')
+    st.caption('부상 이력이 있는 장병을 조회하며, 후속조치 기록은 부상 번호로 연결합니다. 신상·부상 원본은 합성 자료입니다.')
     active=records.merge(injuries[['INJURY_ID','SOLDIER_ID']],on=['INJURY_ID','SOLDIER_ID'],how='inner',validate='many_to_one')
     has_archived_records=len(records)!=len(active)
     if 'REGION_NAME' not in people.columns:  # 지역 컬럼이 없으면 지역 카드 하나로 묶어 표시
         people=people.assign(REGION_NAME='전체')
+    soldier_names=dict(zip(people.SOLDIER_ID,people.SOLDIER_NAME))
     people=people.loc[people.SOLDIER_ID.isin(injuries.SOLDIER_ID)]
     selection=render_personnel_cards(people,'injury_followup')
     is_filtered=len(selection.scoped)!=len(people)
@@ -47,22 +47,24 @@ def render() -> None:
     st.caption('회복 상태는 부상별 최신 확인 기록 기준입니다. 확인 기록이 없으면 회복 여부를 알 수 없습니다.')
     if has_archived_records:
         st.warning('현재 부상 원본과 연결되지 않는 과거 관리 기록이 있습니다. 기록을 보존하고 아래에서 제공합니다.')
-    with st.expander('조회 부대 부상 후속조치 기록 · 보관 이력 포함'):
-        st.dataframe(visible_records.rename(columns=LABELS),hide_index=True,width='stretch')
-        st.download_button('조회 부대 부상 후속조치 CSV',visible_records.rename(columns=LABELS).to_csv(index=False).encode('utf-8-sig'),'부상후속조치.csv','text/csv')
+    with st.expander('조회 부대 부상 후속조치 기록 및 보관 이력 포함'):
+        visible_display=display_records(visible_records,soldier_names)
+        if visible_records.empty:
+            st.info('기록 없음')
+        else:
+            render_dataframe(visible_display,hide_index=True,width='stretch')
+        st.download_button('부대 부상 후속조치 다운로드(CSV)',visible_display.to_csv(index=False).encode('utf-8-sig'),'부상후속조치.csv','text/csv')
     people=people.loc[people.SOLDIER_ID.isin(injuries.SOLDIER_ID)]
     st.subheader('부상 이력 장병')
-    search=st.text_input('이름·장병번호 검색')
+    search=st.text_input('이름 또는 군번으로 검색')
     if search:
         people=people.loc[people.SOLDIER_NAME.str.contains(search,regex=False)|people.SOLDIER_ID.str.contains(search,regex=False)]
     st.metric('조회 대상 인원',f'{people.SOLDIER_ID.nunique():,}명',border=True)
     if people.empty:
-        st.info('부상 이력이 있는 장병 중 조회 조건에 해당하는 사람이 없습니다.');st.stop()
+        st.info('기록 없음: 부상 이력이 있는 장병 중 조회 조건에 해당하는 사람이 없습니다.');st.stop()
     lookup=people.set_index('SOLDIER_ID')
     soldier=st.selectbox('장병 선택',people.SOLDIER_ID.tolist(),format_func=lambda sid:f'{lookup.loc[sid,"SOLDIER_NAME"]} · {sid}')
     person=lookup.loc[soldier]
     st.subheader(f'{person.SOLDIER_NAME} · {person.RANK_NAME} · {person.UNIT_NAME}')
-    st.dataframe(injuries.loc[injuries.SOLDIER_ID.eq(soldier)].rename(columns={'INJURY_ID':'부상 번호','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류','INJURY_LOCATION':'부상 부위','SEVERITY':'심각도','PREVENTABILITY':'예방 가능 여부'}),hide_index=True,width='stretch')
-    editor('injury_followup',soldier,{'injury_followup':records},injuries)
-    location=f"DB {DB_TABLES['injury_followup']} 테이블" if uses_db('injury_followup') else MANAGEMENT_DIR / 'injury_followup.csv'
-    st.caption(f'저장: {location} · 기존 기록은 유지됩니다. 합성 부상 이력으로 회복 상태나 운동 제한을 추정하지 않습니다.')
+    render_dataframe(injuries.loc[injuries.SOLDIER_ID.eq(soldier)].rename(columns={'INJURY_ID':'부상 번호','SOLDIER_ID':'군번','INJURY_CATEGORY':'부상 대분류','INJURY_LOCATION':'부상 부위','SEVERITY':'심각도','PREVENTABILITY':'예방 가능 여부'}),hide_index=True,width='stretch')
+    editor('injury_followup',soldier,{'injury_followup':records},injuries,soldier_names)

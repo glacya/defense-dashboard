@@ -1,11 +1,10 @@
-"""style.css와 JS를 페이지에 주입합니다. 엔트리(app.py)에서만 호출합니다."""
+"""style.css를 페이지에 주입합니다. 엔트리(app.py)에서만 호출합니다."""
 
 from pathlib import Path
 
 import streamlit as st
-from streamlit.components.v1 import html as components_html
 
-from config import CSS_PATH, JS_PATH
+from config import CSS_PATH
 
 # True면 파일 수정 시각을 캐시 키로 써서 저장 즉시 반영합니다.
 # 배포 환경에서는 False로 두면 매 rerun마다 파일을 읽지 않습니다.
@@ -35,13 +34,8 @@ def load_text(path: Path) -> str:
 
 
 def inject_assets() -> None:
-    """CSS는 <style>로, JS는 숨김 iframe으로 주입합니다."""
+    """CSS를 <style>로 주입합니다."""
     # st.markdown은 빈 줄에서 HTML 블록이 끊기므로 빈 줄을 제거합니다.
     css = "\n".join(line for line in load_text(CSS_PATH).splitlines() if line.strip())
     if css:
         st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
-
-    js = load_text(JS_PATH)
-    has_code = any(line.strip() and not line.strip().startswith("//") for line in js.splitlines())
-    if has_code:
-        components_html(f"<script>{js}</script>", height=0)

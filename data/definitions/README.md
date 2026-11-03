@@ -46,28 +46,15 @@
 | `RECOMMENDED_EXERCISE_DEFINITION.csv` | 4 | 체력 유형별 추천 운동 `processed/RECOMMENDED_EXERCISE.csv`(16유형 × 8 = 128행): 평균백분위등급·군집번호(유형 표 FK)·추천순위 1~8(셋을 묶어 PK), 처방유형번호(운동 분류 FK). 운동 이름·속성·유형명은 JOIN으로 가져옴. | 분석 3단계 출력 |
 | `SOLDIER_FAILURE_PROBABILITY_DEFINITION.csv` | 2 | 장병별 다음 회차 미달 확률 `processed/SOLDIER_FAILURE_PROBABILITY.csv`: 군번(PK, 장병 FK), 미달 확률(0~1). | 분석 4단계 출력 |
 
-### 후속조치 기록 (대시보드 입력, 2026-10-30 초안)
+### 후속조치 기록 (대시보드 입력)
 
-데이터 파이프라인이 만드는 CSV가 없고, 대시보드 사용자가 입력하는 기록입니다(`paths.DB_RECORD_TABLES`). `setup_database.py`는 이 테이블을 없을 때만 만들고 재적재해도 지우거나 비우지 않습니다(구조를 바꿀 때는 DB에서 직접 DROP). 테이블 이름 키는 정의서 이름에서 `_DEFINITION`을 뗀 것(`FITNESS_FOLLOWUP` 등)입니다. 지금 CSV 모드는 `dashboard/py/management_store.py`가 `MANAGEMENT_DIR/{종류}.csv`에 씁니다. 기록식별번호는 `SERIAL`(DB가 매기는 정수), 날짜는 `DATE`, 저장 시각은 `TIMESTAMP`(시간대 포함, `TIMESTAMPTZ`)입니다. 사용자가 필요한 컬럼만 남길 예정입니다.
+데이터 파이프라인이 만드는 CSV가 없고, 대시보드 사용자가 입력하는 기록입니다(`paths.DB_RECORD_TABLES`). `setup_database.py`는 이 테이블을 없을 때만 만들고 재적재해도 지우거나 비우지 않습니다(구조를 바꿀 때는 DB에서 직접 DROP). 테이블 이름 키는 정의서 이름에서 `_DEFINITION`을 뗀 것(`FITNESS_FOLLOWUP` 등)입니다. 대시보드의 `dashboard/py/management_store.py`가 이 테이블에 기록을 추가·수정합니다. 기록식별번호는 `SERIAL`(DB가 매기는 정수), 날짜는 `DATE`, 저장 시각은 `TIMESTAMP`(시간대 포함, `TIMESTAMPTZ`)입니다.
 
 | 파일 | 컬럼 수 | 내용 | 쓰는 곳 |
 |---|---|---|---|
-| `FITNESS_FOLLOWUP_DEFINITION.csv` | 11 | 체력 상담·후속조치 기록(현재 `followup_records.csv`, DB `fitness_followups`): 기록식별번호(PK, 자동 번호), 군번(장병 FK, 장병과 이어지는 유일한 컬럼), 최초저장·최종수정 시각, 담당자, 상담일, 상담 내용, 후속조치 내용, 다음 점검일, 진행 상태(점검 대기/진행 중/완료/취소), 완료일. | p07 체력 지도·후속조치(장병별·그룹별 등록), 메인 화면 완료율 |
-| `INJURY_FOLLOWUP_DEFINITION.csv` | 12 | 부상 후속조치 기록(현재 `injury_followup.csv`, DB `injury_followups`): 기록식별번호(PK, 자동 번호), 최초저장·최종수정 시각, 부상식별번호(부상 FK, 장병은 부상 기록으로 JOIN), 확인일, 후속조치 상태, 후속조치 내용, 회복 상태(확인 중/회복 중/회복 확인/제한 지속/미확인), 운동 제한 내용·시작일·종료일, 비고. | p08 부상 후속조치, 메인 화면 완료율 |
+| `FITNESS_FOLLOWUP_DEFINITION.csv` | 11 | 체력 상담·후속조치 기록(DB `fitness_followups`): 기록식별번호(PK, 자동 번호), 군번(장병 FK, 장병과 이어지는 유일한 컬럼), 최초저장·최종수정 시각, 담당자, 상담일, 상담 내용, 후속조치 내용, 다음 점검일, 진행 상태(점검 대기/진행 중/완료/취소), 완료일. | p07 체력 지도·후속조치(장병별·그룹별 등록), 메인 화면 완료율 |
+| `INJURY_FOLLOWUP_DEFINITION.csv` | 12 | 부상 후속조치 기록(DB `injury_followups`): 기록식별번호(PK, 자동 번호), 최초저장·최종수정 시각, 부상식별번호(부상 FK, 장병은 부상 기록으로 JOIN), 확인일, 후속조치 상태, 후속조치 내용, 회복 상태(확인 중/회복 중/회복 확인/제한 지속/미확인), 운동 제한 내용·시작일·종료일, 비고. | p08 부상 후속조치, 메인 화면 완료율 |
 
-## 컬럼 정의서가 아닌 파일
+## 체력 등급 기준
 
-### `grade3_male_19_24.csv` (추후 제거 예정)
-
-19~24세 남성 체력 **3등급 기준표**입니다. 컬럼 정의서가 아니라 기준값 표라 형식이 다릅니다(`sex, age_min, age_max, exercise, description, rule, min_value, max_value, unit`).
-
-| 항목 | 기준 |
-|---|---|
-| 근력(`STRENGTH`) | 51.8% 이상 |
-| 근지구력(`ENDURANCE`) | 42회 이상 |
-| 심폐지구력(`CARDIO`, VO₂max) | 42 ml/kg/min 이상 |
-| 유연성(`FLEXIBILITY`) | 6.1cm 이상 |
-| BMI | 18.5 이상 25 미만 |
-| 체지방률(`BODY_FAT_PERCENTAGE`) | 7% 초과 27% 미만 |
-
-같은 값을 코드로 옮긴 `data/scripts/fitness_standards.py`가 이 파일을 대신합니다. 저장소의 코드(`data/experiments`, `data/scripts/analysis`)는 이제 이 파일을 읽지 않고 `fitness_standards.grade3_standards()`(이 CSV를 읽은 것과 같은 표)와 `grade_cut_table()`을 씁니다. 2026-10-26에 한 번 지웠다가, 팀원 작업을 위해 다시 넣어 두었습니다. 기준값을 바꿀 때는 `fitness_standards.py`를 고치고, 이 파일은 지울 때까지 같은 값으로 유지합니다.
+19~24세 남성 체력 등급 기준(종목별 1~3등급 하한, BMI·체지방률 범위)은 정의서 폴더가 아니라 `data/scripts/fitness_standards.py`에 코드로 둡니다. 3등급 기준표(성별·나이 범위·종목·기준값 표)가 필요하면 `fitness_standards.grade3_standards()`, 등급별 하한은 `grade_cut()`·`grade_cut_table()`을 씁니다.

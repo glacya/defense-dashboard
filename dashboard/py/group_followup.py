@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
+from dashboard.common.table_widgets import render_dataframe
 from dashboard.py.management_store import STATUSES, save_followups_batch
 
 
@@ -17,8 +18,8 @@ def render_group_followup(people: pd.DataFrame) -> None:
     st.subheader('그룹 후속조치 등록')
     st.write(f'현재 선택한 등급·운동유형에 해당하는 **{count:,}명**에게 같은 후속조치를 등록합니다.')
     st.caption('그룹 인원은 저장 시점에 확정됩니다. 장병별 독립 기록으로 추가되며 기존 기록을 덮어쓰지 않습니다. 등록 후 장병별 화면에서 각각 수정할 수 있습니다.')
-    st.dataframe(targets[['SOLDIER_ID','SOLDIER_NAME','UNIT_NAME','RISK_LEVEL','TYPE_NAME']].rename(columns={
-        'SOLDIER_ID':'장병번호','SOLDIER_NAME':'이름','UNIT_NAME':'부대','RISK_LEVEL':'대상자 등급','TYPE_NAME':'운동유형'}),
+    render_dataframe(targets[['SOLDIER_ID','SOLDIER_NAME','UNIT_NAME','RISK_LEVEL','TYPE_NAME']].rename(columns={
+        'SOLDIER_ID':'군번','SOLDIER_NAME':'이름','UNIT_NAME':'부대','RISK_LEVEL':'대상자 등급','TYPE_NAME':'운동 유형'}),
         hide_index=True,width='stretch')
     if not count:
         st.info('선택 조건에 해당하는 장병이 없습니다. 등급 또는 운동유형 조건을 변경하세요.')

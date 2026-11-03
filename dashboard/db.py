@@ -138,7 +138,7 @@ def _cached_reader(ttl: int | None) -> Any:
     reader = _CACHED_READERS.get(ttl)
     if reader is None:
         def read(sql: str, params: dict[str, Any] | None) -> pd.DataFrame:
-            return _read_closed(sql, params)
+            return tidy(_read_closed(sql, params))
 
         read.__qualname__ = f"run_query_ttl_{ttl}"
         reader = _CACHED_READERS[ttl] = st.cache_data(ttl=ttl, show_spinner=False)(read)
@@ -150,7 +150,7 @@ def run_query(sql: str, params: dict[str, Any] | None = None, ttl: int | None = 
 
     같은 SQL·params면 ttl초 동안 캐시된 결과를 씁니다(None이면 계속 캐시).
     """
-    return tidy(_cached_reader(ttl)(sql, params))
+    return _cached_reader(ttl)(sql, params)
 
 
 def read_uncached(sql: str, params: dict[str, Any] | None = None) -> pd.DataFrame:

@@ -10,6 +10,8 @@
   분석 단계가 measurement_classifications에 저장한 값(0~3, 0은 미달)을 쓴다.
 """
 
+from typing import Any
+
 import pandas as pd
 
 from dashboard.db import run_query
@@ -81,9 +83,27 @@ judged AS (
 )"""
 
 
-def judged_cte(one_soldier: bool = False) -> str:
-    """판정 CTE(graded → windowed → reasons → judged)입니다. one_soldier면 :soldier_id 한 명만 계산합니다."""
-    return _JUDGED_CTE.format(where="WHERE m.soldier_id = :soldier_id" if one_soldier else "")
+def judged_cte(
+    one_soldier: bool = False,
+    one_unit: bool = False,
+    soldier_ids: tuple[str, ...] | None = None,
+) -> str:
+    """판정 CTE(graded → windowed → reasons → judged)입니다.
+
+    one_soldier면 :soldier_id 한 명만, one_unit이면 :unit_name 부대 장병만,
+    soldier_ids면 선택 장병만 창 함수로 계산합니다.
+    """
+    if one_soldier:
+        where = "WHERE m.soldier_id = :soldier_id"
+    elif one_unit:
+        where = "WHERE m.soldier_id IN (SELECT soldier_id FROM soldiers WHERE unit_name = :unit_name)"
+    elif soldier_ids is not None:
+        if not soldier_ids:
+            raise ValueError("장병 필터가 비어 있습니다.")
+        where = "WHERE m.soldier_id = ANY(CAST(:soldier_ids AS text[]))"
+    else:
+        where = ""
+    return _JUDGED_CTE.format(where=where)
 
 
 # ---------------------------------------------------------------- 메인(대시보드 홈)
@@ -237,25 +257,65 @@ ORDER BY g.grp COLLATE "C", g.round
 MEASURE_PERIOD_SQL = "SELECT min(mesure_de) AS first_date, max(mesure_de) AS last_date FROM fitness_measurements"
 
 
-def _overview_sql(template: str, group_column: str | None) -> str:
+def _overview_sql(
+    template: str,
+    group_column: str | None,
+    soldier_ids: tuple[str, ...] | None = None,
+) -> tuple[str, dict[str, Any]]:
     if group_column not in OVERVIEW_GROUPS:
         raise ValueError(f"지원하지 않는 조직 구분입니다: {group_column}")
-    return template.format(judged=judged_cte(), group=OVERVIEW_GROUPS[group_column])
+    params: dict[str, Any] = {}
+    if soldier_ids is not None:
+        if not soldier_ids:
+            raise ValueError("장병 필터가 비어 있습니다.")
+        params["soldier_ids"] = list(soldier_ids)
+    sql = template.format(
+        judged=judged_cte(soldier_ids=soldier_ids),
+        group=OVERVIEW_GROUPS[group_column],
+    )
+    return sql, params
 
 
-def load_overview_rounds(group_column: str | None = None) -> pd.DataFrame:
+def load_overview_rounds(
+    group_column: str | None = None,
+    soldier_ids: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
     """회차별(지역·부대별이면 그룹·회차별) 요약. 전체는 3행, 그룹별은 그룹 수 × 3행."""
-    return run_query(_overview_sql(OVERVIEW_ROUNDS_SQL, group_column), {"high_bmi": HIGH_BMI})
+    sql, params = _overview_sql(OVERVIEW_ROUNDS_SQL, group_column, soldier_ids)
+    return run_query(sql, {"high_bmi": HIGH_BMI, **params})
 
 
-def load_overview_events(group_column: str | None = None) -> pd.DataFrame:
+def load_overview_events(
+    group_column: str | None = None,
+    soldier_ids: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
     """회차×종목별(지역·부대별이면 그룹까지) 요약. 종목 코드는 EVENT 컬럼(STRENGTH 등)."""
-    return run_query(_overview_sql(OVERVIEW_EVENTS_SQL, group_column), {"high_bmi": HIGH_BMI})
+    sql, params = _overview_sql(OVERVIEW_EVENTS_SQL, group_column, soldier_ids)
+    return run_query(sql, {"high_bmi": HIGH_BMI, **params})
 
 
 def load_measure_period() -> pd.Series:
     """측정일 범위(FIRST_DATE, LAST_DATE, yyyymmdd 문자열)."""
     return run_query(MEASURE_PERIOD_SQL).iloc[0]
+
+
+# 부대 카드 명단(모달): 선택 부대 장병의 회차별 판정 중 명단에 보여 줄 컬럼만.
+# 부대 하나(수백 행)만 받고, 회차·카드 구분은 화면에서 고른다. 측정이 없는 장병도 '전체 장병 수'에 들도록 LEFT JOIN.
+UNIT_JUDGMENTS_SQL = f"""
+WITH {judged_cte(one_unit=True)}
+SELECT s.soldier_id, s.soldier_name, s.rank_name,
+    j.round, j.age, j.strength_grade, j.endurance_grade, j.cardio_grade, j.flexibility_grade,
+    j.fail_count, j.managed
+FROM soldiers s
+LEFT JOIN judged j USING (soldier_id)
+WHERE s.unit_name = :unit_name
+ORDER BY s.soldier_id COLLATE "C", j.round
+"""
+
+
+def load_unit_judgments(unit_name: str) -> pd.DataFrame:
+    """선택 부대 장병의 회차별 판정(명단 표시용 컬럼만, 장병·회차 순)."""
+    return run_query(UNIT_JUDGMENTS_SQL, {"unit_name": unit_name, "high_bmi": HIGH_BMI})
 
 
 # ---------------------------------------------------------------- 장병 명단(p02·p03·p06·p07·p08 공용)
@@ -365,6 +425,57 @@ def load_round_summary(round_number: int) -> pd.Series:
 def load_round_targets(round_number: int) -> pd.DataFrame:
     """선택 회차 집중관리 대상자의 판정 행(가공 전)."""
     return run_query(ROUND_TARGETS_SQL, {"round": round_number, "high_bmi": HIGH_BMI})
+
+
+ROUND_DETAILS_SQL = f"""
+WITH {judged_cte()},
+round_rows AS (
+    SELECT * FROM judged WHERE round = :round
+),
+summary AS (
+    SELECT count(*) AS measured,
+        count(*) FILTER (WHERE managed) AS managed,
+        count(*) FILTER (WHERE high_bmi_fail) AS high_bmi_fail,
+        count(*) FILTER (WHERE multiple_fail) AS multiple_fail,
+        count(*) FILTER (WHERE worsened) AS worsened,
+        count(*) FILTER (WHERE persistent_fail) AS persistent_fail
+    FROM round_rows
+),
+targets AS (
+    SELECT j.*, s.soldier_name, s.region_name, s.unit_name, s.rank_name
+    FROM round_rows j
+    JOIN soldiers s USING (soldier_id)
+    WHERE j.managed
+)
+SELECT summary.measured AS summary_measured,
+    summary.managed AS summary_managed,
+    summary.high_bmi_fail AS summary_high_bmi_fail,
+    summary.multiple_fail AS summary_multiple_fail,
+    summary.worsened AS summary_worsened,
+    summary.persistent_fail AS summary_persistent_fail,
+    targets.*
+FROM summary
+LEFT JOIN targets ON true
+ORDER BY targets.soldier_id COLLATE "C"
+"""
+
+
+def load_round_details(round_number: int) -> tuple[pd.Series, pd.DataFrame]:
+    """선택 회차 요약과 관리 대상 명단을 판정 CTE 한 번으로 읽습니다."""
+    rows = run_query(ROUND_DETAILS_SQL, {"round": round_number, "high_bmi": HIGH_BMI})
+    summary_columns = {
+        "MEASURED": "SUMMARY_MEASURED",
+        "MANAGED": "SUMMARY_MANAGED",
+        "HIGH_BMI_FAIL": "SUMMARY_HIGH_BMI_FAIL",
+        "MULTIPLE_FAIL": "SUMMARY_MULTIPLE_FAIL",
+        "WORSENED": "SUMMARY_WORSENED",
+        "PERSISTENT_FAIL": "SUMMARY_PERSISTENT_FAIL",
+    }
+    summary = pd.Series({name: rows[column].iloc[0] for name, column in summary_columns.items()})
+    targets = rows.loc[rows["SOLDIER_ID"].notna()].drop(
+        columns=list(summary_columns.values())
+    ).reset_index(drop=True)
+    return summary, targets
 
 
 def load_soldier_judgments(soldier_id: str) -> pd.DataFrame:
@@ -485,6 +596,8 @@ def load_injury_distribution(units: list[tuple[str, str]], ranks: list[str]) -> 
 def load_injury_records(units: list[tuple[str, str]], ranks: list[str],
                         location: str | None = None, severity: str | None = None) -> pd.DataFrame:
     """필터를 건 부상 기록 중 고른 부위 또는 심각도의 기록(장병 이름·부대·계급 포함)."""
+    location = "미지정" if location == "미상" else location
+    severity = "(미상)" if severity == "미상" else severity
     params = {**_injury_filter_params(units, ranks), "location": location, "severity": severity}
     return run_query(INJURY_RECORDS_SQL, params)
 
@@ -547,3 +660,14 @@ ORDER BY m.soldier_id, m.mesure_de DESC, m.mesure_id DESC
 def load_unit_latest() -> pd.DataFrame:
     """장병별 최신 측정 목록(장병당 1행, 신상·체력유형 포함)."""
     return run_query(UNIT_LATEST_SQL)
+
+
+# ---------------------------------------------------------------- p08 부상 후속조치
+
+# 부상 기록 전체. 부상 이력 장병 목록·부상 선택지·후속조치 기록 연결에 모두 쓴다.
+INJURIES_SQL = "SELECT * FROM injuries ORDER BY injury_id"
+
+
+def load_injuries() -> pd.DataFrame:
+    """부상 기록 전체(부상 번호 순)."""
+    return run_query(INJURIES_SQL)

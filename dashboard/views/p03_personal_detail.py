@@ -6,13 +6,15 @@ import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from config import DASHBOARD_DIR
-from dashboard.common.formatting import RANK_ORDER
+from dashboard.common.formatting import RANK_ORDER, format_timestamp
+from dashboard.common.table_widgets import render_dataframe
 from dashboard.py import queries
 from dashboard.py.followup_probability import classify_probabilities
 from dashboard.py.personal_detail_data import load_soldier_history, personal_metadata
 from dashboard.py.personal_exercise_recommendations import render_recommendation
 from dashboard.py.fitness_judgment import EVENTS
 from data.scripts.fitness_standards import grade_cut
+from dashboard.common.chart_widgets import RadarChartWidget
 
 
 def _toggle_personal_rank(rank: str) -> None:
@@ -61,8 +63,8 @@ def render() -> None:
         unit_filter,search_filter=st.columns([1,1.4])
         unit=unit_filter.selectbox('부대',['전체 부대',*sorted(people.UNIT_NAME.dropna().unique().tolist())],
                                    key='personal_unit')
-        search=search_filter.text_input('이름·장병번호 검색',key='personal_search',
-                                        placeholder='이름 또는 장병번호 입력').strip()
+        search=search_filter.text_input('이름 또는 군번으로 검색',key='personal_search',
+                                        placeholder='이름 또는 군번 입력').strip()
         if unit!='전체 부대':
             people=people.loc[people.UNIT_NAME.eq(unit)]
         ranks=[rank for rank in RANK_ORDER if rank in people.RANK_NAME.unique()]
@@ -85,7 +87,7 @@ def render() -> None:
         st.caption(f'검색 결과 {people.SOLDIER_ID.nunique():,}명 / 전체 {total:,}명')
         people=people.sort_values(['SOLDIER_NAME','SOLDIER_ID'])
         labels=people.set_index('SOLDIER_ID')
-        soldier=st.selectbox('장병 선택 · 이름이나 장병번호를 입력해 찾을 수 있습니다',people.SOLDIER_ID.tolist(),
+        soldier=st.selectbox('장병 선택 · 이름이나 군번을 입력해 찾을 수 있습니다',people.SOLDIER_ID.tolist(),
             key='personal_soldier',
             format_func=lambda value:f'{labels.loc[value,"SOLDIER_NAME"]} · {labels.loc[value,"RANK_NAME"]} · {labels.loc[value,"UNIT_NAME"]} · {value}')
     # 선택한 장병 한 명의 판정·변화·부상만 따로 조회한다.
@@ -100,7 +102,7 @@ def render() -> None:
     with identity,st.container(border=True):
         st.image(str(DASHBOARD_DIR / 'img' / 'soldier_profile.svg'),width=90)
         st.subheader(f'{row.SOLDIER_NAME} · {row.RANK_NAME}')
-        st.caption(f'장병번호 {soldier} · {row.UNIT_NAME}')
+        st.caption(f'군번 {soldier} · {row.UNIT_NAME}')
         st.caption(f'선택 측정일 {date_label} · {formatted(row.AGE,0)}세')
     with body_summary:
         st.subheader(f'{number}차 신체 정보')
@@ -108,29 +110,29 @@ def render() -> None:
         for col,(label,key,unit) in zip(st.columns(4),entries):
             col.metric(label,f'{formatted(row.get(key))} {unit}',border=True)
         st.write('BMI 구간: **'+row.BMI_GROUP+'**')
-        st.caption('낮음 <18.5 · 보통 18.5 이상 25 미만 · 높음 25 이상. 보통에는 정상·비만전단계가 포함됩니다.')
+        st.caption('낮음 18.5 미만 · 보통 18.5 이상 25 미만 · 높음 25 이상. 보통에는 정상·비만전단계가 포함됩니다.')
     st.caption('신상·부상은 합성 자료입니다. 이미지는 공통 장병 프로필입니다.')
     for column,label,value in zip(st.columns(4),['선택 회차','미달 종목 수','집중관리 조건','전체 부상 기록'],
         [f'{number}차',f'{int(row.FAIL_COUNT)}개' if pd.notna(row.FAIL_COUNT) else '판정 불완전',
-         '해당' if row.MANAGED else '확인된 조건 없음',f'{len(person_injuries)}건']):
+         '해당' if row.MANAGED else '해당 없음',f'{len(person_injuries)}건']):
         column.metric(label,value,border=True)
     st.caption('부상 기록은 전체 보유 이력입니다. 발생일이 없어 선택 측정 회차의 부상으로 해석하지 않습니다.')
     with st.container(border=True):
-        st.markdown('**다음 차수 미통과 예측**')
+        st.markdown('**다음 측정 미달 예측**')
         try:
             prediction=classify_probabilities(queries.load_soldier_probability(soldier))
         except (OSError,ValueError,KeyError,pd.errors.EmptyDataError,SQLAlchemyError) as error:
-            st.info(f'미통과 확률 자료를 확인할 수 없습니다: {error}')
+            st.info(f'미달 확률 자료를 확인할 수 없습니다: {error}')
         else:
             if prediction.empty:
-                st.info('이 장병의 다음 차수 미통과 확률 자료가 없습니다.')
+                st.info('이 장병의 다음 측정 미달 확률 자료가 없습니다.')
             else:
                 predicted=prediction.iloc[0]
                 probability_panel,risk_panel=st.columns(2)
-                probability_panel.metric('다음 차수 미통과 확률',f'{predicted.FAILURE_PROBABILITY:.2%}')
+                probability_panel.metric('다음 측정 미달 확률',f'{predicted.FAILURE_PROBABILITY:.2%}')
                 risk_panel.metric('위험 등급',predicted.RISK_LEVEL)
                 st.progress(float(predicted.FAILURE_PROBABILITY))
-                st.caption('2·3차 측정 자료로 예측한 4차 미통과 확률입니다. 선택 회차를 바꿔도 예측값은 동일합니다.')
+                st.caption('2·3차 측정 자료로 예측한 다음 측정의 미달 확률입니다. 선택 회차를 바꿔도 예측값은 동일합니다.')
     st.subheader('회차별 신체 변화')
     body_dates=pd.to_datetime(history.MESURE_DE.astype(str).str.removesuffix('.0'),
                               format='%Y%m%d',errors='coerce').dt.strftime('%Y-%m-%d').fillna('날짜 정보 없음')
@@ -198,25 +200,18 @@ def render() -> None:
                         st.info(f'클러스터 비교 차트를 표시할 수 없습니다: {error}')
                     else:
                         axes=[EVENTS[event][0] for event in personal_profile.index]
-                        radar=go.Figure()
-                        for name,values,color in [
-                            ('선택 장병',personal_profile,'#2563eb'),
-                            ('같은 체력유형 평균',cluster_profile,'#ea580c'),
-                        ]:
-                            scores=[float(value) if pd.notna(value) else None for value in values]
-                            radar.add_trace(go.Scatterpolar(
-                                r=scores+scores[:1],theta=axes+axes[:1],
-                                mode='lines+markers',name=name,
-                                line={'color':color,'width':3},
-                                hovertemplate='%{theta}<br>백분위 %{r:.1f}<extra>%{fullData.name}</extra>',
-                            ))
-                        radar.update_layout(
-                            polar={'radialaxis':{'visible':True,'range':[0,100],'dtick':20},
-                                   'angularaxis':{'direction':'clockwise'},'gridshape':'linear'},
-                            height=380,margin={'t':35,'b':45,'l':65,'r':65},
-                            legend={'orientation':'h','y':-0.12,'x':0.5,'xanchor':'center'},
+                        radar = RadarChartWidget(
+                            labels=axes,
+                            values=[
+                                [float(value) if pd.notna(value) else None for value in personal_profile],
+                                [float(value) if pd.notna(value) else None for value in cluster_profile],
+                            ],
+                            name=['선택 장병', '같은 체력유형 평균'],
+                            line_color=['#2563eb', '#ea580c'],
+                            fill_color=['rgba(37, 99, 235, 0.18)', 'rgba(234, 88, 12, 0.18)'],
+                            height=380,
                         )
-                        st.plotly_chart(radar,width='stretch',key='personal_cluster_radar')
+                        st.plotly_chart(radar.build_figure(), width='stretch', key='personal_cluster_radar')
                         st.caption(f'바깥쪽일수록 종목 백분위가 높습니다. 같은 등급·클러스터의 전체 회차 측정 {member_count:,}건 평균이며 선택 측정도 포함합니다. 백분위는 전체 측정 기준으로 계산합니다.')
             with recommendation_panel,st.container(border=True):
                 render_recommendation(int(classification.AVERAGE_PERCENTILE_GRADE),int(classification.CLUSTER),
@@ -268,19 +263,27 @@ def render() -> None:
                     st.info('측정 기록이 없습니다.')
                 st.caption(f'3등급 하한: {cut:g} {unit}')
         st.caption('주황 점선은 남성 19~24세의 3등급 하한입니다. 종목별 단위와 축 범위가 다르며, 판정 불가 자료는 충족 여부를 표시하지 않습니다.')
-        st.write('미달 종목: '+(row.FAILED_EVENTS or '확인된 미달 없음'))
-        st.write('집중관리 사유: '+(row.SELECTION_REASONS or '현재 자료에서 확인된 선정 조건 없음'))
+        st.write('미달 종목: '+(row.FAILED_EVENTS or '없음'))
+        st.write('집중관리 사유: '+(row.SELECTION_REASONS or '해당 없음'))
     with changes:
         st.subheader('1차 대비 선택 회차 변화')
         rows=[]
         for event,(label,unit) in EVENTS.items():
-            rows.append({'종목':label,'단위':unit,'측정값 변화':row[f'{event}_CHANGE'],'등급 변화':row[f'{event}_GRADE_CHANGE']})
-        st.dataframe(pd.DataFrame(rows),hide_index=True,width='stretch')
+            rows.append({'종목':f'{label}({unit})','직전 회차 측정 대비 측정값 변화':row[f'{event}_CHANGE'],'등급 변화':row[f'{event}_GRADE_CHANGE']})
+        render_dataframe(pd.DataFrame(rows),hide_index=True,width='stretch')
         delta=row.FAIL_COUNT_CHANGE
-        st.write('미달 종목 수 변화: '+(f'{int(delta):+d}개' if pd.notna(delta) else '판정 불가'))
-        st.write('1차 대비 신규 미달: '+(row.NEW_FAILED_EVENTS or '없음'))
-        st.write('1차 대비 미달 해소: '+(row.IMPROVED_EVENTS or '없음'))
-        st.write('선택 회차까지 최근 3회 지속 미달: '+(row.PERSISTENT_EVENTS or '확인된 종목 없음'))
+        if pd.isna(delta):
+            change_label='판정 불가'
+        elif delta > 0:
+            change_label=f'{int(delta)}개 증가'
+        elif delta < 0:
+            change_label=f'{abs(int(delta))}개 감소'
+        else:
+            change_label='유지'
+        st.write('미달 종목 수: '+change_label)
+        st.write('1회차 측정 대비 신규 미달 종목: '+(row.NEW_FAILED_EVENTS or '없음'))
+        st.write('1회차 측정 대비 미달 해소 종목: '+(row.IMPROVED_EVENTS or '없음'))
+        st.write('최근 3회 지속 미달 종목: '+(row.PERSISTENT_EVENTS or '없음'))
         st.caption('미측정·연령 범위 밖은 판정 불가입니다. 개선·신규 미달은 두 시점 모두 판정 가능한 종목에서만 확인합니다.')
         st.subheader('종목별 개인 변화와 전체 평균')
         st.caption('파랑: 개인 측정값 · 회색: 같은 회차 전체 평균 · 주황 점선: 3등급 하한. 평균에는 선택 장병도 포함합니다.')
@@ -314,19 +317,18 @@ def render() -> None:
                     st.plotly_chart(plot,width='stretch',key=f'personal_mean_{event}')
         st.caption('전체 평균은 각 회차의 유효 측정값으로 계산하며 회차별 인원이 달라질 수 있습니다. 평균보다 낮다는 것과 기준 미달은 다릅니다. 그래프는 전체 보유 회차를 표시하고, 세로 점선은 선택 회차입니다. 등급 기준은 남성 19~24세에서만 유효합니다.')
         table=history[['ROUND','FAIL_COUNT','FAILED_EVENTS','NEW_FAILED_EVENTS','IMPROVED_EVENTS','PERSISTENT_EVENTS']].rename(columns={'ROUND':'회차','FAIL_COUNT':'미달 개수','FAILED_EVENTS':'미달 종목','NEW_FAILED_EVENTS':'1차 대비 신규 미달','IMPROVED_EVENTS':'1차 대비 미달 해소','PERSISTENT_EVENTS':'최근 3회 지속 미달'})
-        st.dataframe(table,hide_index=True,width='stretch')
+        render_dataframe(table,hide_index=True,width='stretch')
     with injury:
         st.subheader('개인 부상 이력')
         st.caption('발생일·회복 상태·운동 제한 자료는 현재 원본에 없습니다. 회차별 부상이나 현재 회복 여부를 추정하지 않습니다.')
         if person_injuries.empty:
             st.info('보유 부상 자료에서 이 장병의 기록이 없습니다.')
         else:
-            shown=person_injuries.rename(columns={'INJURY_ID':'부상 식별자','SOLDIER_ID':'장병 식별자','INJURY_CATEGORY':'부상 대분류','INJURY_LOCATION':'부위','PREVENTABILITY':'예방 가능 여부','SEVERITY':'심각도'})
+            shown=person_injuries.rename(columns={'INJURY_ID':'부상 번호','SOLDIER_ID':'군번','INJURY_CATEGORY':'부상 대분류','INJURY_LOCATION':'부위','PREVENTABILITY':'예방 가능 여부','SEVERITY':'심각도'})
             shown['예방 가능 여부']=shown['예방 가능 여부'].map({'Y':'가능','N':'불가능'}).fillna('정보 없음')
-            st.dataframe(shown,hide_index=True,width='stretch')
-            st.download_button('부상 이력 CSV',shown.to_csv(index=False).encode('utf-8-sig'),f'{soldier}_부상이력.csv','text/csv')
+            render_dataframe(shown,hide_index=True,width='stretch')
+            st.download_button('부상 이력 다운로드(CSV)',shown.to_csv(index=False).encode('utf-8-sig'),f'{soldier}_부상이력.csv','text/csv')
     with st.expander('개인 측정 자료 다운로드·기준'):
-        st.download_button('개인 전체 측정·판정·변화 CSV',history.to_csv(index=False).encode('utf-8-sig'),f'{soldier}_체력상세.csv','text/csv')
+        st.download_button('개인 전체 측정 데이터 다운로드(CSV)',history.to_csv(index=False).encode('utf-8-sig'),f'{soldier}_체력상세.csv','text/csv')
         metadata=personal_metadata()
-        st.write(metadata['비교']);st.write(metadata['주의'])
-        st.caption('측정 당시 남성 19~24세 기준 · 종목별 등급이며 종합 인증등급이 아닙니다. 생성일: '+metadata['생성일시'])
+        st.caption('생성일: '+format_timestamp(metadata['생성일시']))

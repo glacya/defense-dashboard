@@ -4,13 +4,15 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
+
+from dashboard.common.table_widgets import render_dataframe
 from sqlalchemy.exc import SQLAlchemyError
 
+from dashboard.common.formatting import format_timestamp
 from dashboard.py.management_store import FIELDS, STATUSES, save_record
 
-LABELS={'RECORD_ID':'기록 번호','SOLDIER_ID':'장병 식별자','CREATED_AT':'최초 저장일','UPDATED_AT':'최종 수정일',
+LABELS={'RECORD_ID':'기록 번호','SOLDIER_ID':'군번','SOLDIER_NAME':'이름','CREATED_AT':'최초 저장일','UPDATED_AT':'최종 수정일',
  'ASSIGNEE':'담당자','STATUS':'진행 상태','NOTE':'비고','COUNSELING_DATE':'상담일',
  'COUNSELING_CONTENT':'상담 내용','ACTION_CONTENT':'후속조치 내용','NEXT_CHECK_DATE':'다음 점검일','COMPLETED_DATE':'완료일',
  'INJURY_ID':'부상 번호','CHECK_DATE':'확인일','RECOVERY_STATUS':'회복 상태','RESTRICTION':'확인된 운동 제한',
@@ -22,11 +24,35 @@ def date_value(value, default=None):
     return date.fromisoformat(value) if value else default
 
 
-def editor(kind: str, soldier: str, all_records: dict, injuries: pd.DataFrame) -> None:
+def display_records(records: pd.DataFrame, soldier_names: dict[str, str]) -> pd.DataFrame:
+    """기록 테이블을 표시·다운로드용으로 바꿔 내부 기록 번호 대신 이름을 보여줍니다."""
+    display = records.drop(columns=['RECORD_ID'], errors='ignore').copy()
+    display.insert(0, 'SOLDIER_NAME', display['SOLDIER_ID'].map(soldier_names).fillna(''))
+    for column in ('CREATED_AT', 'UPDATED_AT'):
+        if column in display:
+            display[column] = display[column].map(format_timestamp)
+    return display.rename(columns=LABELS)
+
+
+def editor(
+    kind: str,
+    soldier: str,
+    all_records: dict,
+    injuries: pd.DataFrame,
+    soldier_names: dict[str, str] | None = None,
+) -> None:
     """선택 장병의 기존 기록을 수정하거나 새 기록을 입력합니다."""
     records=all_records[kind].loc[all_records[kind].SOLDIER_ID.eq(soldier)]
-    st.dataframe(records.rename(columns=LABELS),hide_index=True,width='stretch')
-    st.download_button('이 기록 CSV 다운로드',records.rename(columns=LABELS).to_csv(index=False).encode('utf-8-sig'),
+    display = display_records(records, soldier_names or {soldier: soldier})
+    if records.empty:
+        st.info('기록 없음')
+    else:
+        render_dataframe(display,hide_index=True,width='stretch')
+    download_label = (
+        '상담 및 후속조치 다운로드(CSV)'
+        if kind == 'followup_records' else '기록 다운로드(CSV)'
+    )
+    st.download_button(download_label,display.to_csv(index=False).encode('utf-8-sig'),
                        f'{soldier}_{kind}.csv','text/csv',key=f'download_{kind}')
     choices=['새 기록',*records.RECORD_ID.tolist()]
     selected=st.selectbox('입력·수정할 기록',choices,key=f'edit_{kind}_{soldier}',
@@ -73,9 +99,7 @@ def editor(kind: str, soldier: str, all_records: dict, injuries: pd.DataFrame) -
             try:
                 record_id=save_record(kind,values,record_id='' if selected=='새 기록' else selected,expected_updated=st.session_state.get(version_key,''))
                 st.session_state.pop(version_key,None)
-                st.session_state['management_notice']=f'저장했습니다. 기록 번호 {record_id[:8]}'
+                st.session_state['management_notice']='저장했습니다.'
                 st.rerun()
             except (OSError,ValueError,KeyError,SQLAlchemyError) as error:
                 st.error(f'저장하지 못했습니다: {error}')
-
-

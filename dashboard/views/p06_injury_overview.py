@@ -1,11 +1,8 @@
 """6번 화면: 전체 부상·종목별 등급 비교·개인 부상 이력입니다."""
 
-import math
 from html import escape
 
-import altair as alt
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -13,11 +10,15 @@ from dashboard.py import queries
 from dashboard.py.injury_overview_data import injury_grade_table, injury_metadata, injury_people
 from dashboard.py.fitness_judgment import EVENTS, GRADE_LABELS
 from dashboard.common.filters import render_personnel_cards
-from dashboard.common.formatting import filter_signature
+from dashboard.common.formatting import filter_signature, format_timestamp
+from dashboard.common.charts import NAVY_BORDER, apply_chart_layout, make_bar
+from dashboard.common.chart_widgets import PieChartWidget
+from dashboard.common.overview_widgets import render_metric_cards
+from dashboard.common.table_widgets import render_dataframe
 
 INJURY_LABELS = {
     'INJURY_ID': '부상 식별자',
-    'SOLDIER_ID': '장병 식별자',
+    'SOLDIER_ID': '군번',
     'SOLDIER_NAME': '장병 이름',
     'UNIT_NAME': '부대',
     'RANK_NAME': '계급',
@@ -31,32 +32,17 @@ GROUP_MODAL_COLUMNS = [
     'INJURY_LOCATION', 'PREVENTABILITY', 'SEVERITY',
 ]
 
-SEVERITY_COLORS = {'경증': '#0F766E', '중등증': '#0891B2', '중증': '#2563EB', '(미상)': '#94A3B8'}
+SEVERITY_COLORS = {'경증': '#0F766E', '중등증': '#0891B2', '중증': '#2563EB', '미상': '#94A3B8'}
 GROUP_COLUMNS = {'지역별': 'REGION_NAME', '부대별': 'UNIT_NAME', '계급별': 'RANK_NAME'}
 
 
 def _style_injury_chart(chart):
-    chart.update_layout(
-        template='plotly_white',
-        paper_bgcolor='#FFFFFF',
-        plot_bgcolor='#FFFFFF',
-        font=dict(color='#182B40'),
-        legend=dict(font=dict(color='#182B40')),
-        hoverlabel=dict(bgcolor='#FFFFFF', font=dict(color='#182B40')),
+    apply_chart_layout(
+        chart,
+        height=450,
         margin=dict(l=12, r=20, t=24, b=12),
-    )
-    chart.update_traces(textfont_color='#182B40')
-    chart.update_xaxes(
-        tickfont_color='#182B40',
-        title_font_color='#182B40',
-        gridcolor='#E2E8F0',
-        linecolor='#CBD5E1',
-    )
-    chart.update_yaxes(
-        tickfont_color='#182B40',
-        title_font_color='#182B40',
-        gridcolor='#E2E8F0',
-        linecolor='#CBD5E1',
+        xaxis=dict(linecolor=NAVY_BORDER),
+        yaxis=dict(linecolor=NAVY_BORDER),
     )
     return chart
 
@@ -75,9 +61,10 @@ def _render_injury_distributions(
         .rename(columns={'INJURY_LOCATION': '부위', 'INJURIES': '건수'})
         .sort_values('건수', ascending=False)
     )
+    location_counts['부위'] = location_counts['부위'].replace('미지정', '미상')
     with left, st.container(border=True):
         st.subheader('부위별 부상 건수')
-        chart = px.bar(
+        chart = make_bar(
             location_counts,
             x='부위',
             y='건수',
@@ -86,9 +73,10 @@ def _render_injury_distributions(
             color_discrete_sequence=['#0F766E'],
         )
         chart.update_traces(
-            textposition='outside',
+            textposition='top center',
             textfont=dict(color='#18324B', size=12),
             cliponaxis=False,
+            selector={'mode': 'text'},
         )
         chart.update_layout(
             margin=dict(l=48, r=20, t=24, b=76),
@@ -106,6 +94,7 @@ def _render_injury_distributions(
         .rename(columns={'SEVERITY': '심각도', 'INJURIES': '건수'})
         .sort_values('심각도', kind='stable')
     )
+    severity_counts['심각도'] = severity_counts['심각도'].replace({'(미상)': '미상', '미지정': '미상'})
     severity_order = [*SEVERITY_COLORS]
     severity_order.extend(sorted(set(severity_counts['심각도']) - set(severity_order)))
     severity_sort = {value: index for index, value in enumerate(severity_order)}
@@ -113,23 +102,8 @@ def _render_injury_distributions(
     severity_counts = severity_counts.sort_values('_정렬순서').reset_index(drop=True)
     severity_counts['색상'] = severity_counts['심각도'].map(SEVERITY_COLORS).fillna('#94A3B8')
     severity_counts['비율'] = severity_counts['건수'] / severity_counts['건수'].sum() * 100
-    severity_counts['_시작각'] = (
-        severity_counts['건수'].cumsum() - severity_counts['건수']
-    ) / severity_counts['건수'].sum() * math.tau
-    severity_counts['_끝각'] = (
-        severity_counts['건수'].cumsum() / severity_counts['건수'].sum() * math.tau
-    )
-    severity_counts['중심각'] = (
-        severity_counts['건수'].cumsum() - severity_counts['건수'] / 2
-    ) / severity_counts['건수'].sum() * math.tau
-    severity_counts['표시'] = severity_counts.apply(
-        lambda row: f"{row['심각도']}\n{row['비율']:.1f}%", axis=1,
-    )
     with right, st.container(border=True):
         st.subheader('심각도별 부상 건수 비율')
-        severity_selection = alt.selection_point(
-            name='severity_click', fields=['심각도'], on='click', clear='dblclick', toggle=False,
-        )
         legend_items = ''.join(
             '<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">'
             f'<i style="display:inline-block;width:11px;height:11px;border-radius:50%;background:{SEVERITY_COLORS.get(value, "#94A3B8")};"></i>'
@@ -142,53 +116,23 @@ def _render_injury_distributions(
             f'<strong>심각도</strong>{legend_items}</div>',
             unsafe_allow_html=True,
         )
-        donut = (
-            alt.Chart(severity_counts)
-            .mark_arc(innerRadius=68, outerRadius=205, stroke='#FFFFFF', strokeWidth=2)
-            .encode(
-                theta=alt.Theta(
-                    '_시작각:Q',
-                    scale=alt.Scale(domain=[0, math.tau], range=[0, math.tau]),
-                    stack=None,
-                ),
-                theta2=alt.Theta2('_끝각:Q'),
-                color=alt.Color('색상:N', scale=None, legend=None),
-                tooltip=[
-                    alt.Tooltip('심각도:N', title='심각도'),
-                    alt.Tooltip('건수:Q', title='건수', format=','),
-                    alt.Tooltip('비율:Q', title='비율', format='.1f'),
-                ],
-            )
-            .add_params(severity_selection)
-            .properties(height=450)
-        )
-        labels = (
-            alt.Chart(severity_counts)
-            .mark_text(
-                radius=137,
-                fontSize=14,
-                fontWeight='bold',
-                color='#FFFFFF',
-                align='center',
-                baseline='middle',
-                lineBreak='\n',
-            )
-            .encode(
-                theta=alt.Theta(
-                    '중심각:Q',
-                    scale=alt.Scale(domain=[0, math.tau], range=[0, math.tau]),
-                    stack=None,
-                ),
-                text=alt.Text('표시:N'),
-                tooltip=alt.Tooltip('비율:Q', title='비율', format='.1f'),
-            )
-        )
-        severity_event = st.altair_chart(
-            donut + labels,
+        severity_figure = PieChartWidget(
+            data=severity_counts,
+            names='심각도',
+            values='건수',
+            colors=severity_counts['색상'].tolist(),
+            center_text=f"{int(severity_counts['건수'].sum()):,}건",
+            height=450,
+            show_percent=True,
+        ).build_figure()
+        severity_event = st.plotly_chart(
+            severity_figure,
             width='stretch',
             theme=None,
+            config={'displayModeBar': False},
             key=f'injury_severity_distribution_{chart_scope_signature}',
             on_select=_activate_severity_chart,
+            selection_mode='points',
         )
 
     active_chart = st.session_state.get('injury_chart_active_selection')
@@ -200,10 +144,7 @@ def _render_injury_distributions(
             records = queries.load_injury_records(units, ranks, location=location)
             _show_injury_group_modal(f'부위: {location}', records, signature, chart_modal=True)
 
-    severity = (
-        _selected_altair_category(severity_event, 'severity_click', '심각도')
-        if active_chart == 'severity' else None
-    )
+    severity = _selected_chart_category(severity_event, '심각도') if active_chart == 'severity' else None
     if severity is not None:
         signature = filter_signature('severity', chart_scope_signature, severity)
         if not modal_dismissed and st.session_state.get('injury_chart_modal_dismissed_signature') != signature:
@@ -221,7 +162,7 @@ def _render_injury_distributions(
     )
     with st.container(border=True):
         st.subheader(f'{group_label} 부상 건수')
-        chart = px.bar(
+        chart = make_bar(
             grouped_counts,
             x='부상 건수',
             y=group_label_name,
@@ -274,17 +215,6 @@ def _selected_chart_category(event, column: str) -> str | None:
     return str(value) if value is not None else None
 
 
-def _selected_altair_category(event, selection_name: str, field: str) -> str | None:
-    selected = event.selection.get(selection_name, [])
-    if isinstance(selected, dict):
-        value = selected.get(field)
-    elif isinstance(selected, list) and selected:
-        value = selected[-1].get(field) if isinstance(selected[-1], dict) else None
-    else:
-        value = None
-    return str(value) if value is not None else None
-
-
 def _show_injury_group_modal(
     title: str, injuries: pd.DataFrame, signature: str, chart_modal: bool = False,
 ) -> None:
@@ -306,7 +236,7 @@ def _show_injury_group_modal(
     def _modal() -> None:
         people_count = injuries['SOLDIER_ID'].nunique() if 'SOLDIER_ID' in injuries else 0
         st.caption(f'인원 {people_count:,}명 · 부상 기록 {len(injuries):,}건')
-        st.dataframe(records, hide_index=True, width='stretch')
+        render_dataframe(records, hide_index=True, width='stretch')
         st.download_button(
             '부상 기록 CSV',
             records.to_csv(index=False).encode('utf-8-sig'),
@@ -329,7 +259,7 @@ def _show_injury_history_modal(person: pd.Series, injuries: pd.DataFrame, signat
         if injuries.empty:
             st.info('보유 부상 자료에서 해당 장병의 기록이 없습니다.')
         else:
-            st.dataframe(injuries, hide_index=True, width='stretch')
+            render_dataframe(injuries, hide_index=True, width='stretch')
             st.download_button(
                 '개인 부상 기록 CSV',
                 injuries.to_csv(index=False).encode('utf-8-sig'),
@@ -357,8 +287,19 @@ def render() -> None:
     injured=int(summary.INJURED_SOLDIERS)
     values=[f'{total:,}명',f'{injured:,}명',f'{int(summary.INJURIES):,}건',
             f'{injured/total*100:.1f}%' if total else '해당 없음',f'{int(summary.REPEATED_SOLDIERS):,}명']
-    for col,label,value in zip(st.columns(5),['전체 장병 수','부상 기록 보유 인원','부상 건수','부상자 비율','2건 이상 부상 기록'],values):
-        col.metric(label,value,border=True)
+    render_metric_cards(
+        list(zip(
+            ['total', 'injured', 'injuries', 'injured_rate', 'repeated'],
+            ['전체 장병 수','부상 기록 보유 인원','부상 건수','부상자 비율','2건 이상 부상 기록'],
+            values,
+        )),
+        container_key=None,
+        key_prefix='injury_overview_card',
+        clickable=False,
+        clickable_keys=set(),
+        scope_signature='',
+        help_text='',
+    )
     st.caption('전체 장병 명단이 분모입니다. 한 장병에게 부상이 여러 건 있어도 부상 인원은 1명입니다.')
     overall,comparison,individual=st.tabs(['전체 부상 분포','체력등급별 비교','개인별 부상 이력'])
     with overall:
@@ -379,19 +320,22 @@ def render() -> None:
         grade_table=injury_grade_table().loc[lambda table: table['종목'].eq(EVENTS[event][0])]
         left,right=st.columns(2)
         with left:
-            chart=px.bar(grade_table,x='등급',y='부상자비율',text='부상자비율',
+            chart=make_bar(grade_table,x='등급',y='부상자비율',text='부상자비율',
                 category_orders={'등급':list(GRADE_LABELS.values())},hover_data=['전체인원','부상인원','부상건수'],color_discrete_sequence=['#2563eb'])
-            chart.update_traces(texttemplate='%{text:.1f}%')
+            chart.update_traces(
+                texttemplate='%{text:.1f}%',
+                selector={'mode': 'text'},
+            )
             chart.update_layout(yaxis_range=[0,100],yaxis_title='부상자 비율 (%)',title='최신 종목 등급별 부상자 비율')
             st.plotly_chart(_style_injury_chart(chart),width='stretch',theme=None)
         with right:
-            st.dataframe(grade_table.drop(columns='종목'),hide_index=True,width='stretch',
+            render_dataframe(grade_table.drop(columns='종목'),hide_index=True,width='stretch',
                 column_config={'부상자비율':st.column_config.NumberColumn(format='%.1f%%')})
         st.caption('분모: 각 등급의 전체 장병 수. 0명인 등급의 비율은 계산하지 않습니다. 종합등급이 아닌 종목별 등급이며 판정 불가 집단도 별도 표시합니다.')
-        st.download_button('등급별 부상 집계 CSV',grade_table.to_csv(index=False).encode('utf-8-sig'),'체력등급별_부상현황.csv','text/csv')
+        st.download_button('등급별 부상 집계 다운로드(CSV)',grade_table.to_csv(index=False).encode('utf-8-sig'),'체력등급별_부상현황.csv','text/csv')
     with individual:
         left,right=st.columns(2)
-        search=left.text_input('이름·장병번호 검색')
+        search=left.text_input('이름 또는 군번으로 검색')
         condition=right.selectbox('부상 기록',['전체','기록 있음','2건 이상','기록 없음'])
         shown=people.copy()
         if search:
@@ -403,10 +347,10 @@ def render() -> None:
         elif condition=='기록 없음':
             shown=shown.loc[shown.INJURY_COUNT.eq(0)]
         cols=['SOLDIER_ID','SOLDIER_NAME','RANK_NAME','UNIT_NAME','INJURY_COUNT']
-        display=shown[cols].rename(columns={'SOLDIER_ID':'장병 식별자','SOLDIER_NAME':'이름','RANK_NAME':'계급','UNIT_NAME':'소속','INJURY_COUNT':'부상 건수'})
+        display=shown[cols].rename(columns={'SOLDIER_ID':'군번','SOLDIER_NAME':'이름','RANK_NAME':'계급','UNIT_NAME':'소속','INJURY_COUNT':'부상 건수'})
         st.caption(f'조회 결과 {len(shown):,}명 · 신상 정보는 합성 자료입니다.')
         table_key = f"injury_personnel_table_{filter_signature(tuple(shown['SOLDIER_ID']))}"
-        table_event = st.dataframe(
+        table_event = render_dataframe(
             display,
             hide_index=True,
             width='stretch',
@@ -428,6 +372,8 @@ def render() -> None:
                     _show_injury_history_modal(person, records, modal_signature)
     with st.expander('집계 기준·자료 출처'):
         metadata=injury_metadata()
-        for key in ['집계범위','등급','기간','합성','중복']:
-            st.write(metadata[key])
-        st.caption('분석 생성일: '+metadata['생성일시'])
+        st.write('장병 명단 전체와, 보유한 부상 기록을 집계합니다.')
+        st.write('부상자 비율은 (부상 기록이 1건 이상 있는 장병 수) / (집단 전체 인원)을 백분율로 나타낸 것입니다.')
+        st.write('부상 발생일이 없어 기간별 집계는 하지 않습니다.')
+        st.write('부상 기록 데이터는 BMI와 심폐지구력을 기반으로 부상 발생률을 추정한 뒤 합성하였습니다. 이에 등급별 차이를 실제 부상 위험이나 인과관계로 해석하지 않았습니다.')
+        st.caption('분석 생성일: '+format_timestamp(metadata['생성일시']))

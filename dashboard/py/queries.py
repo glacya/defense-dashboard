@@ -648,11 +648,12 @@ def load_followup_population() -> pd.DataFrame:
 # 장병별 가장 최근 측정 1건 + 신상 + 그 측정의 체력유형. 지역·부대 카드 필터는 이 결과(장병당 1행)를 거른다.
 UNIT_LATEST_SQL = """
 SELECT DISTINCT ON (m.soldier_id) m.*, s.soldier_name, s.region_name, s.unit_name, s.rank_name,
-    c.average_percentile_grade, c.cluster, t.type_name
+    c.average_percentile_grade, c.cluster, t.type_name, p.failure_probability
 FROM fitness_measurements m
 JOIN soldiers s USING (soldier_id)
 LEFT JOIN measurement_classifications c USING (mesure_id)
 LEFT JOIN fitness_types t USING (average_percentile_grade, cluster)
+LEFT JOIN soldier_failure_probabilities p USING (soldier_id)
 ORDER BY m.soldier_id, m.mesure_de DESC, m.mesure_id DESC
 """
 

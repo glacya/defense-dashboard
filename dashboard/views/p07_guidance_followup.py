@@ -1,6 +1,7 @@
 """7번 화면: 예측 확률의 안전·경계 1~3등급별로 체력 지도·후속조치를 관리합니다."""
 
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -18,6 +19,17 @@ from dashboard.common.charts import make_bar
 from dashboard.common.table_widgets import render_dataframe
 
 KINDS=['followup_records']
+
+
+def _load_page_data() -> tuple[pd.DataFrame, pd.DataFrame, int, dict[str, pd.DataFrame]]:
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="fitness-followup-data") as executor:
+        population_future = executor.submit(load_followup_population)
+        records_future = executor.submit(
+            lambda: {kind: load_records(kind) for kind in KINDS}
+        )
+        population, type_catalog, missing = population_future.result()
+        records = records_future.result()
+    return population, type_catalog, missing, records
 
 
 def _select_grade(label: str) -> None:
@@ -47,9 +59,8 @@ def render() -> None:
         st.success(notice)
     try:
         # 장병별 1행(신상·미달 확률·최신 측정·체력유형)을 쿼리 하나로 받는다.
-        population,type_catalog,missing=load_followup_population()
+        population,type_catalog,missing,records=_load_page_data()
         current_ids=population.SOLDIER_ID
-        records={kind:load_records(kind) for kind in KINDS}
     except (OSError,ValueError,KeyError,SQLAlchemyError) as error:
         st.error(f'관리 자료를 읽을 수 없습니다: {error}')
         st.caption('DB의 장병 명단과 미달 확률(soldier_failure_probabilities)을 확인하세요.')

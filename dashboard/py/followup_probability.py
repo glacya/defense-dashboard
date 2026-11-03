@@ -1,5 +1,7 @@
 """장병별 다음 회차 미달 확률을 읽어 네 위험 등급을 계산합니다."""
 
+from concurrent.futures import ThreadPoolExecutor
+
 import pandas as pd
 import streamlit as st
 
@@ -38,7 +40,7 @@ def type_key(grade, cluster) -> str:
 @st.cache_data(ttl=DEFAULT_TTL, show_spinner=False)
 def load_followup_population() -> tuple[pd.DataFrame, pd.DataFrame, int]:
     """(확률이 있는 장병별 신상·위험 등급·최신 측정·체력유형, 유형 16개 표, 확률이 없는 장병 수)를 돌려줍니다."""
-    rows = queries.load_followup_population()
+    rows, catalog = _load_followup_sources()
     missing = int(rows.FAILURE_PROBABILITY.isna().sum())
     rows = rows.loc[rows.FAILURE_PROBABILITY.notna()].copy()
     levels = classify_probabilities(rows[['SOLDIER_ID', 'FAILURE_PROBABILITY']])
@@ -50,6 +52,14 @@ def load_followup_population() -> tuple[pd.DataFrame, pd.DataFrame, int]:
     typed = rows.AVERAGE_PERCENTILE_GRADE.notna()
     rows['FITNESS_TYPE_KEY'] = None
     rows.loc[typed, 'FITNESS_TYPE_KEY'] = [type_key(g, c) for g, c in zip(rows.AVERAGE_PERCENTILE_GRADE[typed], rows.CLUSTER[typed])]
-    catalog = queries.load_fitness_types()
     catalog['FITNESS_TYPE_KEY'] = [type_key(g, c) for g, c in zip(catalog.AVERAGE_PERCENTILE_GRADE, catalog.CLUSTER)]
     return rows.reset_index(drop=True), catalog, missing
+
+
+def _load_followup_sources() -> tuple[pd.DataFrame, pd.DataFrame]:
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="followup-population") as executor:
+        rows_future = executor.submit(queries.load_followup_population)
+        catalog_future = executor.submit(queries.load_fitness_types)
+        rows = rows_future.result()
+        catalog = catalog_future.result()
+    return rows, catalog
